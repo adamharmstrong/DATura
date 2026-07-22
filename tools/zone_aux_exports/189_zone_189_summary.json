@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 189,
+    "name": "",
+    "model": "ROM5/0/30.DAT",
+    "dialog": "ROM/24/126.DAT",
+    "npc": "ROM/26/126.DAT",
+    "event": "ROM/20/126.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\30.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\126.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\126.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\126.DAT"
+  },
+  "npc_record_count": 10,
+  "named_npc_count": 10,
+  "event_token_count": 0,
+  "placement_candidate_count": 0,
+  "npc_csv": "tools\\zone_aux_exports\\189_zone_189_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\189_zone_189_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\189_zone_189_npc_placement_candidates.csv"
+}

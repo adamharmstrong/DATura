@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 86,
+    "name": "Everbloom Hollow",
+    "model": "ROM5/0/6.DAT",
+    "dialog": "ROM/24/23.DAT",
+    "npc": "ROM/26/23.DAT",
+    "event": "ROM/20/23.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\6.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\23.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\23.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\23.DAT"
+  },
+  "npc_record_count": 290,
+  "named_npc_count": 270,
+  "event_token_count": 24,
+  "placement_candidate_count": 39,
+  "npc_csv": "tools\\zone_aux_exports\\086_Everbloom_Hollow_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\086_Everbloom_Hollow_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\086_Everbloom_Hollow_npc_placement_candidates.csv"
+}

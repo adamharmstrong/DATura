@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 24,
+    "name": "Lufaise Meadows",
+    "model": "ROM3/0/23.DAT",
+    "dialog": "ROM3/2/34.DAT",
+    "npc": "ROM3/3/6.DAT",
+    "event": "ROM3/0/90.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\23.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\6.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\34.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\90.DAT"
+  },
+  "npc_record_count": 391,
+  "named_npc_count": 371,
+  "event_token_count": 820,
+  "placement_candidate_count": 32,
+  "npc_csv": "tools\\zone_aux_exports\\024_Lufaise_Meadows_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\024_Lufaise_Meadows_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\024_Lufaise_Meadows_npc_placement_candidates.csv"
+}

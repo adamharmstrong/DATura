@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 107,
+    "name": "South Gustaberg",
+    "model": "ROM/0/124.DAT",
+    "dialog": "ROM/24/44.DAT",
+    "npc": "ROM/26/44.DAT",
+    "event": "ROM/20/44.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\124.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\44.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\44.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\44.DAT"
+  },
+  "npc_record_count": 736,
+  "named_npc_count": 727,
+  "event_token_count": 243,
+  "placement_candidate_count": 50,
+  "npc_csv": "tools\\zone_aux_exports\\107_South_Gustaberg_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\107_South_Gustaberg_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\107_South_Gustaberg_npc_placement_candidates.csv"
+}

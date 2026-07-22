@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 217,
+    "name": "Abyssea - Vunkerl",
+    "model": "ROM/254/9.DAT",
+    "dialog": "ROM/25/26.DAT",
+    "npc": "ROM/27/26.DAT",
+    "event": "ROM/21/26.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\254\\9.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\26.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\26.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\26.DAT"
+  },
+  "npc_record_count": 745,
+  "named_npc_count": 730,
+  "event_token_count": 290,
+  "placement_candidate_count": 172,
+  "npc_csv": "tools\\zone_aux_exports\\217_Abyssea_-_Vunkerl_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\217_Abyssea_-_Vunkerl_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\217_Abyssea_-_Vunkerl_npc_placement_candidates.csv"
+}

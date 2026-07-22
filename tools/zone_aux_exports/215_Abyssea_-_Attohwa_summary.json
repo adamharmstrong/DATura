@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 215,
+    "name": "Abyssea - Attohwa",
+    "model": "ROM/254/7.DAT",
+    "dialog": "ROM/25/24.DAT",
+    "npc": "ROM/27/24.DAT",
+    "event": "ROM/21/24.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\254\\7.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\24.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\24.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\24.DAT"
+  },
+  "npc_record_count": 768,
+  "named_npc_count": 765,
+  "event_token_count": 293,
+  "placement_candidate_count": 178,
+  "npc_csv": "tools\\zone_aux_exports\\215_Abyssea_-_Attohwa_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\215_Abyssea_-_Attohwa_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\215_Abyssea_-_Attohwa_npc_placement_candidates.csv"
+}

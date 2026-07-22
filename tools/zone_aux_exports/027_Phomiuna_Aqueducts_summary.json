@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 27,
+    "name": "Phomiuna Aqueducts",
+    "model": "ROM3/0/26.DAT",
+    "dialog": "ROM3/2/37.DAT",
+    "npc": "ROM3/3/9.DAT",
+    "event": "ROM3/0/93.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\26.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\9.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\37.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\93.DAT"
+  },
+  "npc_record_count": 312,
+  "named_npc_count": 305,
+  "event_token_count": 269,
+  "placement_candidate_count": 27,
+  "npc_csv": "tools\\zone_aux_exports\\027_Phomiuna_Aqueducts_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\027_Phomiuna_Aqueducts_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\027_Phomiuna_Aqueducts_npc_placement_candidates.csv"
+}

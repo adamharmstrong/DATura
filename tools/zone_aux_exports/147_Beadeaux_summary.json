@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 147,
+    "name": "Beadeaux",
+    "model": "ROM/0/61.DAT",
+    "dialog": "ROM/24/84.DAT",
+    "npc": "ROM/26/84.DAT",
+    "event": "ROM/20/84.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\61.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\84.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\84.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\84.DAT"
+  },
+  "npc_record_count": 537,
+  "named_npc_count": 537,
+  "event_token_count": 116,
+  "placement_candidate_count": 40,
+  "npc_csv": "tools\\zone_aux_exports\\147_Beadeaux_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\147_Beadeaux_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\147_Beadeaux_npc_placement_candidates.csv"
+}

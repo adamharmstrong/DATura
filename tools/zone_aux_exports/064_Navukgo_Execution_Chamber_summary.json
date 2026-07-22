@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 64,
+    "name": "Navukgo Execution Chamber",
+    "model": "ROM4/0/17.DAT",
+    "dialog": "ROM4/1/9.DAT",
+    "npc": "ROM4/1/63.DAT",
+    "event": "ROM4/0/69.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\17.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\63.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\9.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\69.DAT"
+  },
+  "npc_record_count": 98,
+  "named_npc_count": 93,
+  "event_token_count": 452,
+  "placement_candidate_count": 10,
+  "npc_csv": "tools\\zone_aux_exports\\064_Navukgo_Execution_Chamber_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\064_Navukgo_Execution_Chamber_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\064_Navukgo_Execution_Chamber_npc_placement_candidates.csv"
+}

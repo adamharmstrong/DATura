@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 20,
+    "name": "Promyvion - Mea",
+    "model": "ROM3/0/19.DAT",
+    "dialog": "ROM3/2/30.DAT",
+    "npc": "ROM3/3/2.DAT",
+    "event": "ROM3/0/86.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\19.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\2.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\30.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\86.DAT"
+  },
+  "npc_record_count": 372,
+  "named_npc_count": 360,
+  "event_token_count": 358,
+  "placement_candidate_count": 7,
+  "npc_csv": "tools\\zone_aux_exports\\020_Promyvion_-_Mea_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\020_Promyvion_-_Mea_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\020_Promyvion_-_Mea_npc_placement_candidates.csv"
+}

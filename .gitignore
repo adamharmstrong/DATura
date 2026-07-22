@@ -1,0 +1,45 @@
+# Visual Studio
+.vs/
+
+# Build output
+x64/
+x86/
+Debug/
+Release/
+
+# User-specific files
+*.user
+*.suo
+
+# Visual Studio databases
+*.VC.db
+*.VC.opendb
+
+# Compiler-generated files
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.ipch
+
+# Logs
+*.log
+
+# Local agent/research workspaces
+.agents/
+tools/galkareeve-ffxi-reference*/
+tools/kuluu-ffxi-reference/
+
+# Downloaded/archive reference artifacts
+*.zip
+
+# Visual Studio cache directories that can appear under old reference projects
+ipch/
+*.sdf
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local external/reference checkout
+tools/Noesis_UnrealPlugin/

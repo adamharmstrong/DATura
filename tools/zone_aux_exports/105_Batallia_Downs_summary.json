@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 105,
+    "name": "Batallia Downs",
+    "model": "ROM/0/122.DAT",
+    "dialog": "ROM/24/42.DAT",
+    "npc": "ROM/26/42.DAT",
+    "event": "ROM/20/42.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\122.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\42.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\42.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\42.DAT"
+  },
+  "npc_record_count": 684,
+  "named_npc_count": 663,
+  "event_token_count": 3016,
+  "placement_candidate_count": 92,
+  "npc_csv": "tools\\zone_aux_exports\\105_Batallia_Downs_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\105_Batallia_Downs_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\105_Batallia_Downs_npc_placement_candidates.csv"
+}

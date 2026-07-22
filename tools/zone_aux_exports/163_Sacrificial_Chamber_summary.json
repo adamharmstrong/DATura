@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 163,
+    "name": "Sacrificial Chamber",
+    "model": "ROM2/12/111.DAT",
+    "dialog": "ROM2/17/96.DAT",
+    "npc": "ROM2/13/110.DAT",
+    "event": "ROM2/13/20.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\12\\111.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\110.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\96.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\20.DAT"
+  },
+  "npc_record_count": 371,
+  "named_npc_count": 366,
+  "event_token_count": 948,
+  "placement_candidate_count": 72,
+  "npc_csv": "tools\\zone_aux_exports\\163_Sacrificial_Chamber_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\163_Sacrificial_Chamber_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\163_Sacrificial_Chamber_npc_placement_candidates.csv"
+}

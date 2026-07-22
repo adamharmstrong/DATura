@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 135,
+    "name": "Dynamis - Xarcabard",
+    "model": "ROM2/12/109.DAT",
+    "dialog": "ROM2/17/68.DAT",
+    "npc": "ROM2/13/105.DAT",
+    "event": "ROM2/13/15.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\12\\109.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\105.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\68.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\15.DAT"
+  },
+  "npc_record_count": 633,
+  "named_npc_count": 632,
+  "event_token_count": 2,
+  "placement_candidate_count": 2,
+  "npc_csv": "tools\\zone_aux_exports\\135_Dynamis_-_Xarcabard_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\135_Dynamis_-_Xarcabard_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\135_Dynamis_-_Xarcabard_npc_placement_candidates.csv"
+}

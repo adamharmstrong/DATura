@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="DATura/DATura.vcxproj" Id="d052340f-60ed-4c60-92ac-4061a0fb170c" />
+</Solution>

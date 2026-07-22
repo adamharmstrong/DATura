@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 1,
+    "name": "Phanauet Channel",
+    "model": "ROM3/0/0.DAT",
+    "dialog": "ROM3/2/11.DAT",
+    "npc": "ROM3/2/111.DAT",
+    "event": "ROM3/0/67.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\0.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\111.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\11.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\67.DAT"
+  },
+  "npc_record_count": 35,
+  "named_npc_count": 34,
+  "event_token_count": 2,
+  "placement_candidate_count": 4,
+  "npc_csv": "tools\\zone_aux_exports\\001_Phanauet_Channel_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\001_Phanauet_Channel_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\001_Phanauet_Channel_npc_placement_candidates.csv"
+}

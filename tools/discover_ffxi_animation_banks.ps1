@@ -1,0 +1,158 @@
+param(
+    [string]$FfxiRoot = "C:\Program Files (x86)\PlayOnline\SquareEnix\FINAL FANTASY XI",
+    [int]$RomStart = 27,
+    [int]$RomEnd = 61,
+    [string]$OutMarkdown = ".\tools\ffxi_animation_bank_candidates.md",
+    [string]$OutCsv = ".\tools\ffxi_animation_bank_candidates.csv"
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+function Read-U32([byte[]]$Bytes, [int]$Offset) { [BitConverter]::ToUInt32($Bytes, $Offset) }
+function Read-U16([byte[]]$Bytes, [int]$Offset) { [BitConverter]::ToUInt16($Bytes, $Offset) }
+
+function Get-ViewerAnimName([string]$Name) {
+    if ($Name -match "^(.*\d)[01]$") {
+        return $Matches[1]
+    }
+    if ($Name -match "^(.*)[01]$") {
+        return $Matches[1]
+    }
+    if ($Name -match "^([A-Za-z]+)\d+$") {
+        return $Matches[1]
+    }
+    return $Name
+}
+
+function Get-RelativeDatPath([string]$Root, [string]$FullPath) {
+    $rootFull = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\') + '\'
+    $full = (Resolve-Path -LiteralPath $FullPath).Path
+    if ($full.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) {
+        return ($full.Substring($rootFull.Length) -replace '\\', '/')
+    }
+    return $full
+}
+
+function Try-ScanDat([string]$Root, [string]$FullPath) {
+    [byte[]]$bytes = [IO.File]::ReadAllBytes($FullPath)
+    if ($bytes.Length -lt 16) {
+        return $null
+    }
+
+    $scheduleNames = New-Object System.Collections.Generic.List[string]
+    $motionChunks = New-Object System.Collections.Generic.List[string]
+    $motionNames = New-Object System.Collections.Generic.List[string]
+    $motionFrames = New-Object System.Collections.Generic.List[string]
+    $chunkCount = 0
+    $offset = 0
+    $valid = $false
+
+    while ($offset -le $bytes.Length - 16) {
+        $name = [Text.Encoding]::ASCII.GetString($bytes, $offset, 4).TrimEnd([char]0)
+        $info = Read-U32 $bytes ($offset + 4)
+        $type = $info -band 0x7f
+        $size = ($info -shr 3) -band 0x7ffff0
+        if ($size -le 0) {
+            break
+        }
+        if (($offset + $size) -gt $bytes.Length) {
+            break
+        }
+
+        $valid = $true
+        ++$chunkCount
+        if ($type -eq 0x07) {
+            if ($name.Length -gt 0 -and !$scheduleNames.Contains($name)) {
+                $scheduleNames.Add($name)
+            }
+        } elseif ($type -eq 0x2b) {
+            if ($name.Length -gt 0 -and !$motionChunks.Contains($name)) {
+                $motionChunks.Add($name)
+            }
+            $viewerName = Get-ViewerAnimName $name
+            if ($viewerName.Length -gt 0 -and !$motionNames.Contains($viewerName)) {
+                $motionNames.Add($viewerName)
+            }
+            if (($offset + 22) -le $bytes.Length) {
+                $frameCount = Read-U16 $bytes ($offset + 16 + 4)
+                if ($frameCount -gt 0) {
+                    $motionFrames.Add("${name}:$frameCount")
+                }
+            }
+        }
+
+        $offset += $size
+    }
+
+    if (!$valid -or ($scheduleNames.Count -eq 0 -and $motionChunks.Count -eq 0)) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        Dat = Get-RelativeDatPath $Root $FullPath
+        Bytes = $bytes.Length
+        Chunks = $chunkCount
+        ScheduleCount = $scheduleNames.Count
+        MotionChunkCount = $motionChunks.Count
+        MotionNameCount = $motionNames.Count
+        Schedules = ($scheduleNames | Sort-Object) -join ","
+        MotionNames = ($motionNames | Sort-Object) -join ","
+        MotionChunks = ($motionChunks | Sort-Object) -join ","
+        MotionFrames = ($motionFrames | Sort-Object) -join ","
+    }
+}
+
+$root = (Resolve-Path -LiteralPath $FfxiRoot).Path
+$datFiles = New-Object System.Collections.Generic.List[System.IO.FileInfo]
+for ($romIndex = $RomStart; $romIndex -le $RomEnd; ++$romIndex) {
+    $dir = Join-Path $root ("ROM\{0}" -f $romIndex)
+    if (Test-Path -LiteralPath $dir) {
+        foreach ($file in (Get-ChildItem -LiteralPath $dir -File -Filter *.dat | Sort-Object Name)) {
+            $datFiles.Add($file)
+        }
+    }
+}
+
+$rows = New-Object System.Collections.Generic.List[object]
+$scanned = 0
+foreach ($file in $datFiles) {
+    ++$scanned
+    if (($scanned % 500) -eq 0) {
+        Write-Host "Scanned $scanned / $($datFiles.Count) DATs..."
+    }
+
+    try {
+        $row = Try-ScanDat $root $file.FullName
+        if ($null -ne $row) {
+            $rows.Add($row)
+        }
+    } catch {
+        Write-Warning "Failed to scan $($file.FullName): $($_.Exception.Message)"
+    }
+}
+
+$sortedRows = @($rows | Sort-Object @{Expression="ScheduleCount";Descending=$true}, @{Expression="MotionNameCount";Descending=$true}, Dat)
+$sortedRows | Export-Csv -LiteralPath $OutCsv -NoTypeInformation
+
+$lines = New-Object System.Collections.Generic.List[string]
+$lines.Add("# FFXI Animation Bank Candidates")
+$lines.Add("")
+$lines.Add("Generated by ``tools/discover_ffxi_animation_banks.ps1``.")
+$lines.Add("")
+$lines.Add("This scans DATs with type ``0x07`` schedule chunks and/or type ``0x2B`` motion chunks. ``MotionNameCount`` collapses split chunks such as ``wlk0`` + ``wlk1`` into the AltanaView-style display name ``wlk``.")
+$lines.Add("")
+$lines.Add("| DAT | Schedules | Motions | Motion chunks | Bytes | Sample schedules | Sample motions |")
+$lines.Add("| --- | ---: | ---: | ---: | ---: | --- | --- |")
+
+foreach ($row in $sortedRows) {
+    $sampleSchedules = (@(($row.Schedules -split ',') | Where-Object { $_ } | Select-Object -First 12) -join ", ")
+    $sampleMotions = (@(($row.MotionNames -split ',') | Where-Object { $_ } | Select-Object -First 18) -join ", ")
+    $lines.Add("| ``$($row.Dat)`` | $($row.ScheduleCount) | $($row.MotionNameCount) | $($row.MotionChunkCount) | $($row.Bytes) | ``$sampleSchedules`` | ``$sampleMotions`` |")
+}
+
+Set-Content -LiteralPath $OutMarkdown -Value $lines -Encoding UTF8
+Write-Host "Scanned $($datFiles.Count) DATs."
+Write-Host "Found $($rows.Count) animation-bank candidates."
+Write-Host "Wrote $OutMarkdown"
+Write-Host "Wrote $OutCsv"

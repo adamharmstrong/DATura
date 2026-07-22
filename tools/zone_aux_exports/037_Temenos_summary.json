@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 37,
+    "name": "Temenos",
+    "model": "ROM3/3/82.DAT",
+    "dialog": "ROM3/2/47.DAT",
+    "npc": "ROM3/3/19.DAT",
+    "event": "ROM3/0/103.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\82.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\19.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\47.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\103.DAT"
+  },
+  "npc_record_count": 847,
+  "named_npc_count": 847,
+  "event_token_count": 80,
+  "placement_candidate_count": 32,
+  "npc_csv": "tools\\zone_aux_exports\\037_Temenos_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\037_Temenos_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\037_Temenos_npc_placement_candidates.csv"
+}

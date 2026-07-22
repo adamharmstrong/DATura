@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 258,
+    "name": "Rala Waterways",
+    "model": "ROM9/0/5.DAT",
+    "dialog": "ROM9/5/103.DAT",
+    "npc": "ROM9/6/47.DAT",
+    "event": "ROM9/5/55.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\5.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\47.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\103.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\55.DAT"
+  },
+  "npc_record_count": 278,
+  "named_npc_count": 242,
+  "event_token_count": 3026,
+  "placement_candidate_count": 48,
+  "npc_csv": "tools\\zone_aux_exports\\258_Rala_Waterways_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\258_Rala_Waterways_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\258_Rala_Waterways_npc_placement_candidates.csv"
+}

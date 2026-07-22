@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 137,
+    "name": "Xarcabard [S]",
+    "model": "ROM5/0/22.DAT",
+    "dialog": "ROM/24/74.DAT",
+    "npc": "ROM/26/74.DAT",
+    "event": "ROM/20/74.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\22.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\74.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\74.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\74.DAT"
+  },
+  "npc_record_count": 877,
+  "named_npc_count": 841,
+  "event_token_count": 3909,
+  "placement_candidate_count": 94,
+  "npc_csv": "tools\\zone_aux_exports\\137_Xarcabard_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\137_Xarcabard_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\137_Xarcabard_S_npc_placement_candidates.csv"
+}

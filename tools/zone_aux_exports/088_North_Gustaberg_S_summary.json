@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 88,
+    "name": "North Gustaberg [S]",
+    "model": "ROM5/0/8.DAT",
+    "dialog": "ROM/24/25.DAT",
+    "npc": "ROM/26/25.DAT",
+    "event": "ROM/20/25.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\8.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\25.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\25.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\25.DAT"
+  },
+  "npc_record_count": 929,
+  "named_npc_count": 880,
+  "event_token_count": 1461,
+  "placement_candidate_count": 62,
+  "npc_csv": "tools\\zone_aux_exports\\088_North_Gustaberg_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\088_North_Gustaberg_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\088_North_Gustaberg_S_npc_placement_candidates.csv"
+}

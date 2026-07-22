@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 114,
+    "name": "Eastern Altepa Desert",
+    "model": "ROM2/0/1.DAT",
+    "dialog": "ROM2/17/47.DAT",
+    "npc": "ROM2/13/96.DAT",
+    "event": "ROM2/13/6.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\1.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\96.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\47.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\6.DAT"
+  },
+  "npc_record_count": 497,
+  "named_npc_count": 486,
+  "event_token_count": 84,
+  "placement_candidate_count": 39,
+  "npc_csv": "tools\\zone_aux_exports\\114_Eastern_Altepa_Desert_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\114_Eastern_Altepa_Desert_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\114_Eastern_Altepa_Desert_npc_placement_candidates.csv"
+}

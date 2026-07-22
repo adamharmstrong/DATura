@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 128,
+    "name": "Valley of Sorrows",
+    "model": "ROM2/0/7.DAT",
+    "dialog": "ROM2/17/61.DAT",
+    "npc": "ROM2/13/102.DAT",
+    "event": "ROM2/13/12.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\7.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\102.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\61.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\12.DAT"
+  },
+  "npc_record_count": 95,
+  "named_npc_count": 94,
+  "event_token_count": 148,
+  "placement_candidate_count": 41,
+  "npc_csv": "tools\\zone_aux_exports\\128_Valley_of_Sorrows_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\128_Valley_of_Sorrows_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\128_Valley_of_Sorrows_npc_placement_candidates.csv"
+}

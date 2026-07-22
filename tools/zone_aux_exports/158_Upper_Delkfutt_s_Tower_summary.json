@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 158,
+    "name": "Upper Delkfutt's Tower",
+    "model": "ROM/1/9.DAT",
+    "dialog": "ROM/24/95.DAT",
+    "npc": "ROM/26/95.DAT",
+    "event": "ROM/20/95.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\9.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\95.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\95.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\95.DAT"
+  },
+  "npc_record_count": 183,
+  "named_npc_count": 182,
+  "event_token_count": 77,
+  "placement_candidate_count": 30,
+  "npc_csv": "tools\\zone_aux_exports\\158_Upper_Delkfutt_s_Tower_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\158_Upper_Delkfutt_s_Tower_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\158_Upper_Delkfutt_s_Tower_npc_placement_candidates.csv"
+}

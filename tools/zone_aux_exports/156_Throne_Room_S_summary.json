@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 156,
+    "name": "Throne Room [S]",
+    "model": "ROM5/0/25.DAT",
+    "dialog": "ROM/24/93.DAT",
+    "npc": "ROM/26/93.DAT",
+    "event": "ROM/20/93.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\25.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\93.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\93.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\93.DAT"
+  },
+  "npc_record_count": 121,
+  "named_npc_count": 107,
+  "event_token_count": 1522,
+  "placement_candidate_count": 15,
+  "npc_csv": "tools\\zone_aux_exports\\156_Throne_Room_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\156_Throne_Room_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\156_Throne_Room_S_npc_placement_candidates.csv"
+}

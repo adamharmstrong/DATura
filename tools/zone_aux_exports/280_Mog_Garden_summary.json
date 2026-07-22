@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 280,
+    "name": "Mog Garden",
+    "model": "ROM/309/10.DAT",
+    "dialog": "ROM/303/32.DAT",
+    "npc": "ROM/303/36.DAT",
+    "event": "ROM/303/28.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\309\\10.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\303\\36.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\303\\32.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\303\\28.DAT"
+  },
+  "npc_record_count": 161,
+  "named_npc_count": 107,
+  "event_token_count": 4715,
+  "placement_candidate_count": 89,
+  "npc_csv": "tools\\zone_aux_exports\\280_Mog_Garden_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\280_Mog_Garden_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\280_Mog_Garden_npc_placement_candidates.csv"
+}

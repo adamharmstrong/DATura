@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 176,
+    "name": "Sea Serpent Grotto",
+    "model": "ROM2/0/15.DAT",
+    "dialog": "ROM2/17/109.DAT",
+    "npc": "ROM2/13/115.DAT",
+    "event": "ROM2/13/25.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\15.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\115.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\109.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\25.DAT"
+  },
+  "npc_record_count": 562,
+  "named_npc_count": 542,
+  "event_token_count": 479,
+  "placement_candidate_count": 58,
+  "npc_csv": "tools\\zone_aux_exports\\176_Sea_Serpent_Grotto_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\176_Sea_Serpent_Grotto_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\176_Sea_Serpent_Grotto_npc_placement_candidates.csv"
+}

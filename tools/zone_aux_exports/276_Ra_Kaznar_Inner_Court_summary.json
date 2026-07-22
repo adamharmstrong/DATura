@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 276,
+    "name": "Ra'Kaznar Inner Court",
+    "model": "ROM9/0/23.DAT",
+    "dialog": "ROM9/5/121.DAT",
+    "npc": "ROM9/6/65.DAT",
+    "event": "ROM9/5/73.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\23.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\65.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\121.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\73.DAT"
+  },
+  "npc_record_count": 507,
+  "named_npc_count": 498,
+  "event_token_count": 231,
+  "placement_candidate_count": 16,
+  "npc_csv": "tools\\zone_aux_exports\\276_Ra_Kaznar_Inner_Court_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\276_Ra_Kaznar_Inner_Court_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\276_Ra_Kaznar_Inner_Court_npc_placement_candidates.csv"
+}

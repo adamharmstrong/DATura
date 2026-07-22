@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 36,
+    "name": "Empyreal Paradox",
+    "model": "ROM3/0/35.DAT",
+    "dialog": "ROM3/2/46.DAT",
+    "npc": "ROM3/3/18.DAT",
+    "event": "ROM3/0/102.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\35.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\18.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\46.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\102.DAT"
+  },
+  "npc_record_count": 130,
+  "named_npc_count": 112,
+  "event_token_count": 2397,
+  "placement_candidate_count": 17,
+  "npc_csv": "tools\\zone_aux_exports\\036_Empyreal_Paradox_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\036_Empyreal_Paradox_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\036_Empyreal_Paradox_npc_placement_candidates.csv"
+}

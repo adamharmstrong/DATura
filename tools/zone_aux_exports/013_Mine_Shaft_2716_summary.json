@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 13,
+    "name": "Mine Shaft #2716",
+    "model": "ROM3/0/12.DAT",
+    "dialog": "ROM3/2/23.DAT",
+    "npc": "ROM3/2/123.DAT",
+    "event": "ROM3/0/79.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\12.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\123.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\23.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\79.DAT"
+  },
+  "npc_record_count": 209,
+  "named_npc_count": 201,
+  "event_token_count": 3308,
+  "placement_candidate_count": 32,
+  "npc_csv": "tools\\zone_aux_exports\\013_Mine_Shaft_2716_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\013_Mine_Shaft_2716_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\013_Mine_Shaft_2716_npc_placement_candidates.csv"
+}

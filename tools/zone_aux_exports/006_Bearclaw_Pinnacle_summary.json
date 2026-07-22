@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 6,
+    "name": "Bearclaw Pinnacle",
+    "model": "ROM3/0/5.DAT",
+    "dialog": "ROM3/2/16.DAT",
+    "npc": "ROM3/2/116.DAT",
+    "event": "ROM3/0/72.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\5.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\116.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\16.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\72.DAT"
+  },
+  "npc_record_count": 123,
+  "named_npc_count": 116,
+  "event_token_count": 785,
+  "placement_candidate_count": 7,
+  "npc_csv": "tools\\zone_aux_exports\\006_Bearclaw_Pinnacle_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\006_Bearclaw_Pinnacle_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\006_Bearclaw_Pinnacle_npc_placement_candidates.csv"
+}

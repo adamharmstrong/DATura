@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 270,
+    "name": "Cirdas Caverns",
+    "model": "ROM9/0/17.DAT",
+    "dialog": "ROM9/5/115.DAT",
+    "npc": "ROM9/6/59.DAT",
+    "event": "ROM9/5/67.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\17.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\59.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\115.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\67.DAT"
+  },
+  "npc_record_count": 726,
+  "named_npc_count": 696,
+  "event_token_count": 1281,
+  "placement_candidate_count": 36,
+  "npc_csv": "tools\\zone_aux_exports\\270_Cirdas_Caverns_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\270_Cirdas_Caverns_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\270_Cirdas_Caverns_npc_placement_candidates.csv"
+}

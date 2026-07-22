@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 140,
+    "name": "Ghelsba Outpost",
+    "model": "ROM/0/95.DAT",
+    "dialog": "ROM/24/77.DAT",
+    "npc": "ROM/26/77.DAT",
+    "event": "ROM/20/77.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\95.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\77.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\77.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\77.DAT"
+  },
+  "npc_record_count": 357,
+  "named_npc_count": 345,
+  "event_token_count": 1129,
+  "placement_candidate_count": 28,
+  "npc_csv": "tools\\zone_aux_exports\\140_Ghelsba_Outpost_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\140_Ghelsba_Outpost_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\140_Ghelsba_Outpost_npc_placement_candidates.csv"
+}

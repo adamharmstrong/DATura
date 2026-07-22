@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 180,
+    "name": "La'Loff Amphitheater",
+    "model": "ROM2/12/114.DAT",
+    "dialog": "ROM2/17/113.DAT",
+    "npc": "ROM2/13/119.DAT",
+    "event": "ROM2/13/29.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\12\\114.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\119.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\113.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\29.DAT"
+  },
+  "npc_record_count": 321,
+  "named_npc_count": 320,
+  "event_token_count": 176,
+  "placement_candidate_count": 15,
+  "npc_csv": "tools\\zone_aux_exports\\180_La_Loff_Amphitheater_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\180_La_Loff_Amphitheater_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\180_La_Loff_Amphitheater_npc_placement_candidates.csv"
+}

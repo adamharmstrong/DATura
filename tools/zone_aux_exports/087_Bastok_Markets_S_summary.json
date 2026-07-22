@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 87,
+    "name": "Bastok Markets [S]",
+    "model": "ROM5/0/7.DAT",
+    "dialog": "ROM/24/24.DAT",
+    "npc": "ROM/26/24.DAT",
+    "event": "ROM/20/24.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\7.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\24.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\24.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\24.DAT"
+  },
+  "npc_record_count": 696,
+  "named_npc_count": 585,
+  "event_token_count": 6364,
+  "placement_candidate_count": 137,
+  "npc_csv": "tools\\zone_aux_exports\\087_Bastok_Markets_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\087_Bastok_Markets_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\087_Bastok_Markets_S_npc_placement_candidates.csv"
+}

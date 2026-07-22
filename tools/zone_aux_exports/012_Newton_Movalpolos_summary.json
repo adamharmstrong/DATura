@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 12,
+    "name": "Newton Movalpolos",
+    "model": "ROM3/0/11.DAT",
+    "dialog": "ROM3/2/22.DAT",
+    "npc": "ROM3/2/122.DAT",
+    "event": "ROM3/0/78.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\11.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\122.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\22.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\78.DAT"
+  },
+  "npc_record_count": 260,
+  "named_npc_count": 260,
+  "event_token_count": 42,
+  "placement_candidate_count": 9,
+  "npc_csv": "tools\\zone_aux_exports\\012_Newton_Movalpolos_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\012_Newton_Movalpolos_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\012_Newton_Movalpolos_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 247,
+    "name": "Rabao",
+    "model": "ROM2/12/123.DAT",
+    "dialog": "ROM2/18/52.DAT",
+    "npc": "ROM2/14/8.DAT",
+    "event": "ROM2/13/46.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\12\\123.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\14\\8.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\18\\52.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\46.DAT"
+  },
+  "npc_record_count": 154,
+  "named_npc_count": 99,
+  "event_token_count": 2699,
+  "placement_candidate_count": 66,
+  "npc_csv": "tools\\zone_aux_exports\\247_Rabao_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\247_Rabao_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\247_Rabao_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 23,
+    "name": "Spire of Vahzl",
+    "model": "ROM3/0/22.DAT",
+    "dialog": "ROM3/2/33.DAT",
+    "npc": "ROM3/3/5.DAT",
+    "event": "ROM3/0/89.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\22.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\5.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\33.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\89.DAT"
+  },
+  "npc_record_count": 183,
+  "named_npc_count": 179,
+  "event_token_count": 769,
+  "placement_candidate_count": 15,
+  "npc_csv": "tools\\zone_aux_exports\\023_Spire_of_Vahzl_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\023_Spire_of_Vahzl_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\023_Spire_of_Vahzl_npc_placement_candidates.csv"
+}

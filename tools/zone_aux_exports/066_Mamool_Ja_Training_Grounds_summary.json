@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 66,
+    "name": "Mamool Ja Training Grounds",
+    "model": "ROM4/0/19.DAT",
+    "dialog": "ROM4/1/11.DAT",
+    "npc": "ROM4/1/65.DAT",
+    "event": "ROM4/0/71.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\19.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\65.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\11.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\71.DAT"
+  },
+  "npc_record_count": 359,
+  "named_npc_count": 352,
+  "event_token_count": 7,
+  "placement_candidate_count": 30,
+  "npc_csv": "tools\\zone_aux_exports\\066_Mamool_Ja_Training_Grounds_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\066_Mamool_Ja_Training_Grounds_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\066_Mamool_Ja_Training_Grounds_npc_placement_candidates.csv"
+}

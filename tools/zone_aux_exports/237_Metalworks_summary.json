@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 237,
+    "name": "Metalworks",
+    "model": "ROM/1/37.DAT",
+    "dialog": "ROM/25/46.DAT",
+    "npc": "ROM/27/46.DAT",
+    "event": "ROM/21/46.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\37.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\46.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\46.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\46.DAT"
+  },
+  "npc_record_count": 230,
+  "named_npc_count": 203,
+  "event_token_count": 8267,
+  "placement_candidate_count": 156,
+  "npc_csv": "tools\\zone_aux_exports\\237_Metalworks_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\237_Metalworks_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\237_Metalworks_npc_placement_candidates.csv"
+}

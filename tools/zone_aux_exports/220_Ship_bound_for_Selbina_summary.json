@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 220,
+    "name": "Ship bound for Selbina",
+    "model": "ROM/1/24.DAT",
+    "dialog": "ROM/25/29.DAT",
+    "npc": "ROM/27/29.DAT",
+    "event": "ROM/21/29.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\24.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\29.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\29.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\29.DAT"
+  },
+  "npc_record_count": 38,
+  "named_npc_count": 36,
+  "event_token_count": 4,
+  "placement_candidate_count": 0,
+  "npc_csv": "tools\\zone_aux_exports\\220_Ship_bound_for_Selbina_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\220_Ship_bound_for_Selbina_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\220_Ship_bound_for_Selbina_npc_placement_candidates.csv"
+}

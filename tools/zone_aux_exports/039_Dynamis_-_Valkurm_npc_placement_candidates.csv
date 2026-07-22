@@ -1,0 +1,3 @@
+npc_index,name,record_id,record_tag,event_ref_count,event_ref_offset,position_offset,x,y,z,confidence,raw_x,raw_y,raw_z,raw_values
+618,Somnial Threshol,29297,258,1,976,1016,73.46,73.47,0.01,50,7346,7347,1,7346 1 7347 145 66304 33755140 260046848 65538
+619,???,29298,258,1,1180,1212,0.0,73.52,73.53,90,0,7352,7353,0 7353 7352 128 -2147465216 -2147399645 -2147334109 268567331

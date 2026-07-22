@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 248,
+    "name": "Selbina",
+    "model": "ROM/1/43.DAT",
+    "dialog": "ROM/25/57.DAT",
+    "npc": "ROM/27/57.DAT",
+    "event": "ROM/21/57.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\43.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\57.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\57.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\57.DAT"
+  },
+  "npc_record_count": 127,
+  "named_npc_count": 101,
+  "event_token_count": 1748,
+  "placement_candidate_count": 69,
+  "npc_csv": "tools\\zone_aux_exports\\248_Selbina_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\248_Selbina_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\248_Selbina_npc_placement_candidates.csv"
+}

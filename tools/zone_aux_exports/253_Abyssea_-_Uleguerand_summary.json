@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 253,
+    "name": "Abyssea - Uleguerand",
+    "model": "ROM/258/111.DAT",
+    "dialog": "ROM/25/62.DAT",
+    "npc": "ROM/27/62.DAT",
+    "event": "ROM/21/62.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\258\\111.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\62.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\62.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\62.DAT"
+  },
+  "npc_record_count": 664,
+  "named_npc_count": 642,
+  "event_token_count": 250,
+  "placement_candidate_count": 175,
+  "npc_csv": "tools\\zone_aux_exports\\253_Abyssea_-_Uleguerand_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\253_Abyssea_-_Uleguerand_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\253_Abyssea_-_Uleguerand_npc_placement_candidates.csv"
+}

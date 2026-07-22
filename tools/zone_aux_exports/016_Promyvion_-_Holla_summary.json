@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 16,
+    "name": "Promyvion - Holla",
+    "model": "ROM3/0/15.DAT",
+    "dialog": "ROM3/2/26.DAT",
+    "npc": "ROM3/2/126.DAT",
+    "event": "ROM3/0/82.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\15.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\126.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\26.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\82.DAT"
+  },
+  "npc_record_count": 327,
+  "named_npc_count": 315,
+  "event_token_count": 358,
+  "placement_candidate_count": 10,
+  "npc_csv": "tools\\zone_aux_exports\\016_Promyvion_-_Holla_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\016_Promyvion_-_Holla_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\016_Promyvion_-_Holla_npc_placement_candidates.csv"
+}

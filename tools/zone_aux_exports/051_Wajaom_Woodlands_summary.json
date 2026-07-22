@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 51,
+    "name": "Wajaom Woodlands",
+    "model": "ROM4/1/99.DAT",
+    "dialog": "ROM4/0/124.DAT",
+    "npc": "ROM4/1/50.DAT",
+    "event": "ROM4/0/56.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\99.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\50.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\124.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\56.DAT"
+  },
+  "npc_record_count": 731,
+  "named_npc_count": 651,
+  "event_token_count": 2668,
+  "placement_candidate_count": 87,
+  "npc_csv": "tools\\zone_aux_exports\\051_Wajaom_Woodlands_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\051_Wajaom_Woodlands_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\051_Wajaom_Woodlands_npc_placement_candidates.csv"
+}

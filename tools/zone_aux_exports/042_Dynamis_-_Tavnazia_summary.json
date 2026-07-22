@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 42,
+    "name": "Dynamis - Tavnazia",
+    "model": "ROM3/5/5.DAT",
+    "dialog": "ROM3/2/52.DAT",
+    "npc": "ROM3/3/24.DAT",
+    "event": "ROM3/0/108.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\5\\5.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\24.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\52.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\108.DAT"
+  },
+  "npc_record_count": 156,
+  "named_npc_count": 155,
+  "event_token_count": 2,
+  "placement_candidate_count": 2,
+  "npc_csv": "tools\\zone_aux_exports\\042_Dynamis_-_Tavnazia_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\042_Dynamis_-_Tavnazia_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\042_Dynamis_-_Tavnazia_npc_placement_candidates.csv"
+}

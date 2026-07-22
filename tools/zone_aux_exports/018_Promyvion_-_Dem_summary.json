@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 18,
+    "name": "Promyvion - Dem",
+    "model": "ROM3/0/17.DAT",
+    "dialog": "ROM3/2/28.DAT",
+    "npc": "ROM3/3/0.DAT",
+    "event": "ROM3/0/84.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\17.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\0.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\28.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\84.DAT"
+  },
+  "npc_record_count": 359,
+  "named_npc_count": 347,
+  "event_token_count": 358,
+  "placement_candidate_count": 7,
+  "npc_csv": "tools\\zone_aux_exports\\018_Promyvion_-_Dem_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\018_Promyvion_-_Dem_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\018_Promyvion_-_Dem_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 284,
+    "name": "Celennia Memorial Library",
+    "model": "ROM/303/26.DAT",
+    "dialog": "ROM/303/33.DAT",
+    "npc": "ROM/303/37.DAT",
+    "event": "ROM/303/29.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\303\\26.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\303\\37.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\303\\33.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\303\\29.DAT"
+  },
+  "npc_record_count": 52,
+  "named_npc_count": 40,
+  "event_token_count": 1666,
+  "placement_candidate_count": 20,
+  "npc_csv": "tools\\zone_aux_exports\\284_Celennia_Memorial_Library_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\284_Celennia_Memorial_Library_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\284_Celennia_Memorial_Library_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 103,
+    "name": "Valkurm Dunes",
+    "model": "ROM/0/102.DAT",
+    "dialog": "ROM/24/40.DAT",
+    "npc": "ROM/26/40.DAT",
+    "event": "ROM/20/40.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\102.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\40.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\40.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\40.DAT"
+  },
+  "npc_record_count": 664,
+  "named_npc_count": 646,
+  "event_token_count": 1260,
+  "placement_candidate_count": 63,
+  "npc_csv": "tools\\zone_aux_exports\\103_Valkurm_Dunes_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\103_Valkurm_Dunes_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\103_Valkurm_Dunes_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 264,
+    "name": "Yorcia Weald [U]",
+    "model": "ROM9/0/11.DAT",
+    "dialog": "ROM9/5/109.DAT",
+    "npc": "ROM9/6/53.DAT",
+    "event": "ROM9/5/61.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\11.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\53.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\109.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\61.DAT"
+  },
+  "npc_record_count": 767,
+  "named_npc_count": 762,
+  "event_token_count": 22,
+  "placement_candidate_count": 23,
+  "npc_csv": "tools\\zone_aux_exports\\264_Yorcia_Weald_U_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\264_Yorcia_Weald_U_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\264_Yorcia_Weald_U_npc_placement_candidates.csv"
+}

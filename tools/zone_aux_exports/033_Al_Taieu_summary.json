@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 33,
+    "name": "Al'Taieu",
+    "model": "ROM3/0/32.DAT",
+    "dialog": "ROM3/2/43.DAT",
+    "npc": "ROM3/3/15.DAT",
+    "event": "ROM3/0/99.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\32.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\15.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\43.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\99.DAT"
+  },
+  "npc_record_count": 610,
+  "named_npc_count": 604,
+  "event_token_count": 931,
+  "placement_candidate_count": 55,
+  "npc_csv": "tools\\zone_aux_exports\\033_Al_Taieu_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\033_Al_Taieu_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\033_Al_Taieu_npc_placement_candidates.csv"
+}

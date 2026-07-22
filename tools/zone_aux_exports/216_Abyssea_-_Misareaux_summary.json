@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 216,
+    "name": "Abyssea - Misareaux",
+    "model": "ROM/254/8.DAT",
+    "dialog": "ROM/25/25.DAT",
+    "npc": "ROM/27/25.DAT",
+    "event": "ROM/21/25.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\254\\8.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\25.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\25.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\25.DAT"
+  },
+  "npc_record_count": 828,
+  "named_npc_count": 821,
+  "event_token_count": 302,
+  "placement_candidate_count": 153,
+  "npc_csv": "tools\\zone_aux_exports\\216_Abyssea_-_Misareaux_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\216_Abyssea_-_Misareaux_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\216_Abyssea_-_Misareaux_npc_placement_candidates.csv"
+}

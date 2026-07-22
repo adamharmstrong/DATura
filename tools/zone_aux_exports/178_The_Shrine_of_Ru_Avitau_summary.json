@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 178,
+    "name": "The Shrine of Ru'Avitau",
+    "model": "ROM2/12/113.DAT",
+    "dialog": "ROM2/17/111.DAT",
+    "npc": "ROM2/13/117.DAT",
+    "event": "ROM2/13/27.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\12\\113.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\117.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\111.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\27.DAT"
+  },
+  "npc_record_count": 508,
+  "named_npc_count": 503,
+  "event_token_count": 267,
+  "placement_candidate_count": 39,
+  "npc_csv": "tools\\zone_aux_exports\\178_The_Shrine_of_Ru_Avitau_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\178_The_Shrine_of_Ru_Avitau_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\178_The_Shrine_of_Ru_Avitau_npc_placement_candidates.csv"
+}

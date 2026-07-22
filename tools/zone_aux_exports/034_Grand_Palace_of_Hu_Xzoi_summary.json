@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 34,
+    "name": "Grand Palace of Hu'Xzoi",
+    "model": "ROM3/0/33.DAT",
+    "dialog": "ROM3/2/44.DAT",
+    "npc": "ROM3/3/16.DAT",
+    "event": "ROM3/0/100.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\33.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\16.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\44.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\100.DAT"
+  },
+  "npc_record_count": 458,
+  "named_npc_count": 456,
+  "event_token_count": 413,
+  "placement_candidate_count": 23,
+  "npc_csv": "tools\\zone_aux_exports\\034_Grand_Palace_of_Hu_Xzoi_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\034_Grand_Palace_of_Hu_Xzoi_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\034_Grand_Palace_of_Hu_Xzoi_npc_placement_candidates.csv"
+}

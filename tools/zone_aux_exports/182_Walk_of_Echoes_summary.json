@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 182,
+    "name": "Walk of Echoes",
+    "model": "ROM5/0/29.DAT",
+    "dialog": "ROM/24/119.DAT",
+    "npc": "ROM/26/119.DAT",
+    "event": "ROM/20/119.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\29.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\119.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\119.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\119.DAT"
+  },
+  "npc_record_count": 658,
+  "named_npc_count": 633,
+  "event_token_count": 3409,
+  "placement_candidate_count": 28,
+  "npc_csv": "tools\\zone_aux_exports\\182_Walk_of_Echoes_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\182_Walk_of_Echoes_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\182_Walk_of_Echoes_npc_placement_candidates.csv"
+}

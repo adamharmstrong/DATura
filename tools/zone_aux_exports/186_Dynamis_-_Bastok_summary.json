@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 186,
+    "name": "Dynamis - Bastok",
+    "model": "ROM2/12/117.DAT",
+    "dialog": "ROM2/17/119.DAT",
+    "npc": "ROM2/13/122.DAT",
+    "event": "ROM2/13/32.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\12\\117.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\122.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\119.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\32.DAT"
+  },
+  "npc_record_count": 259,
+  "named_npc_count": 257,
+  "event_token_count": 2,
+  "placement_candidate_count": 2,
+  "npc_csv": "tools\\zone_aux_exports\\186_Dynamis_-_Bastok_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\186_Dynamis_-_Bastok_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\186_Dynamis_-_Bastok_npc_placement_candidates.csv"
+}

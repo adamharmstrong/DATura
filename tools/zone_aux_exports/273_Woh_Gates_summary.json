@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 273,
+    "name": "Woh Gates",
+    "model": "ROM9/0/20.DAT",
+    "dialog": "ROM9/5/118.DAT",
+    "npc": "ROM9/6/62.DAT",
+    "event": "ROM9/5/70.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\20.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\62.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\118.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\70.DAT"
+  },
+  "npc_record_count": 428,
+  "named_npc_count": 414,
+  "event_token_count": 393,
+  "placement_candidate_count": 17,
+  "npc_csv": "tools\\zone_aux_exports\\273_Woh_Gates_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\273_Woh_Gates_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\273_Woh_Gates_npc_placement_candidates.csv"
+}

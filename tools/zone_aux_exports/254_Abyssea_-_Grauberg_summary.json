@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 254,
+    "name": "Abyssea - Grauberg",
+    "model": "ROM/258/112.DAT",
+    "dialog": "ROM/25/63.DAT",
+    "npc": "ROM/27/63.DAT",
+    "event": "ROM/21/63.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\258\\112.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\63.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\63.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\63.DAT"
+  },
+  "npc_record_count": 671,
+  "named_npc_count": 659,
+  "event_token_count": 318,
+  "placement_candidate_count": 163,
+  "npc_csv": "tools\\zone_aux_exports\\254_Abyssea_-_Grauberg_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\254_Abyssea_-_Grauberg_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\254_Abyssea_-_Grauberg_npc_placement_candidates.csv"
+}

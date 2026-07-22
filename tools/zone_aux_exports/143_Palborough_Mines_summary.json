@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 143,
+    "name": "Palborough Mines",
+    "model": "ROM/0/88.DAT",
+    "dialog": "ROM/24/80.DAT",
+    "npc": "ROM/26/80.DAT",
+    "event": "ROM/20/80.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\88.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\80.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\80.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\80.DAT"
+  },
+  "npc_record_count": 455,
+  "named_npc_count": 439,
+  "event_token_count": 952,
+  "placement_candidate_count": 33,
+  "npc_csv": "tools\\zone_aux_exports\\143_Palborough_Mines_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\143_Palborough_Mines_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\143_Palborough_Mines_npc_placement_candidates.csv"
+}

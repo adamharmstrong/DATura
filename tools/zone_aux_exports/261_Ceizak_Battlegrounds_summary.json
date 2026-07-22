@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 261,
+    "name": "Ceizak Battlegrounds",
+    "model": "ROM9/0/8.DAT",
+    "dialog": "ROM9/5/106.DAT",
+    "npc": "ROM9/6/50.DAT",
+    "event": "ROM9/5/58.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\8.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\50.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\106.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\58.DAT"
+  },
+  "npc_record_count": 535,
+  "named_npc_count": 511,
+  "event_token_count": 2936,
+  "placement_candidate_count": 55,
+  "npc_csv": "tools\\zone_aux_exports\\261_Ceizak_Battlegrounds_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\261_Ceizak_Battlegrounds_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\261_Ceizak_Battlegrounds_npc_placement_candidates.csv"
+}

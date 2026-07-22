@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 212,
+    "name": "Gustav Tunnel",
+    "model": "ROM2/12/121.DAT",
+    "dialog": "ROM2/18/17.DAT",
+    "npc": "ROM2/14/5.DAT",
+    "event": "ROM2/13/43.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\12\\121.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\14\\5.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\18\\17.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\43.DAT"
+  },
+  "npc_record_count": 342,
+  "named_npc_count": 338,
+  "event_token_count": 52,
+  "placement_candidate_count": 42,
+  "npc_csv": "tools\\zone_aux_exports\\212_Gustav_Tunnel_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\212_Gustav_Tunnel_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\212_Gustav_Tunnel_npc_placement_candidates.csv"
+}

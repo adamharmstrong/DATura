@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 296,
+    "name": "Dynamis - Windurst [D]",
+    "model": "ROM/355/32.DAT",
+    "dialog": "ROM/355/36.DAT",
+    "npc": "ROM/355/39.DAT",
+    "event": "ROM/355/34.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\355\\32.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\355\\39.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\355\\36.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\355\\34.DAT"
+  },
+  "npc_record_count": 833,
+  "named_npc_count": 832,
+  "event_token_count": 3,
+  "placement_candidate_count": 0,
+  "npc_csv": "tools\\zone_aux_exports\\296_Dynamis_-_Windurst_D_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\296_Dynamis_-_Windurst_D_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\296_Dynamis_-_Windurst_D_npc_placement_candidates.csv"
+}

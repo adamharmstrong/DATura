@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 68,
+    "name": "Aydeewa Subterrane",
+    "model": "ROM4/0/21.DAT",
+    "dialog": "ROM4/1/13.DAT",
+    "npc": "ROM4/1/67.DAT",
+    "event": "ROM4/0/73.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\21.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\67.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\13.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\73.DAT"
+  },
+  "npc_record_count": 741,
+  "named_npc_count": 719,
+  "event_token_count": 1670,
+  "placement_candidate_count": 57,
+  "npc_csv": "tools\\zone_aux_exports\\068_Aydeewa_Subterrane_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\068_Aydeewa_Subterrane_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\068_Aydeewa_Subterrane_npc_placement_candidates.csv"
+}

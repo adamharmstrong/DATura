@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 54,
+    "name": "Arrapago Reef",
+    "model": "ROM4/0/7.DAT",
+    "dialog": "ROM4/0/127.DAT",
+    "npc": "ROM4/1/53.DAT",
+    "event": "ROM4/0/59.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\7.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\53.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\127.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\59.DAT"
+  },
+  "npc_record_count": 683,
+  "named_npc_count": 667,
+  "event_token_count": 2848,
+  "placement_candidate_count": 73,
+  "npc_csv": "tools\\zone_aux_exports\\054_Arrapago_Reef_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\054_Arrapago_Reef_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\054_Arrapago_Reef_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 222,
+    "name": "Provenance",
+    "model": "ROM/280/2.DAT",
+    "dialog": "ROM/25/31.DAT",
+    "npc": "ROM/27/31.DAT",
+    "event": "ROM/21/31.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\280\\2.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\31.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\31.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\31.DAT"
+  },
+  "npc_record_count": 117,
+  "named_npc_count": 84,
+  "event_token_count": 679,
+  "placement_candidate_count": 21,
+  "npc_csv": "tools\\zone_aux_exports\\222_Provenance_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\222_Provenance_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\222_Provenance_npc_placement_candidates.csv"
+}

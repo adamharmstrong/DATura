@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 265,
+    "name": "Morimar Basalt Fields",
+    "model": "ROM9/0/12.DAT",
+    "dialog": "ROM9/5/110.DAT",
+    "npc": "ROM9/6/54.DAT",
+    "event": "ROM9/5/62.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\12.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\54.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\110.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\62.DAT"
+  },
+  "npc_record_count": 782,
+  "named_npc_count": 765,
+  "event_token_count": 1059,
+  "placement_candidate_count": 79,
+  "npc_csv": "tools\\zone_aux_exports\\265_Morimar_Basalt_Fields_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\265_Morimar_Basalt_Fields_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\265_Morimar_Basalt_Fields_npc_placement_candidates.csv"
+}

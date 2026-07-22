@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 67,
+    "name": "Jade Sepulcher",
+    "model": "ROM4/0/20.DAT",
+    "dialog": "ROM4/1/12.DAT",
+    "npc": "ROM4/1/66.DAT",
+    "event": "ROM4/0/72.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\20.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\66.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\12.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\72.DAT"
+  },
+  "npc_record_count": 296,
+  "named_npc_count": 247,
+  "event_token_count": 1711,
+  "placement_candidate_count": 26,
+  "npc_csv": "tools\\zone_aux_exports\\067_Jade_Sepulcher_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\067_Jade_Sepulcher_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\067_Jade_Sepulcher_npc_placement_candidates.csv"
+}

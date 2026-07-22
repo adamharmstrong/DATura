@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 72,
+    "name": "Alzadaal Undersea Ruins",
+    "model": "ROM4/0/25.DAT",
+    "dialog": "ROM4/1/17.DAT",
+    "npc": "ROM4/1/71.DAT",
+    "event": "ROM4/0/77.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\25.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\71.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\17.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\77.DAT"
+  },
+  "npc_record_count": 258,
+  "named_npc_count": 236,
+  "event_token_count": 2007,
+  "placement_candidate_count": 29,
+  "npc_csv": "tools\\zone_aux_exports\\072_Alzadaal_Undersea_Ruins_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\072_Alzadaal_Undersea_Ruins_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\072_Alzadaal_Undersea_Ruins_npc_placement_candidates.csv"
+}

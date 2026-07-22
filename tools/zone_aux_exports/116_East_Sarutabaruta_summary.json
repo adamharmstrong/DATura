@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 116,
+    "name": "East Sarutabaruta",
+    "model": "ROM/1/0.DAT",
+    "dialog": "ROM/24/53.DAT",
+    "npc": "ROM/26/53.DAT",
+    "event": "ROM/20/53.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\0.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\53.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\53.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\53.DAT"
+  },
+  "npc_record_count": 771,
+  "named_npc_count": 763,
+  "event_token_count": 396,
+  "placement_candidate_count": 64,
+  "npc_csv": "tools\\zone_aux_exports\\116_East_Sarutabaruta_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\116_East_Sarutabaruta_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\116_East_Sarutabaruta_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 138,
+    "name": "Castle Zvahl Baileys [S]",
+    "model": "ROM5/0/23.DAT",
+    "dialog": "ROM/24/75.DAT",
+    "npc": "ROM/26/75.DAT",
+    "event": "ROM/20/75.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\23.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\75.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\75.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\75.DAT"
+  },
+  "npc_record_count": 767,
+  "named_npc_count": 737,
+  "event_token_count": 1172,
+  "placement_candidate_count": 59,
+  "npc_csv": "tools\\zone_aux_exports\\138_Castle_Zvahl_Baileys_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\138_Castle_Zvahl_Baileys_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\138_Castle_Zvahl_Baileys_S_npc_placement_candidates.csv"
+}

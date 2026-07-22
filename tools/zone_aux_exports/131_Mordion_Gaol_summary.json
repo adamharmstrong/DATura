@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 131,
+    "name": "Mordion Gaol",
+    "model": "ROM/1/4.DAT",
+    "dialog": "ROM/24/68.DAT",
+    "npc": "ROM/26/68.DAT",
+    "event": "ROM/20/68.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\4.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\68.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\68.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\68.DAT"
+  },
+  "npc_record_count": 14,
+  "named_npc_count": 13,
+  "event_token_count": 771,
+  "placement_candidate_count": 2,
+  "npc_csv": "tools\\zone_aux_exports\\131_Mordion_Gaol_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\131_Mordion_Gaol_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\131_Mordion_Gaol_npc_placement_candidates.csv"
+}

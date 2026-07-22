@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 142,
+    "name": "Yughott Grotto",
+    "model": "ROM/1/8.DAT",
+    "dialog": "ROM/24/79.DAT",
+    "npc": "ROM/26/79.DAT",
+    "event": "ROM/20/79.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\8.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\79.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\79.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\79.DAT"
+  },
+  "npc_record_count": 247,
+  "named_npc_count": 237,
+  "event_token_count": 568,
+  "placement_candidate_count": 21,
+  "npc_csv": "tools\\zone_aux_exports\\142_Yughott_Grotto_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\142_Yughott_Grotto_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\142_Yughott_Grotto_npc_placement_candidates.csv"
+}

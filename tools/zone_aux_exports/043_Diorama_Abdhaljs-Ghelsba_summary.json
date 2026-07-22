@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 43,
+    "name": "Diorama Abdhaljs-Ghelsba",
+    "model": "ROM3/5/6.DAT",
+    "dialog": "ROM3/2/53.DAT",
+    "npc": "ROM3/3/25.DAT",
+    "event": "ROM3/0/109.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\5\\6.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\25.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\53.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\109.DAT"
+  },
+  "npc_record_count": 26,
+  "named_npc_count": 24,
+  "event_token_count": 26,
+  "placement_candidate_count": 8,
+  "npc_csv": "tools\\zone_aux_exports\\043_Diorama_Abdhaljs-Ghelsba_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\043_Diorama_Abdhaljs-Ghelsba_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\043_Diorama_Abdhaljs-Ghelsba_npc_placement_candidates.csv"
+}

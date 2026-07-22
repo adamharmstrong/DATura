@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 75,
+    "name": "Bhaflau Remnants",
+    "model": "ROM4/0/28.DAT",
+    "dialog": "ROM4/1/20.DAT",
+    "npc": "ROM4/1/74.DAT",
+    "event": "ROM4/0/80.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\28.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\74.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\20.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\80.DAT"
+  },
+  "npc_record_count": 501,
+  "named_npc_count": 500,
+  "event_token_count": 19,
+  "placement_candidate_count": 16,
+  "npc_csv": "tools\\zone_aux_exports\\075_Bhaflau_Remnants_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\075_Bhaflau_Remnants_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\075_Bhaflau_Remnants_npc_placement_candidates.csv"
+}

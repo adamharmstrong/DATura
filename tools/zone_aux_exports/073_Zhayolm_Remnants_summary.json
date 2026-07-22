@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 73,
+    "name": "Zhayolm Remnants",
+    "model": "ROM4/0/26.DAT",
+    "dialog": "ROM4/1/18.DAT",
+    "npc": "ROM4/1/72.DAT",
+    "event": "ROM4/0/78.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\26.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\72.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\18.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\78.DAT"
+  },
+  "npc_record_count": 738,
+  "named_npc_count": 737,
+  "event_token_count": 15,
+  "placement_candidate_count": 16,
+  "npc_csv": "tools\\zone_aux_exports\\073_Zhayolm_Remnants_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\073_Zhayolm_Remnants_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\073_Zhayolm_Remnants_npc_placement_candidates.csv"
+}

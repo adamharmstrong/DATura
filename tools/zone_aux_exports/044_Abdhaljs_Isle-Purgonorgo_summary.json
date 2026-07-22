@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 44,
+    "name": "Abdhaljs Isle-Purgonorgo",
+    "model": "ROM3/5/7.DAT",
+    "dialog": "ROM3/2/54.DAT",
+    "npc": "ROM3/3/26.DAT",
+    "event": "ROM3/0/110.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\5\\7.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\26.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\54.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\110.DAT"
+  },
+  "npc_record_count": 31,
+  "named_npc_count": 31,
+  "event_token_count": 6,
+  "placement_candidate_count": 4,
+  "npc_csv": "tools\\zone_aux_exports\\044_Abdhaljs_Isle-Purgonorgo_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\044_Abdhaljs_Isle-Purgonorgo_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\044_Abdhaljs_Isle-Purgonorgo_npc_placement_candidates.csv"
+}

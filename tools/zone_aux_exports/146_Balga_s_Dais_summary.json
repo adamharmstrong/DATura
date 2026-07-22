@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 146,
+    "name": "Balga's Dais",
+    "model": "ROM/0/105.DAT",
+    "dialog": "ROM/24/83.DAT",
+    "npc": "ROM/26/83.DAT",
+    "event": "ROM/20/83.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\105.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\83.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\83.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\83.DAT"
+  },
+  "npc_record_count": 610,
+  "named_npc_count": 608,
+  "event_token_count": 224,
+  "placement_candidate_count": 12,
+  "npc_csv": "tools\\zone_aux_exports\\146_Balga_s_Dais_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\146_Balga_s_Dais_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\146_Balga_s_Dais_npc_placement_candidates.csv"
+}

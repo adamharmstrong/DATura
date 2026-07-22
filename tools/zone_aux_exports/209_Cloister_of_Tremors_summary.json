@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 209,
+    "name": "Cloister of Tremors",
+    "model": "ROM2/0/22.DAT",
+    "dialog": "ROM2/18/14.DAT",
+    "npc": "ROM2/14/3.DAT",
+    "event": "ROM2/13/41.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\22.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\14\\3.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\18\\14.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\41.DAT"
+  },
+  "npc_record_count": 69,
+  "named_npc_count": 66,
+  "event_token_count": 342,
+  "placement_candidate_count": 9,
+  "npc_csv": "tools\\zone_aux_exports\\209_Cloister_of_Tremors_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\209_Cloister_of_Tremors_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\209_Cloister_of_Tremors_npc_placement_candidates.csv"
+}

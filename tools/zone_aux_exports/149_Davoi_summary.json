@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 149,
+    "name": "Davoi",
+    "model": "ROM/0/99.DAT",
+    "dialog": "ROM/24/86.DAT",
+    "npc": "ROM/26/86.DAT",
+    "event": "ROM/20/86.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\99.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\86.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\86.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\86.DAT"
+  },
+  "npc_record_count": 523,
+  "named_npc_count": 520,
+  "event_token_count": 558,
+  "placement_candidate_count": 36,
+  "npc_csv": "tools\\zone_aux_exports\\149_Davoi_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\149_Davoi_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\149_Davoi_npc_placement_candidates.csv"
+}

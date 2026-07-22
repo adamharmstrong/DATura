@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 195,
+    "name": "The Eldieme Necropolis",
+    "model": "ROM/0/77.DAT",
+    "dialog": "ROM/25/4.DAT",
+    "npc": "ROM/27/4.DAT",
+    "event": "ROM/21/4.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\77.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\4.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\4.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\4.DAT"
+  },
+  "npc_record_count": 501,
+  "named_npc_count": 494,
+  "event_token_count": 517,
+  "placement_candidate_count": 108,
+  "npc_csv": "tools\\zone_aux_exports\\195_The_Eldieme_Necropolis_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\195_The_Eldieme_Necropolis_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\195_The_Eldieme_Necropolis_npc_placement_candidates.csv"
+}

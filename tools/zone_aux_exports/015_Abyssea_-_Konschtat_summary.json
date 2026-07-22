@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 15,
+    "name": "Abyssea - Konschtat",
+    "model": "ROM/240/106.DAT",
+    "dialog": "ROM/23/80.DAT",
+    "npc": "ROM/25/80.DAT",
+    "event": "ROM/19/80.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\240\\106.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\80.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\23\\80.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\19\\80.DAT"
+  },
+  "npc_record_count": 615,
+  "named_npc_count": 598,
+  "event_token_count": 127,
+  "placement_candidate_count": 150,
+  "npc_csv": "tools\\zone_aux_exports\\015_Abyssea_-_Konschtat_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\015_Abyssea_-_Konschtat_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\015_Abyssea_-_Konschtat_npc_placement_candidates.csv"
+}

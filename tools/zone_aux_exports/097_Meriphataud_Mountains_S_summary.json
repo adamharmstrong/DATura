@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 97,
+    "name": "Meriphataud Mountains [S]",
+    "model": "ROM5/0/17.DAT",
+    "dialog": "ROM/24/34.DAT",
+    "npc": "ROM/26/34.DAT",
+    "event": "ROM/20/34.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\17.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\34.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\34.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\34.DAT"
+  },
+  "npc_record_count": 882,
+  "named_npc_count": 851,
+  "event_token_count": 1111,
+  "placement_candidate_count": 56,
+  "npc_csv": "tools\\zone_aux_exports\\097_Meriphataud_Mountains_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\097_Meriphataud_Mountains_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\097_Meriphataud_Mountains_S_npc_placement_candidates.csv"
+}

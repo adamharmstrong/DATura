@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 30,
+    "name": "Riverne - Site #A01",
+    "model": "ROM3/0/29.DAT",
+    "dialog": "ROM3/2/40.DAT",
+    "npc": "ROM3/3/12.DAT",
+    "event": "ROM3/0/96.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\29.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\12.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\40.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\96.DAT"
+  },
+  "npc_record_count": 299,
+  "named_npc_count": 299,
+  "event_token_count": 552,
+  "placement_candidate_count": 24,
+  "npc_csv": "tools\\zone_aux_exports\\030_Riverne_-_Site_A01_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\030_Riverne_-_Site_A01_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\030_Riverne_-_Site_A01_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 108,
+    "name": "Konschtat Highlands",
+    "model": "ROM/0/90.DAT",
+    "dialog": "ROM/24/45.DAT",
+    "npc": "ROM/26/45.DAT",
+    "event": "ROM/20/45.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\90.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\45.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\45.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\45.DAT"
+  },
+  "npc_record_count": 643,
+  "named_npc_count": 626,
+  "event_token_count": 837,
+  "placement_candidate_count": 56,
+  "npc_csv": "tools\\zone_aux_exports\\108_Konschtat_Highlands_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\108_Konschtat_Highlands_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\108_Konschtat_Highlands_npc_placement_candidates.csv"
+}

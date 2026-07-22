@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 236,
+    "name": "Port Bastok",
+    "model": "ROM/1/36.DAT",
+    "dialog": "ROM/25/45.DAT",
+    "npc": "ROM/27/45.DAT",
+    "event": "ROM/21/45.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\36.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\45.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\45.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\45.DAT"
+  },
+  "npc_record_count": 366,
+  "named_npc_count": 216,
+  "event_token_count": 4645,
+  "placement_candidate_count": 157,
+  "npc_csv": "tools\\zone_aux_exports\\236_Port_Bastok_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\236_Port_Bastok_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\236_Port_Bastok_npc_placement_candidates.csv"
+}

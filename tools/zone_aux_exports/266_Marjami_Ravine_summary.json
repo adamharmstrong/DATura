@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 266,
+    "name": "Marjami Ravine",
+    "model": "ROM9/0/13.DAT",
+    "dialog": "ROM9/5/111.DAT",
+    "npc": "ROM9/6/55.DAT",
+    "event": "ROM9/5/63.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\13.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\55.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\111.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\63.DAT"
+  },
+  "npc_record_count": 458,
+  "named_npc_count": 433,
+  "event_token_count": 1416,
+  "placement_candidate_count": 76,
+  "npc_csv": "tools\\zone_aux_exports\\266_Marjami_Ravine_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\266_Marjami_Ravine_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\266_Marjami_Ravine_npc_placement_candidates.csv"
+}

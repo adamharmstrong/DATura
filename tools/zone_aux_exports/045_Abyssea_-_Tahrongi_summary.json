@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 45,
+    "name": "Abyssea - Tahrongi",
+    "model": "ROM/240/107.DAT",
+    "dialog": "ROM/23/110.DAT",
+    "npc": "ROM/25/110.DAT",
+    "event": "ROM/19/110.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\240\\107.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\110.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\23\\110.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\19\\110.DAT"
+  },
+  "npc_record_count": 627,
+  "named_npc_count": 615,
+  "event_token_count": 285,
+  "placement_candidate_count": 155,
+  "npc_csv": "tools\\zone_aux_exports\\045_Abyssea_-_Tahrongi_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\045_Abyssea_-_Tahrongi_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\045_Abyssea_-_Tahrongi_npc_placement_candidates.csv"
+}

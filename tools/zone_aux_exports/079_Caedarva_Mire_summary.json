@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 79,
+    "name": "Caedarva Mire",
+    "model": "ROM4/0/32.DAT",
+    "dialog": "ROM4/1/24.DAT",
+    "npc": "ROM4/1/78.DAT",
+    "event": "ROM4/0/84.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\32.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\78.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\24.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\84.DAT"
+  },
+  "npc_record_count": 609,
+  "named_npc_count": 599,
+  "event_token_count": 2219,
+  "placement_candidate_count": 61,
+  "npc_csv": "tools\\zone_aux_exports\\079_Caedarva_Mire_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\079_Caedarva_Mire_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\079_Caedarva_Mire_npc_placement_candidates.csv"
+}

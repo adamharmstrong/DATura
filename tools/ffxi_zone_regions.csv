@@ -1,0 +1,301 @@
+zone_id,zone_name,lsb_zone_enum,official_region_id,official_region_enum,official_region_name,lore_region,note
+0,unknown,MONORAIL_PRE_RELEASE,255,UNKNOWN,Unknown / no official region,Internal / Unused,Pre-release demonstration zone; no normal lore region.
+1,Phanauet Channel,PHANAUET_CHANNEL,2,NORVALLEN,Norvallen,Norvallen,
+2,Carpenters' Landing,CARPENTERS_LANDING,2,NORVALLEN,Norvallen,Norvallen,
+3,Manaclipper,MANACLIPPER,6,KOLSHUSHU,Kolshushu,Kolshushu,
+4,Bibiki Bay,BIBIKI_BAY,6,KOLSHUSHU,Kolshushu,Kolshushu,
+5,Uleguerand Range,ULEGUERAND_RANGE,9,VALDEAUNIA,Valdeaunia,Valdeaunia,
+6,Bearclaw Pinnacle,BEARCLAW_PINNACLE,9,VALDEAUNIA,Valdeaunia,Valdeaunia,
+7,Attohwa Chasm,ATTOHWA_CHASM,7,ARAGONEU,Aragoneu,Aragoneu,
+8,Boneyard Gully,BONEYARD_GULLY,7,ARAGONEU,Aragoneu,Aragoneu,
+9,Pso'Xja,PSOXJA,8,FAUREGANDI,Fauregandi,Fauregandi,
+10,The Shrouded Maw,THE_SHROUDED_MAW,8,FAUREGANDI,Fauregandi,Fauregandi,
+11,Oldton Movalpolos,OLDTON_MOVALPOLOS,17,MOVALPOLOS,Movalpolos,Movalpolos,
+12,Newton Movalpolos,NEWTON_MOVALPOLOS,17,MOVALPOLOS,Movalpolos,Movalpolos,
+13,Mine Shaft #2716,MINE_SHAFT_2716,17,MOVALPOLOS,Movalpolos,Movalpolos,
+14,Hall of Transference,HALL_OF_TRANSFERENCE,25,PROMYVION,Promyvion,Promyvion,
+15,Abyssea - Konschtat,ABYSSEA_KONSCHTAT,41,ABYSSEA,Abyssea,Abyssea,
+16,Promyvion - Holla,PROMYVION_HOLLA,25,PROMYVION,Promyvion,Promyvion,
+17,Spire of Holla,SPIRE_OF_HOLLA,25,PROMYVION,Promyvion,Promyvion,
+18,Promyvion - Dem,PROMYVION_DEM,25,PROMYVION,Promyvion,Promyvion,
+19,Spire of Dem,SPIRE_OF_DEM,25,PROMYVION,Promyvion,Promyvion,
+20,Promyvion - Mea,PROMYVION_MEA,25,PROMYVION,Promyvion,Promyvion,
+21,Spire of Mea,SPIRE_OF_MEA,25,PROMYVION,Promyvion,Promyvion,
+22,Promyvion - Vahzl,PROMYVION_VAHZL,25,PROMYVION,Promyvion,Promyvion,
+23,Spire of Vahzl,SPIRE_OF_VAHZL,25,PROMYVION,Promyvion,Promyvion,
+24,Lufaise Meadows,LUFAISE_MEADOWS,255,TAVNAZIA,Tavnazian Archipelago,Tavnazian Archipelago,
+25,Misareaux Coast,MISAREAUX_COAST,255,TAVNAZIA,Tavnazian Archipelago,Tavnazian Archipelago,
+26,Tavnazian Safehold,TAVNAZIAN_SAFEHOLD,24,TAVNAZIAN_MARQ,Tavnazian Marquisate,Tavnazian Marquisate,
+27,Phomiuna Aqueducts,PHOMIUNA_AQUEDUCTS,255,TAVNAZIA,Tavnazian Archipelago,Tavnazian Archipelago,
+28,Sacrarium,SACRARIUM,255,TAVNAZIA,Tavnazian Archipelago,Tavnazian Archipelago,
+29,Riverne - Site #B01,RIVERNE_SITE_B01,255,TAVNAZIA,Tavnazian Archipelago,Tavnazian Archipelago,
+30,Riverne - Site #A01,RIVERNE_SITE_A01,255,TAVNAZIA,Tavnazian Archipelago,Tavnazian Archipelago,
+31,Monarch Linn,MONARCH_LINN,255,TAVNAZIA,Tavnazian Archipelago,Tavnazian Archipelago,
+32,Sealion's Den,SEALIONS_DEN,255,TAVNAZIA,Tavnazian Archipelago,Tavnazian Archipelago,
+33,Al'Taieu,ALTAIEU,26,LUMORIA,Lumoria,Lumoria,
+34,Grand Palace of Hu'Xzoi,GRAND_PALACE_OF_HUXZOI,26,LUMORIA,Lumoria,Lumoria,
+35,The Garden of Ru'Hmet,THE_GARDEN_OF_RUHMET,26,LUMORIA,Lumoria,Lumoria,
+36,Empyreal Paradox,EMPYREAL_PARADOX,26,LUMORIA,Lumoria,Lumoria,
+37,Temenos,TEMENOS,27,LIMBUS,Limbus,Limbus,
+38,Apollyon,APOLLYON,27,LIMBUS,Limbus,Limbus,
+39,Dynamis - Valkurm,DYNAMIS_VALKURM,23,DYNAMIS,Dynamis,Dynamis,
+40,Dynamis - Buburimu,DYNAMIS_BUBURIMU,23,DYNAMIS,Dynamis,Dynamis,
+41,Dynamis - Qufim,DYNAMIS_QUFIM,23,DYNAMIS,Dynamis,Dynamis,
+42,Dynamis - Tavnazia,DYNAMIS_TAVNAZIA,23,DYNAMIS,Dynamis,Dynamis,
+43,Diorama Abdhaljs-Ghelsba,DIORAMA_ABDHALJS_GHELSBA,43,ABDHALJS,Abdhaljs,Abdhaljs,
+44,Abdhaljs Isle-Purgonorgo,ABDHALJS_ISLE_PURGONORGO,43,ABDHALJS,Abdhaljs,Abdhaljs,
+45,Abyssea - Tahrongi,ABYSSEA_TAHRONGI,41,ABYSSEA,Abyssea,Abyssea,
+46,Open sea route to Al Zahbi,OPEN_SEA_ROUTE_TO_AL_ZAHBI,255,UNKNOWN,Unknown / no official region,Bastore Sea / Open Sea Route,Transport route between Mhaura and Al Zahbi.
+47,Open sea route to Mhaura,OPEN_SEA_ROUTE_TO_MHAURA,255,UNKNOWN,Unknown / no official region,Bastore Sea / Open Sea Route,Transport route between Al Zahbi and Mhaura.
+48,Al Zahbi,AL_ZAHBI,28,WEST_AHT_URHGAN,West Aht Urhgan,West Aht Urhgan,
+49,none,49,255,UNKNOWN,Unknown / no official region,Internal / Unused,Empty GM/test grid.
+50,Aht Urhgan Whitegate,AHT_URHGAN_WHITEGATE,28,WEST_AHT_URHGAN,West Aht Urhgan,West Aht Urhgan,
+51,Wajaom Woodlands,WAJAOM_WOODLANDS,29,MAMOOL_JA_SAVAGE,Mamool Ja Savagelands,Mamool Ja Savagelands,
+52,Bhaflau Thickets,BHAFLAU_THICKETS,28,WEST_AHT_URHGAN,West Aht Urhgan,West Aht Urhgan,
+53,Nashmau,NASHMAU,31,ARRAPAGO,Arrapago Islands,Arrapago Islands,
+54,Arrapago Reef,ARRAPAGO_REEF,31,ARRAPAGO,Arrapago Islands,Arrapago Islands,
+55,Ilrusi Atoll,ILRUSI_ATOLL,255,UNKNOWN,Unknown / no official region,Arrapago Islands,Assault area in the Arrapago island chain.
+56,Periqia,PERIQIA,31,ARRAPAGO,Arrapago Islands,Arrapago Islands,
+57,Talacca Cove,TALACCA_COVE,31,ARRAPAGO,Arrapago Islands,Arrapago Islands,
+58,Silver Sea route to Nashmau,SILVER_SEA_ROUTE_TO_NASHMAU,255,UNKNOWN,Unknown / no official region,Silver Sea / Open Sea Route,Transport route between Nashmau and Al Zahbi.
+59,Silver Sea route to Al Zahbi,SILVER_SEA_ROUTE_TO_AL_ZAHBI,255,UNKNOWN,Unknown / no official region,Silver Sea / Open Sea Route,Transport route between Al Zahbi and Nashmau.
+60,The Ashu Talif,THE_ASHU_TALIF,255,UNKNOWN,Unknown / no official region,Silver Sea,Ship battlefield/instance associated with Aht Urhgan sea routes.
+61,Mount Zhayolm,MOUNT_ZHAYOLM,30,HALVUNG,Halvung Territory,Halvung Territory,
+62,Halvung,HALVUNG,30,HALVUNG,Halvung Territory,Halvung Territory,
+63,Lebros Cavern,LEBROS_CAVERN,30,HALVUNG,Halvung Territory,Halvung Territory,
+64,Navukgo Execution Chamber,NAVUKGO_EXECUTION_CHAMBER,30,HALVUNG,Halvung Territory,Halvung Territory,
+65,Mamook,MAMOOK,29,MAMOOL_JA_SAVAGE,Mamool Ja Savagelands,Mamool Ja Savagelands,
+66,Mamool Ja Training Grounds,MAMOOL_JA_TRAINING_GROUNDS,29,MAMOOL_JA_SAVAGE,Mamool Ja Savagelands,Mamool Ja Savagelands,
+67,Jade Sepulcher,JADE_SEPULCHER,29,MAMOOL_JA_SAVAGE,Mamool Ja Savagelands,Mamool Ja Savagelands,
+68,Aydeewa Subterrane,AYDEEWA_SUBTERRANE,29,MAMOOL_JA_SAVAGE,Mamool Ja Savagelands,Mamool Ja Savagelands,
+69,Leujaoam Sanctum,LEUJAOAM_SANCTUM,31,ARRAPAGO,Arrapago Islands,Arrapago Islands,
+70,Chocobo Circuit,CHOCOBO_CIRCUIT,255,UNKNOWN,Unknown / no official region,Jeuno,Chocobo Circuit is accessed from Jeuno and the three nations; kept separate from conquest regions.
+71,The Colosseum,THE_COLOSSEUM,28,WEST_AHT_URHGAN,West Aht Urhgan,West Aht Urhgan,
+72,Alzadaal Undersea Ruins,ALZADAAL_UNDERSEA_RUINS,32,ALZADAAL,Alzadaal,Alzadaal,
+73,Zhayolm Remnants,ZHAYOLM_REMNANTS,32,ALZADAAL,Alzadaal,Alzadaal,
+74,Arrapago Remnants,ARRAPAGO_REMNANTS,32,ALZADAAL,Alzadaal,Alzadaal,
+75,Bhaflau Remnants,BHAFLAU_REMNANTS,32,ALZADAAL,Alzadaal,Alzadaal,
+76,Silver Sea Remnants,SILVER_SEA_REMNANTS,32,ALZADAAL,Alzadaal,Alzadaal,
+77,Nyzul Isle,NYZUL_ISLE,32,ALZADAAL,Alzadaal,Alzadaal,
+78,Hazhalm Testing Grounds,HAZHALM_TESTING_GROUNDS,31,ARRAPAGO,Arrapago Islands,Halvung Territory,"Einherjar battlefield beneath Hazhalm, tied to Aht Urhgan/Halvung lore."
+79,Caedarva Mire,CAEDARVA_MIRE,31,ARRAPAGO,Arrapago Islands,Arrapago Islands,
+80,Southern San d'Oria [S],SOUTHERN_SAN_DORIA_S,33,RONFAURE_FRONT,Ronfaure Front,Ronfaure Front,
+81,East Ronfaure [S],EAST_RONFAURE_S,33,RONFAURE_FRONT,Ronfaure Front,Ronfaure Front,
+82,Jugner Forest [S],JUGNER_FOREST_S,34,NORVALLEN_FRONT,Norvallen Front,Norvallen Front,
+83,Vunkerl Inlet [S],VUNKERL_INLET_S,36,DERFLAND_FRONT,Derfland Front,Derfland Front,
+84,Batallia Downs [S],BATALLIA_DOWNS_S,34,NORVALLEN_FRONT,Norvallen Front,Norvallen Front,
+85,La Vaule [S],LA_VAULE_S,34,NORVALLEN_FRONT,Norvallen Front,Norvallen Front,
+86,Everbloom Hollow,EVERBLOOM_HOLLOW,34,NORVALLEN_FRONT,Norvallen Front,Norvallen Front,
+87,Bastok Markets [S],BASTOK_MARKETS_S,35,GUSTABERG_FRONT,Gustaberg Front,Gustaberg Front,
+88,North Gustaberg [S],NORTH_GUSTABERG_S,35,GUSTABERG_FRONT,Gustaberg Front,Gustaberg Front,
+89,Grauberg [S],GRAUBERG_S,35,GUSTABERG_FRONT,Gustaberg Front,Gustaberg Front,
+90,Pashhow Marshlands [S],PASHHOW_MARSHLANDS_S,36,DERFLAND_FRONT,Derfland Front,Derfland Front,
+91,Rolanberry Fields [S],ROLANBERRY_FIELDS_S,36,DERFLAND_FRONT,Derfland Front,Derfland Front,
+92,Beadeaux [S],BEADEAUX_S,36,DERFLAND_FRONT,Derfland Front,Derfland Front,
+93,Ruhotz Silvermines,RUHOTZ_SILVERMINES,35,GUSTABERG_FRONT,Gustaberg Front,Gustaberg Front,
+94,Windurst Waters [S],WINDURST_WATERS_S,37,SARUTA_FRONT,Sarutabaruta Front,Sarutabaruta Front,
+95,West Sarutabaruta [S],WEST_SARUTABARUTA_S,37,SARUTA_FRONT,Sarutabaruta Front,Sarutabaruta Front,
+96,Fort Karugo-Narugo [S],FORT_KARUGO_NARUGO_S,37,SARUTA_FRONT,Sarutabaruta Front,Sarutabaruta Front,
+97,Meriphataud Mountains [S],MERIPHATAUD_MOUNTAINS_S,38,ARAGONEAU_FRONT,Aragoneu Front,Aragoneu Front,
+98,Sauromugue Champaign [S],SAUROMUGUE_CHAMPAIGN_S,38,ARAGONEAU_FRONT,Aragoneu Front,Aragoneu Front,
+99,Castle Oztroja [S],CASTLE_OZTROJA_S,38,ARAGONEAU_FRONT,Aragoneu Front,Aragoneu Front,
+100,West Ronfaure,WEST_RONFAURE,0,RONFAURE,Ronfaure,Ronfaure,
+101,East Ronfaure,EAST_RONFAURE,0,RONFAURE,Ronfaure,Ronfaure,
+102,La Theine Plateau,LA_THEINE_PLATEAU,1,ZULKHEIM,Zulkheim,Zulkheim,
+103,Valkurm Dunes,VALKURM_DUNES,1,ZULKHEIM,Zulkheim,Zulkheim,
+104,Jugner Forest,JUGNER_FOREST,2,NORVALLEN,Norvallen,Norvallen,
+105,Batallia Downs,BATALLIA_DOWNS,2,NORVALLEN,Norvallen,Norvallen,
+106,North Gustaberg,NORTH_GUSTABERG,3,GUSTABERG,Gustaberg,Gustaberg,
+107,South Gustaberg,SOUTH_GUSTABERG,3,GUSTABERG,Gustaberg,Gustaberg,
+108,Konschtat Highlands,KONSCHTAT_HIGHLANDS,1,ZULKHEIM,Zulkheim,Zulkheim,
+109,Pashhow Marshlands,PASHHOW_MARSHLANDS,4,DERFLAND,Derfland,Derfland,
+110,Rolanberry Fields,ROLANBERRY_FIELDS,4,DERFLAND,Derfland,Derfland,
+111,Beaucedine Glacier,BEAUCEDINE_GLACIER,8,FAUREGANDI,Fauregandi,Fauregandi,
+112,Xarcabard,XARCABARD,9,VALDEAUNIA,Valdeaunia,Valdeaunia,
+113,Cape Teriggan,CAPE_TERIGGAN,13,VOLLBOW,Vollbow,Vollbow,
+114,Eastern Altepa Desert,EASTERN_ALTEPA_DESERT,12,KUZOTZ,Kuzotz,Kuzotz,
+115,West Sarutabaruta,WEST_SARUTABARUTA,5,SARUTABARUTA,Sarutabaruta,Sarutabaruta,
+116,East Sarutabaruta,EAST_SARUTABARUTA,5,SARUTABARUTA,Sarutabaruta,Sarutabaruta,
+117,Tahrongi Canyon,TAHRONGI_CANYON,6,KOLSHUSHU,Kolshushu,Kolshushu,
+118,Buburimu Peninsula,BUBURIMU_PENINSULA,6,KOLSHUSHU,Kolshushu,Kolshushu,
+119,Meriphataud Mountains,MERIPHATAUD_MOUNTAINS,7,ARAGONEU,Aragoneu,Aragoneu,
+120,Sauromugue Champaign,SAUROMUGUE_CHAMPAIGN,7,ARAGONEU,Aragoneu,Aragoneu,
+121,The Sanctuary of Zi'Tah,THE_SANCTUARY_OF_ZITAH,11,LITELOR,Li'Telor,Li'Telor,
+122,Ro'Maeve,ROMAEVE,11,LITELOR,Li'Telor,Li'Telor,
+123,Yuhtunga Jungle,YUHTUNGA_JUNGLE,14,ELSHIMO_LOWLANDS,Elshimo Lowlands,Elshimo Lowlands,
+124,Yhoator Jungle,YHOATOR_JUNGLE,15,ELSHIMO_UPLANDS,Elshimo Uplands,Elshimo Uplands,
+125,Western Altepa Desert,WESTERN_ALTEPA_DESERT,12,KUZOTZ,Kuzotz,Kuzotz,
+126,Qufim Island,QUFIM_ISLAND,10,QUFIMISLAND,Qufim Island,Qufim Island,
+127,Behemoth's Dominion,BEHEMOTHS_DOMINION,10,QUFIMISLAND,Qufim Island,Qufim Island,
+128,Valley of Sorrows,VALLEY_OF_SORROWS,13,VOLLBOW,Vollbow,Vollbow,
+129,Ghoyu's Reverie,GHOYUS_REVERIE,37,SARUTA_FRONT,Sarutabaruta Front,Sarutabaruta Front,
+130,Ru'Aun Gardens,RUAUN_GARDENS,16,TULIA,Tu'Lia,Tu'Lia,
+131,Mordion Gaol,MORDION_GAOL,255,UNKNOWN,Unknown / no official region,Internal / GM,"Mordion Gaol is a GM jail, not a world region."
+132,Abyssea - La Theine,ABYSSEA_LA_THEINE,41,ABYSSEA,Abyssea,Abyssea,
+133,Outer Ra'Kaznar [U2],OUTER_RAKAZNAR_U2,255,UNKNOWN,Unknown / no official region,East Ulbuka,Outer Ra'Kaznar underworld instance.
+134,Dynamis - Beaucedine,DYNAMIS_BEAUCEDINE,23,DYNAMIS,Dynamis,Dynamis,
+135,Dynamis - Xarcabard,DYNAMIS_XARCABARD,23,DYNAMIS,Dynamis,Dynamis,
+136,Beaucedine Glacier [S],BEAUCEDINE_GLACIER_S,39,FAUREGANDI_FRONT,Fauregandi Front,Fauregandi Front,
+137,Xarcabard [S],XARCABARD_S,40,VALDEAUNIA_FRONT,Valdeaunia Front,Valdeaunia Front,
+138,Castle Zvahl Baileys [S],CASTLE_ZVAHL_BAILEYS_S,40,VALDEAUNIA_FRONT,Valdeaunia Front,Valdeaunia Front,
+139,Horlais Peak,HORLAIS_PEAK,0,RONFAURE,Ronfaure,Ronfaure,
+140,Ghelsba Outpost,GHELSBA_OUTPOST,0,RONFAURE,Ronfaure,Ronfaure,
+141,Fort Ghelsba,FORT_GHELSBA,0,RONFAURE,Ronfaure,Ronfaure,
+142,Yughott Grotto,YUGHOTT_GROTTO,0,RONFAURE,Ronfaure,Ronfaure,
+143,Palborough Mines,PALBOROUGH_MINES,3,GUSTABERG,Gustaberg,Gustaberg,
+144,Waughroon Shrine,WAUGHROON_SHRINE,3,GUSTABERG,Gustaberg,Gustaberg,
+145,Giddeus,GIDDEUS,5,SARUTABARUTA,Sarutabaruta,Sarutabaruta,
+146,Balga's Dais,BALGAS_DAIS,5,SARUTABARUTA,Sarutabaruta,Sarutabaruta,
+147,Beadeaux,BEADEAUX,4,DERFLAND,Derfland,Derfland,
+148,Qulun Dome,QULUN_DOME,4,DERFLAND,Derfland,Derfland,
+149,Davoi,DAVOI,2,NORVALLEN,Norvallen,Norvallen,
+150,Monastic Cavern,MONASTIC_CAVERN,2,NORVALLEN,Norvallen,Norvallen,
+151,Castle Oztroja,CASTLE_OZTROJA,7,ARAGONEU,Aragoneu,Aragoneu,
+152,Altar Room,ALTAR_ROOM,7,ARAGONEU,Aragoneu,Aragoneu,
+153,The Boyahda Tree,THE_BOYAHDA_TREE,11,LITELOR,Li'Telor,Li'Telor,
+154,Dragon's Aery,DRAGONS_AERY,11,LITELOR,Li'Telor,Li'Telor,
+155,Castle Zvahl Keep [S],CASTLE_ZVAHL_KEEP_S,40,VALDEAUNIA_FRONT,Valdeaunia Front,Valdeaunia Front,
+156,Throne Room [S],THRONE_ROOM_S,40,VALDEAUNIA_FRONT,Valdeaunia Front,Valdeaunia Front,
+157,Middle Delkfutt's Tower,MIDDLE_DELKFUTTS_TOWER,10,QUFIMISLAND,Qufim Island,Qufim Island,
+158,Upper Delkfutt's Tower,UPPER_DELKFUTTS_TOWER,10,QUFIMISLAND,Qufim Island,Qufim Island,
+159,Temple of Uggalepih,TEMPLE_OF_UGGALEPIH,15,ELSHIMO_UPLANDS,Elshimo Uplands,Elshimo Uplands,
+160,Den of Rancor,DEN_OF_RANCOR,15,ELSHIMO_UPLANDS,Elshimo Uplands,Elshimo Uplands,
+161,Castle Zvahl Baileys,CASTLE_ZVAHL_BAILEYS,9,VALDEAUNIA,Valdeaunia,Valdeaunia,
+162,Castle Zvahl Keep,CASTLE_ZVAHL_KEEP,9,VALDEAUNIA,Valdeaunia,Valdeaunia,
+163,Sacrificial Chamber,SACRIFICIAL_CHAMBER,15,ELSHIMO_UPLANDS,Elshimo Uplands,Elshimo Uplands,
+164,Garlaige Citadel [S],GARLAIGE_CITADEL_S,38,ARAGONEAU_FRONT,Aragoneu Front,Aragoneu Front,
+165,Throne Room,THRONE_ROOM,9,VALDEAUNIA,Valdeaunia,Valdeaunia,
+166,Ranguemont Pass,RANGUEMONT_PASS,8,FAUREGANDI,Fauregandi,Fauregandi,
+167,Bostaunieux Oubliette,BOSTAUNIEUX_OUBLIETTE,0,RONFAURE,Ronfaure,Ronfaure,
+168,Chamber of Oracles,CHAMBER_OF_ORACLES,12,KUZOTZ,Kuzotz,Kuzotz,
+169,Toraimarai Canal,TORAIMARAI_CANAL,5,SARUTABARUTA,Sarutabaruta,Sarutabaruta,
+170,Full Moon Fountain,FULL_MOON_FOUNTAIN,5,SARUTABARUTA,Sarutabaruta,Sarutabaruta,
+171,Crawlers' Nest [S],CRAWLERS_NEST_S,36,DERFLAND_FRONT,Derfland Front,Derfland Front,
+172,Zeruhn Mines,ZERUHN_MINES,3,GUSTABERG,Gustaberg,Gustaberg,
+173,Korroloka Tunnel,KORROLOKA_TUNNEL,3,GUSTABERG,Gustaberg,Gustaberg,
+174,Kuftal Tunnel,KUFTAL_TUNNEL,13,VOLLBOW,Vollbow,Vollbow,
+175,The Eldieme Necropolis [S],THE_ELDIEME_NECROPOLIS_S,34,NORVALLEN_FRONT,Norvallen Front,Norvallen Front,
+176,Sea Serpent Grotto,SEA_SERPENT_GROTTO,14,ELSHIMO_LOWLANDS,Elshimo Lowlands,Elshimo Lowlands,
+177,Ve'Lugannon Palace,VELUGANNON_PALACE,16,TULIA,Tu'Lia,Tu'Lia,
+178,The Shrine of Ru'Avitau,THE_SHRINE_OF_RUAVITAU,16,TULIA,Tu'Lia,Tu'Lia,
+179,Stellar Fulcrum,STELLAR_FULCRUM,10,QUFIMISLAND,Qufim Island,Qufim Island,
+180,La'Loff Amphitheater,LALOFF_AMPHITHEATER,16,TULIA,Tu'Lia,Tu'Lia,
+181,The Celestial Nexus,THE_CELESTIAL_NEXUS,16,TULIA,Tu'Lia,Tu'Lia,
+182,Walk of Echoes,WALK_OF_ECHOES,42,THE_THRESHOLD,The Threshold,The Threshold,Official region bucket for Walk of Echoes.
+183,Maquette Abdhaljs-Legion,MAQUETTE_ABDHALJS_LEGION_A,43,ABDHALJS,Abdhaljs,Abdhaljs,
+184,Lower Delkfutt's Tower,LOWER_DELKFUTTS_TOWER,10,QUFIMISLAND,Qufim Island,Qufim Island,
+185,Dynamis - San d'Oria,DYNAMIS_SAN_DORIA,23,DYNAMIS,Dynamis,Dynamis,
+186,Dynamis - Bastok,DYNAMIS_BASTOK,23,DYNAMIS,Dynamis,Dynamis,
+187,Dynamis - Windurst,DYNAMIS_WINDURST,23,DYNAMIS,Dynamis,Dynamis,
+188,Dynamis - Jeuno,DYNAMIS_JEUNO,23,DYNAMIS,Dynamis,Dynamis,
+189,Outer Ra'Kaznar [U3],OUTER_RAKAZNAR_U3,255,UNKNOWN,Unknown / no official region,East Ulbuka,Outer Ra'Kaznar underworld instance.
+190,King Ranperre's Tomb,KING_RANPERRES_TOMB,0,RONFAURE,Ronfaure,Ronfaure,
+191,Dangruf Wadi,DANGRUF_WADI,3,GUSTABERG,Gustaberg,Gustaberg,
+192,Inner Horutoto Ruins,INNER_HORUTOTO_RUINS,5,SARUTABARUTA,Sarutabaruta,Sarutabaruta,
+193,Ordelle's Caves,ORDELLES_CAVES,1,ZULKHEIM,Zulkheim,Zulkheim,
+194,Outer Horutoto Ruins,OUTER_HORUTOTO_RUINS,5,SARUTABARUTA,Sarutabaruta,Sarutabaruta,
+195,The Eldieme Necropolis,THE_ELDIEME_NECROPOLIS,2,NORVALLEN,Norvallen,Norvallen,
+196,Gusgen Mines,GUSGEN_MINES,1,ZULKHEIM,Zulkheim,Zulkheim,
+197,Crawlers' Nest,CRAWLERS_NEST,4,DERFLAND,Derfland,Derfland,
+198,Maze of Shakhrami,MAZE_OF_SHAKHRAMI,6,KOLSHUSHU,Kolshushu,Kolshushu,
+199,Zone 199,199,255,UNKNOWN,Unknown / no official region,Internal / Unused,Unnamed/unused client zone.
+200,Garlaige Citadel,GARLAIGE_CITADEL,7,ARAGONEU,Aragoneu,Aragoneu,
+201,Cloister of Gales,CLOISTER_OF_GALES,13,VOLLBOW,Vollbow,Vollbow,
+202,Cloister of Storms,CLOISTER_OF_STORMS,11,LITELOR,Li'Telor,Li'Telor,
+203,Cloister of Frost,CLOISTER_OF_FROST,8,FAUREGANDI,Fauregandi,Fauregandi,
+204,Fei'Yin,FEIYIN,8,FAUREGANDI,Fauregandi,Fauregandi,
+205,Ifrit's Cauldron,IFRITS_CAULDRON,15,ELSHIMO_UPLANDS,Elshimo Uplands,Elshimo Uplands,
+206,Qu'Bia Arena,QUBIA_ARENA,8,FAUREGANDI,Fauregandi,Fauregandi,
+207,Cloister of Flames,CLOISTER_OF_FLAMES,15,ELSHIMO_UPLANDS,Elshimo Uplands,Elshimo Uplands,
+208,Quicksand Caves,QUICKSAND_CAVES,12,KUZOTZ,Kuzotz,Kuzotz,
+209,Cloister of Tremors,CLOISTER_OF_TREMORS,12,KUZOTZ,Kuzotz,Kuzotz,
+210,GM Home,GM_HOME,255,UNKNOWN,Unknown / no official region,Internal / GM,GM Home internal zone.
+211,Cloister of Tides,CLOISTER_OF_TIDES,15,ELSHIMO_UPLANDS,Elshimo Uplands,Elshimo Uplands,
+212,Gustav Tunnel,GUSTAV_TUNNEL,13,VOLLBOW,Vollbow,Vollbow,
+213,Labyrinth of Onzozo,LABYRINTH_OF_ONZOZO,6,KOLSHUSHU,Kolshushu,Kolshushu,
+214,Zone 214,214,255,UNKNOWN,Unknown / no official region,Internal / Unused,Unnamed/unused client zone.
+215,Abyssea - Attohwa,ABYSSEA_ATTOHWA,41,ABYSSEA,Abyssea,Abyssea,
+216,Abyssea - Misareaux,ABYSSEA_MISAREAUX,41,ABYSSEA,Abyssea,Abyssea,
+217,Abyssea - Vunkerl,ABYSSEA_VUNKERL,41,ABYSSEA,Abyssea,Abyssea,
+218,Abyssea - Altepa,ABYSSEA_ALTEPA,41,ABYSSEA,Abyssea,Abyssea,
+219,Residential Area,219,255,UNKNOWN,Unknown / no official region,Residential Area,Residential/mog-house pseudo-zone.
+220,Ship bound for Selbina,SHIP_BOUND_FOR_SELBINA,255,UNKNOWN,Unknown / no official region,Bastore Sea / Open Sea Route,Ship bound for Selbina.
+221,Ship bound for Mhaura,SHIP_BOUND_FOR_MHAURA,255,UNKNOWN,Unknown / no official region,Bastore Sea / Open Sea Route,Ship bound for Mhaura.
+222,Provenance,PROVENANCE,255,UNKNOWN,Unknown / no official region,Provenance,Standalone Provenance battlefield region.
+223,San d'Oria-Jeuno Airship,SAN_DORIA_JEUNO_AIRSHIP,255,UNKNOWN,Unknown / no official region,Airship Route,San d'Oria to Jeuno transport route.
+224,Bastok-Jeuno Airship,BASTOK_JEUNO_AIRSHIP,255,UNKNOWN,Unknown / no official region,Airship Route,Bastok to Jeuno transport route.
+225,Windurst-Jeuno Airship,WINDURST_JEUNO_AIRSHIP,255,UNKNOWN,Unknown / no official region,Airship Route,Windurst to Jeuno transport route.
+226,Kazham-Jeuno Airship,KAZHAM_JEUNO_AIRSHIP,255,UNKNOWN,Unknown / no official region,Airship Route,Kazham to Jeuno transport route.
+227,Ship bound for Selbina,SHIP_BOUND_FOR_SELBINA_PIRATES,255,UNKNOWN,Unknown / no official region,Bastore Sea / Open Sea Route,Pirate variant of ship bound for Selbina.
+228,Ship bound for Mhaura,SHIP_BOUND_FOR_MHAURA_PIRATES,255,UNKNOWN,Unknown / no official region,Bastore Sea / Open Sea Route,Pirate variant of ship bound for Mhaura.
+229,Throne Room [V],THRONE_ROOM_V,255,UNKNOWN,Unknown / no official region,Valdeaunia,Throne Room variant tied to Castle Zvahl.
+230,Southern San d'Oria,SOUTHERN_SANDORIA,19,SANDORIA,San d'Oria,San d'Oria,
+231,Northern San d'Oria,NORTHERN_SANDORIA,19,SANDORIA,San d'Oria,San d'Oria,
+232,Port San d'Oria,PORT_SANDORIA,19,SANDORIA,San d'Oria,San d'Oria,
+233,Chateau d'Oraguille,CHATEAU_DORAGUILLE,19,SANDORIA,San d'Oria,San d'Oria,
+234,Bastok Mines,BASTOK_MINES,20,BASTOK,Bastok,Bastok,
+235,Bastok Markets,BASTOK_MARKETS,20,BASTOK,Bastok,Bastok,
+236,Port Bastok,PORT_BASTOK,20,BASTOK,Bastok,Bastok,
+237,Metalworks,METALWORKS,20,BASTOK,Bastok,Bastok,
+238,Windurst Waters,WINDURST_WATERS,21,WINDURST,Windurst,Windurst,
+239,Windurst Walls,WINDURST_WALLS,21,WINDURST,Windurst,Windurst,
+240,Port Windurst,PORT_WINDURST,21,WINDURST,Windurst,Windurst,
+241,Windurst Woods,WINDURST_WOODS,21,WINDURST,Windurst,Windurst,
+242,Heavens Tower,HEAVENS_TOWER,21,WINDURST,Windurst,Windurst,
+243,Ru'Lude Gardens,RULUDE_GARDENS,22,JEUNO,Jeuno,Jeuno,
+244,Upper Jeuno,UPPER_JEUNO,22,JEUNO,Jeuno,Jeuno,
+245,Lower Jeuno,LOWER_JEUNO,22,JEUNO,Jeuno,Jeuno,
+246,Port Jeuno,PORT_JEUNO,22,JEUNO,Jeuno,Jeuno,
+247,Rabao,RABAO,12,KUZOTZ,Kuzotz,Kuzotz,
+248,Selbina,SELBINA,1,ZULKHEIM,Zulkheim,Zulkheim,
+249,Mhaura,MHAURA,6,KOLSHUSHU,Kolshushu,Kolshushu,
+250,Kazham,KAZHAM,14,ELSHIMO_LOWLANDS,Elshimo Lowlands,Elshimo Lowlands,
+251,Hall of the Gods,HALL_OF_THE_GODS,11,LITELOR,Li'Telor,Li'Telor,
+252,Norg,NORG,14,ELSHIMO_LOWLANDS,Elshimo Lowlands,Elshimo Lowlands,
+253,Abyssea - Uleguerand,ABYSSEA_ULEGUERAND,41,ABYSSEA,Abyssea,Abyssea,
+254,Abyssea - Grauberg,ABYSSEA_GRAUBERG,41,ABYSSEA,Abyssea,Abyssea,
+255,Abyssea - Empyreal Paradox,ABYSSEA_EMPYREAL_PARADOX,41,ABYSSEA,Abyssea,Abyssea,
+256,Western Adoulin,WESTERN_ADOULIN,44,ADOULIN_ISLANDS,Adoulin Islands,Adoulin Islands,
+257,Eastern Adoulin,EASTERN_ADOULIN,44,ADOULIN_ISLANDS,Adoulin Islands,Adoulin Islands,
+258,Rala Waterways,RALA_WATERWAYS,44,ADOULIN_ISLANDS,Adoulin Islands,Adoulin Islands,
+259,Rala Waterways [U],RALA_WATERWAYS_U,44,ADOULIN_ISLANDS,Adoulin Islands,Adoulin Islands,
+260,Yahse Hunting Grounds,YAHSE_HUNTING_GROUNDS,45,EAST_ULBUKA,East Ulbuka,East Ulbuka,
+261,Ceizak Battlegrounds,CEIZAK_BATTLEGROUNDS,45,EAST_ULBUKA,East Ulbuka,East Ulbuka,
+262,Foret de Hennetiel,FORET_DE_HENNETIEL,45,EAST_ULBUKA,East Ulbuka,East Ulbuka,
+263,Yorcia Weald,YORCIA_WEALD,255,UNKNOWN,Unknown / no official region,East Ulbuka,Seekers of Adoulin field area.
+264,Yorcia Weald [U],YORCIA_WEALD_U,255,UNKNOWN,Unknown / no official region,East Ulbuka,Skirmish/instanced Yorcia Weald area.
+265,Morimar Basalt Fields,MORIMAR_BASALT_FIELDS,45,EAST_ULBUKA,East Ulbuka,East Ulbuka,
+266,Marjami Ravine,MARJAMI_RAVINE,255,UNKNOWN,Unknown / no official region,East Ulbuka,Seekers of Adoulin field area.
+267,Kamihr Drifts,KAMIHR_DRIFTS,255,UNKNOWN,Unknown / no official region,East Ulbuka,Seekers of Adoulin field area.
+268,Sih Gates,SIH_GATES,45,EAST_ULBUKA,East Ulbuka,East Ulbuka,
+269,Moh Gates,MOH_GATES,45,EAST_ULBUKA,East Ulbuka,East Ulbuka,
+270,Cirdas Caverns,CIRDAS_CAVERNS,45,EAST_ULBUKA,East Ulbuka,East Ulbuka,
+271,Cirdas Caverns [U],CIRDAS_CAVERNS_U,45,EAST_ULBUKA,East Ulbuka,East Ulbuka,
+272,Dho Gates,DHO_GATES,255,UNKNOWN,Unknown / no official region,East Ulbuka,Seekers of Adoulin gates/cavern area.
+273,Woh Gates,WOH_GATES,255,UNKNOWN,Unknown / no official region,East Ulbuka,Seekers of Adoulin gates/cavern area.
+274,Outer Ra'Kaznar,OUTER_RAKAZNAR,255,UNKNOWN,Unknown / no official region,East Ulbuka,Ra'Kaznar underworld area.
+275,Outer Ra'Kaznar [U],OUTER_RAKAZNAR_U1,255,UNKNOWN,Unknown / no official region,East Ulbuka,Instanced Ra'Kaznar underworld area.
+276,Ra'Kaznar Inner Court,RAKAZNAR_INNER_COURT,255,UNKNOWN,Unknown / no official region,East Ulbuka,Ra'Kaznar underworld area.
+277,Ra'Kaznar Turris,RAKAZNAR_TURRIS,255,UNKNOWN,Unknown / no official region,East Ulbuka,Ra'Kaznar underworld battlefield.
+278,Gwora - Corridor,GWORA_CORRIDOR,255,UNKNOWN,Unknown / no official region,East Ulbuka,"Gwora Corridor, underworld/Sortie area tied to RaKaznar/Ulbuka."
+279,Walk of Echoes [P2],WALK_OF_ECHOES_P2,255,UNKNOWN,Unknown / no official region,The Threshold,Walk of Echoes phase 2.
+280,Mog Garden,MOG_GARDEN,255,UNKNOWN,Unknown / no official region,Mog Garden,Private Mog Garden island.
+281,Leafallia,LEAFALLIA,255,UNKNOWN,Unknown / no official region,East Ulbuka,"Leafallia, Seekers of Adoulin area."
+282,Mount Kamihr,MOUNT_KAMIHR,255,UNKNOWN,Unknown / no official region,East Ulbuka,"Mount Kamihr, Seekers of Adoulin area."
+283,Silver Knife,SILVER_KNIFE,255,UNKNOWN,Unknown / no official region,Silver Sea / Open Sea Route,Silver Knife transport/ship zone.
+284,Celennia Memorial Library,CELENNIA_MEMORIAL_LIBRARY,255,UNKNOWN,Unknown / no official region,Adoulin Islands,Library in Western Adoulin.
+285,Feretory,FERETORY,255,UNKNOWN,Unknown / no official region,Feretory,Monstrosity feretory area.
+286,Zone 286,286,255,UNKNOWN,Unknown / no official region,Internal / Unused,Unnamed/unused client zone.
+287,Maquette Abdhaljs-Legion [B],MAQUETTE_ABDHALJS_LEGION_B,43,ABDHALJS,Abdhaljs,Abdhaljs,
+288,Escha - Zi'Tah,ESCHA_ZITAH,255,UNKNOWN,Unknown / no official region,Escha - Zi'Tah,Escha instance based on ZiTah.
+289,Escha - Ru'Aun,ESCHA_RUAUN,255,UNKNOWN,Unknown / no official region,Escha - Ru'Aun,Escha instance based on RuAun.
+290,Desuetia - Empyreal Paradox,DESUETIA_EMPYREAL_PARADOX,255,UNKNOWN,Unknown / no official region,Desuetia,Rhapsodies of VanaDiel Empyreal Paradox instance.
+291,Reisenjima,REISENJIMA,255,UNKNOWN,Unknown / no official region,Reisenjima,Rhapsodies of VanaDiel island region.
+292,Reisenjima Henge,REISENJIMA_HENGE,255,UNKNOWN,Unknown / no official region,Reisenjima,Reisenjima Henge battlefield.
+293,Reisenjima Sanctorium,REISENJIMA_SANCTORIUM,255,UNKNOWN,Unknown / no official region,Reisenjima,Reisenjima Sanctorium battlefield.
+294,Dynamis - San d'Oria [D],DYNAMIS_SAN_DORIA_D,255,UNKNOWN,Unknown / no official region,Dynamis - Divergence,Divergence version of San d'Oria.
+295,Dynamis - Bastok [D],DYNAMIS_BASTOK_D,255,UNKNOWN,Unknown / no official region,Dynamis - Divergence,Divergence version of Bastok.
+296,Dynamis - Windurst [D],DYNAMIS_WINDURST_D,255,UNKNOWN,Unknown / no official region,Dynamis - Divergence,Divergence version of Windurst.
+297,Dynamis - Jeuno [D],DYNAMIS_JEUNO_D,255,UNKNOWN,Unknown / no official region,Dynamis - Divergence,Divergence version of Jeuno.
+298,Walk of Echoes [P1],WALK_OF_ECHOES_P1,255,UNKNOWN,Unknown / no official region,The Threshold,Walk of Echoes phase 1.
+299,Gwora - Throne Room,GWORA_THRONE_ROOM,255,UNKNOWN,Unknown / no official region,East Ulbuka,"Gwora Throne Room, Sortie/underworld endpoint."

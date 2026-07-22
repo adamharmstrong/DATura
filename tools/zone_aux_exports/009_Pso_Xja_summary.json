@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 9,
+    "name": "Pso'Xja",
+    "model": "ROM3/0/8.DAT",
+    "dialog": "ROM3/2/19.DAT",
+    "npc": "ROM3/2/119.DAT",
+    "event": "ROM3/0/75.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\8.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\119.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\19.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\75.DAT"
+  },
+  "npc_record_count": 471,
+  "named_npc_count": 452,
+  "event_token_count": 946,
+  "placement_candidate_count": 19,
+  "npc_csv": "tools\\zone_aux_exports\\009_Pso_Xja_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\009_Pso_Xja_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\009_Pso_Xja_npc_placement_candidates.csv"
+}

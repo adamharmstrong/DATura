@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 71,
+    "name": "The Colosseum",
+    "model": "ROM4/0/24.DAT",
+    "dialog": "ROM4/1/16.DAT",
+    "npc": "ROM4/1/70.DAT",
+    "event": "ROM4/0/76.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\24.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\70.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\16.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\76.DAT"
+  },
+  "npc_record_count": 522,
+  "named_npc_count": 521,
+  "event_token_count": 106,
+  "placement_candidate_count": 39,
+  "npc_csv": "tools\\zone_aux_exports\\071_The_Colosseum_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\071_The_Colosseum_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\071_The_Colosseum_npc_placement_candidates.csv"
+}

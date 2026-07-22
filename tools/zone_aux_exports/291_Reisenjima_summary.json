@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 291,
+    "name": "Reisenjima",
+    "model": "ROM/342/73.DAT",
+    "dialog": "ROM/342/85.DAT",
+    "npc": "ROM/342/94.DAT",
+    "event": "ROM/342/79.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\342\\73.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\342\\94.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\342\\85.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\342\\79.DAT"
+  },
+  "npc_record_count": 909,
+  "named_npc_count": 873,
+  "event_token_count": 5396,
+  "placement_candidate_count": 42,
+  "npc_csv": "tools\\zone_aux_exports\\291_Reisenjima_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\291_Reisenjima_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\291_Reisenjima_npc_placement_candidates.csv"
+}

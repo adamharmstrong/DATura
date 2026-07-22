@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 122,
+    "name": "Ro'Maeve",
+    "model": "ROM2/0/3.DAT",
+    "dialog": "ROM2/17/55.DAT",
+    "npc": "ROM2/13/98.DAT",
+    "event": "ROM2/13/8.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\3.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\98.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\55.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\8.DAT"
+  },
+  "npc_record_count": 315,
+  "named_npc_count": 310,
+  "event_token_count": 221,
+  "placement_candidate_count": 50,
+  "npc_csv": "tools\\zone_aux_exports\\122_Ro_Maeve_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\122_Ro_Maeve_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\122_Ro_Maeve_npc_placement_candidates.csv"
+}

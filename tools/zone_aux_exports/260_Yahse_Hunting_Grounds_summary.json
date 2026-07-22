@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 260,
+    "name": "Yahse Hunting Grounds",
+    "model": "ROM9/0/7.DAT",
+    "dialog": "ROM9/5/105.DAT",
+    "npc": "ROM9/6/49.DAT",
+    "event": "ROM9/5/57.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\7.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\49.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\105.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\57.DAT"
+  },
+  "npc_record_count": 516,
+  "named_npc_count": 511,
+  "event_token_count": 174,
+  "placement_candidate_count": 36,
+  "npc_csv": "tools\\zone_aux_exports\\260_Yahse_Hunting_Grounds_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\260_Yahse_Hunting_Grounds_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\260_Yahse_Hunting_Grounds_npc_placement_candidates.csv"
+}

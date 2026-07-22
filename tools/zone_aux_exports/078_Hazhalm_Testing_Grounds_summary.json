@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 78,
+    "name": "Hazhalm Testing Grounds",
+    "model": "ROM4/0/31.DAT",
+    "dialog": "ROM4/1/23.DAT",
+    "npc": "ROM4/1/77.DAT",
+    "event": "ROM4/0/83.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\31.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\77.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\23.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\83.DAT"
+  },
+  "npc_record_count": 669,
+  "named_npc_count": 650,
+  "event_token_count": 2065,
+  "placement_candidate_count": 15,
+  "npc_csv": "tools\\zone_aux_exports\\078_Hazhalm_Testing_Grounds_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\078_Hazhalm_Testing_Grounds_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\078_Hazhalm_Testing_Grounds_npc_placement_candidates.csv"
+}

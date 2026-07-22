@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 225,
+    "name": "Windurst-Jeuno Airship",
+    "model": "ROM/1/28.DAT",
+    "dialog": "ROM/25/34.DAT",
+    "npc": "ROM/27/34.DAT",
+    "event": "ROM/21/34.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\28.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\34.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\34.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\34.DAT"
+  },
+  "npc_record_count": 25,
+  "named_npc_count": 23,
+  "event_token_count": 13,
+  "placement_candidate_count": 9,
+  "npc_csv": "tools\\zone_aux_exports\\225_Windurst-Jeuno_Airship_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\225_Windurst-Jeuno_Airship_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\225_Windurst-Jeuno_Airship_npc_placement_candidates.csv"
+}

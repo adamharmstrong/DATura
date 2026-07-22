@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 240,
+    "name": "Port Windurst",
+    "model": "ROM/0/80.DAT",
+    "dialog": "ROM/25/49.DAT",
+    "npc": "ROM/27/49.DAT",
+    "event": "ROM/21/49.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\80.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\49.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\49.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\49.DAT"
+  },
+  "npc_record_count": 285,
+  "named_npc_count": 236,
+  "event_token_count": 4393,
+  "placement_candidate_count": 167,
+  "npc_csv": "tools\\zone_aux_exports\\240_Port_Windurst_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\240_Port_Windurst_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\240_Port_Windurst_npc_placement_candidates.csv"
+}

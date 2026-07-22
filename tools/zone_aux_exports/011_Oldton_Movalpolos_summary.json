@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 11,
+    "name": "Oldton Movalpolos",
+    "model": "ROM3/0/10.DAT",
+    "dialog": "ROM3/2/21.DAT",
+    "npc": "ROM3/2/121.DAT",
+    "event": "ROM3/0/77.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\10.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\121.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\21.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\77.DAT"
+  },
+  "npc_record_count": 273,
+  "named_npc_count": 264,
+  "event_token_count": 1203,
+  "placement_candidate_count": 30,
+  "npc_csv": "tools\\zone_aux_exports\\011_Oldton_Movalpolos_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\011_Oldton_Movalpolos_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\011_Oldton_Movalpolos_npc_placement_candidates.csv"
+}

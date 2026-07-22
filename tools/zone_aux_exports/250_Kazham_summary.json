@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 250,
+    "name": "Kazham",
+    "model": "ROM2/0/25.DAT",
+    "dialog": "ROM2/18/55.DAT",
+    "npc": "ROM2/14/9.DAT",
+    "event": "ROM2/13/47.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\25.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\14\\9.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\18\\55.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\47.DAT"
+  },
+  "npc_record_count": 140,
+  "named_npc_count": 130,
+  "event_token_count": 1564,
+  "placement_candidate_count": 101,
+  "npc_csv": "tools\\zone_aux_exports\\250_Kazham_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\250_Kazham_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\250_Kazham_npc_placement_candidates.csv"
+}

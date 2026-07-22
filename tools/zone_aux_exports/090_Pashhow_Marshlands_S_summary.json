@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 90,
+    "name": "Pashhow Marshlands [S]",
+    "model": "ROM5/0/10.DAT",
+    "dialog": "ROM/24/27.DAT",
+    "npc": "ROM/26/27.DAT",
+    "event": "ROM/20/27.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\10.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\27.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\27.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\27.DAT"
+  },
+  "npc_record_count": 783,
+  "named_npc_count": 751,
+  "event_token_count": 1323,
+  "placement_candidate_count": 35,
+  "npc_csv": "tools\\zone_aux_exports\\090_Pashhow_Marshlands_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\090_Pashhow_Marshlands_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\090_Pashhow_Marshlands_S_npc_placement_candidates.csv"
+}

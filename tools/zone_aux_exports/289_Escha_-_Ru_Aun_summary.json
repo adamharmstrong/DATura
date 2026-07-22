@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 289,
+    "name": "Escha - Ru'Aun",
+    "model": "ROM/337/59.DAT",
+    "dialog": "ROM/337/63.DAT",
+    "npc": "ROM/337/66.DAT",
+    "event": "ROM/337/61.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\337\\59.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\337\\66.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\337\\63.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\337\\61.DAT"
+  },
+  "npc_record_count": 811,
+  "named_npc_count": 804,
+  "event_token_count": 780,
+  "placement_candidate_count": 28,
+  "npc_csv": "tools\\zone_aux_exports\\289_Escha_-_Ru_Aun_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\289_Escha_-_Ru_Aun_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\289_Escha_-_Ru_Aun_npc_placement_candidates.csv"
+}

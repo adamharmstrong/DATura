@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 96,
+    "name": "Fort Karugo-Narugo [S]",
+    "model": "ROM5/0/16.DAT",
+    "dialog": "ROM/24/33.DAT",
+    "npc": "ROM/26/33.DAT",
+    "event": "ROM/20/33.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\16.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\33.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\33.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\33.DAT"
+  },
+  "npc_record_count": 840,
+  "named_npc_count": 799,
+  "event_token_count": 1817,
+  "placement_candidate_count": 110,
+  "npc_csv": "tools\\zone_aux_exports\\096_Fort_Karugo-Narugo_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\096_Fort_Karugo-Narugo_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\096_Fort_Karugo-Narugo_S_npc_placement_candidates.csv"
+}

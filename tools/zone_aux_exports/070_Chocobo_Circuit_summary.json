@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 70,
+    "name": "Chocobo Circuit",
+    "model": "ROM4/5/106.DAT",
+    "dialog": "ROM4/1/15.DAT",
+    "npc": "ROM4/1/69.DAT",
+    "event": "ROM4/0/75.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\5\\106.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\69.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\15.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\75.DAT"
+  },
+  "npc_record_count": 257,
+  "named_npc_count": 150,
+  "event_token_count": 4302,
+  "placement_candidate_count": 123,
+  "npc_csv": "tools\\zone_aux_exports\\070_Chocobo_Circuit_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\070_Chocobo_Circuit_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\070_Chocobo_Circuit_npc_placement_candidates.csv"
+}

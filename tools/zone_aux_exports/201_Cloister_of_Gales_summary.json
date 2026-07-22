@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 201,
+    "name": "Cloister of Gales",
+    "model": "ROM2/0/17.DAT",
+    "dialog": "ROM2/18/6.DAT",
+    "npc": "ROM2/13/125.DAT",
+    "event": "ROM2/13/35.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\17.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\125.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\18\\6.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\35.DAT"
+  },
+  "npc_record_count": 70,
+  "named_npc_count": 67,
+  "event_token_count": 478,
+  "placement_candidate_count": 11,
+  "npc_csv": "tools\\zone_aux_exports\\201_Cloister_of_Gales_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\201_Cloister_of_Gales_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\201_Cloister_of_Gales_npc_placement_candidates.csv"
+}

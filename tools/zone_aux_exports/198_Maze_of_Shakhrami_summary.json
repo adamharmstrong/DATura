@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 198,
+    "name": "Maze of Shakhrami",
+    "model": "ROM/0/75.DAT",
+    "dialog": "ROM/25/7.DAT",
+    "npc": "ROM/27/7.DAT",
+    "event": "ROM/21/7.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\0\\75.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\7.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\7.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\7.DAT"
+  },
+  "npc_record_count": 569,
+  "named_npc_count": 565,
+  "event_token_count": 126,
+  "placement_candidate_count": 49,
+  "npc_csv": "tools\\zone_aux_exports\\198_Maze_of_Shakhrami_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\198_Maze_of_Shakhrami_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\198_Maze_of_Shakhrami_npc_placement_candidates.csv"
+}

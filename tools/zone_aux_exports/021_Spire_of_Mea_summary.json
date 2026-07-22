@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 21,
+    "name": "Spire of Mea",
+    "model": "ROM3/0/20.DAT",
+    "dialog": "ROM3/2/31.DAT",
+    "npc": "ROM3/3/3.DAT",
+    "event": "ROM3/0/87.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\20.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\3.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\31.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\87.DAT"
+  },
+  "npc_record_count": 109,
+  "named_npc_count": 99,
+  "event_token_count": 567,
+  "placement_candidate_count": 11,
+  "npc_csv": "tools\\zone_aux_exports\\021_Spire_of_Mea_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\021_Spire_of_Mea_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\021_Spire_of_Mea_npc_placement_candidates.csv"
+}

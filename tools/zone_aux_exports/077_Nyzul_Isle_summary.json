@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 77,
+    "name": "Nyzul Isle",
+    "model": "ROM4/0/30.DAT",
+    "dialog": "ROM4/1/22.DAT",
+    "npc": "ROM4/1/76.DAT",
+    "event": "ROM4/0/82.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\30.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\76.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\22.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\82.DAT"
+  },
+  "npc_record_count": 866,
+  "named_npc_count": 861,
+  "event_token_count": 81,
+  "placement_candidate_count": 20,
+  "npc_csv": "tools\\zone_aux_exports\\077_Nyzul_Isle_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\077_Nyzul_Isle_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\077_Nyzul_Isle_npc_placement_candidates.csv"
+}

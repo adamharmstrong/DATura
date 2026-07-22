@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 159,
+    "name": "Temple of Uggalepih",
+    "model": "ROM2/0/10.DAT",
+    "dialog": "ROM2/17/92.DAT",
+    "npc": "ROM2/13/108.DAT",
+    "event": "ROM2/13/18.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\10.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\108.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\92.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\18.DAT"
+  },
+  "npc_record_count": 559,
+  "named_npc_count": 544,
+  "event_token_count": 500,
+  "placement_candidate_count": 85,
+  "npc_csv": "tools\\zone_aux_exports\\159_Temple_of_Uggalepih_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\159_Temple_of_Uggalepih_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\159_Temple_of_Uggalepih_npc_placement_candidates.csv"
+}

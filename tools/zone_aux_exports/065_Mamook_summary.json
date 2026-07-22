@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 65,
+    "name": "Mamook",
+    "model": "ROM4/0/18.DAT",
+    "dialog": "ROM4/1/10.DAT",
+    "npc": "ROM4/1/64.DAT",
+    "event": "ROM4/0/70.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\18.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\64.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\10.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\70.DAT"
+  },
+  "npc_record_count": 591,
+  "named_npc_count": 573,
+  "event_token_count": 722,
+  "placement_candidate_count": 36,
+  "npc_csv": "tools\\zone_aux_exports\\065_Mamook_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\065_Mamook_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\065_Mamook_npc_placement_candidates.csv"
+}

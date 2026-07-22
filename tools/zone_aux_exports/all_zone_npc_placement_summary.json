@@ -1,0 +1,7 @@
+{
+  "zone_count": 293,
+  "placement_candidate_count": 14540,
+  "confidence_90_plus_count": 3629,
+  "all_csv": "tools\\zone_aux_exports\\all_zone_npc_placement_candidates.csv",
+  "confidence_90_plus_csv": "tools\\zone_aux_exports\\all_zone_npc_placement_candidates_conf90.csv"
+}

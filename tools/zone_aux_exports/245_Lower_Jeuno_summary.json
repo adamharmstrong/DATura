@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 245,
+    "name": "Lower Jeuno",
+    "model": "ROM/1/41.DAT",
+    "dialog": "ROM/25/54.DAT",
+    "npc": "ROM/27/54.DAT",
+    "event": "ROM/21/54.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\41.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\54.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\54.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\54.DAT"
+  },
+  "npc_record_count": 333,
+  "named_npc_count": 298,
+  "event_token_count": 8255,
+  "placement_candidate_count": 218,
+  "npc_csv": "tools\\zone_aux_exports\\245_Lower_Jeuno_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\245_Lower_Jeuno_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\245_Lower_Jeuno_npc_placement_candidates.csv"
+}

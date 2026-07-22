@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 213,
+    "name": "Labyrinth of Onzozo",
+    "model": "ROM2/12/122.DAT",
+    "dialog": "ROM2/18/18.DAT",
+    "npc": "ROM2/14/6.DAT",
+    "event": "ROM2/13/44.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\12\\122.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\14\\6.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\18\\18.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\44.DAT"
+  },
+  "npc_record_count": 240,
+  "named_npc_count": 238,
+  "event_token_count": 2,
+  "placement_candidate_count": 24,
+  "npc_csv": "tools\\zone_aux_exports\\213_Labyrinth_of_Onzozo_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\213_Labyrinth_of_Onzozo_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\213_Labyrinth_of_Onzozo_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 25,
+    "name": "Misareaux Coast",
+    "model": "ROM3/0/24.DAT",
+    "dialog": "ROM3/2/35.DAT",
+    "npc": "ROM3/3/7.DAT",
+    "event": "ROM3/0/91.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\24.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\7.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\35.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\91.DAT"
+  },
+  "npc_record_count": 391,
+  "named_npc_count": 381,
+  "event_token_count": 2352,
+  "placement_candidate_count": 35,
+  "npc_csv": "tools\\zone_aux_exports\\025_Misareaux_Coast_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\025_Misareaux_Coast_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\025_Misareaux_Coast_npc_placement_candidates.csv"
+}

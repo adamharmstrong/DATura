@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 206,
+    "name": "Qu'Bia Arena",
+    "model": "ROM/1/19.DAT",
+    "dialog": "ROM/25/15.DAT",
+    "npc": "ROM/27/15.DAT",
+    "event": "ROM/21/15.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\19.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\15.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\15.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\15.DAT"
+  },
+  "npc_record_count": 626,
+  "named_npc_count": 622,
+  "event_token_count": 774,
+  "placement_candidate_count": 24,
+  "npc_csv": "tools\\zone_aux_exports\\206_Qu_Bia_Arena_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\206_Qu_Bia_Arena_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\206_Qu_Bia_Arena_npc_placement_candidates.csv"
+}

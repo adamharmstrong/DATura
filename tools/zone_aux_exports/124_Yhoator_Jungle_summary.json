@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 124,
+    "name": "Yhoator Jungle",
+    "model": "ROM2/0/5.DAT",
+    "dialog": "ROM2/17/57.DAT",
+    "npc": "ROM2/13/100.DAT",
+    "event": "ROM2/13/10.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\5.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\100.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\57.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\10.DAT"
+  },
+  "npc_record_count": 582,
+  "named_npc_count": 570,
+  "event_token_count": 76,
+  "placement_candidate_count": 43,
+  "npc_csv": "tools\\zone_aux_exports\\124_Yhoator_Jungle_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\124_Yhoator_Jungle_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\124_Yhoator_Jungle_npc_placement_candidates.csv"
+}

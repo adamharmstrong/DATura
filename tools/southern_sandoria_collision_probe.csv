@@ -1,0 +1,984 @@
+object_name,material,super_flag,sub_flag,blend_flags,flags2,vert_stride,vert_count,index_count,map_refs
+pa_passage02    ,model   kabe    ,64,20,0,0,36,18,25,0
+pa_passage02    ,model   jimenk_0,64,20,0,0,36,10,17,0
+pa_passage02    ,model   jimeni_1,64,20,0,0,36,4,4,0
+pa_passage02    ,model   kabe_2  ,64,20,0,0,36,4,4,0
+_plant_01       ,model   san_w01c,64,116,8192,0,36,183,307,1
+_plant_02       ,model   san_w01c,64,38,8192,0,36,76,112,2
+_plant_03       ,model   ron_w01c,64,238,0,0,36,225,473,1
+_plant_03       ,model   ron_w01c,64,238,8192,0,36,152,226,1
+auc_annai       ,model   orkmado0,64,555,0,0,36,670,1165,0
+auc_annai       ,model   arch    ,64,555,0,0,36,10,19,0
+auc_annai       ,model   kabe    ,64,555,0,0,36,88,171,0
+auc_annai       ,                ,64,555,0,0,36,12,17,0
+auc_annai       ,model   kabe_2  ,64,555,0,0,36,54,99,0
+auc_annai       ,model   jimeni_0,64,555,0,0,36,7,12,0
+auc_board       ,model   wood1   ,64,20,0,0,36,22,49,0
+auc_house       ,model   kabe_2  ,64,544,0,0,36,163,287,0
+auc_house       ,model   kabe    ,64,544,0,0,36,162,361,0
+auc_house       ,model   jimeni_1,64,544,0,0,36,51,91,0
+auc_house       ,model   jimeni_0,64,544,0,0,36,247,427,0
+auc_house       ,model   ido     ,64,544,0,0,36,48,70,0
+auc_house       ,model   funsui  ,64,544,0,0,36,56,82,0
+auc_house       ,model   kabe_1  ,64,544,0,0,36,20,37,0
+auc_house       ,model   rerf4   ,64,544,0,0,36,29,45,0
+auc_house_p1    ,model   orkmado0,64,701,0,0,36,571,1089,0
+auc_house_p1    ,model   kabe_2  ,64,701,0,0,36,117,237,0
+auc_house_p1    ,model   kabe    ,64,701,0,0,36,126,263,0
+auc_house_p1    ,                ,64,701,0,0,36,12,17,0
+auc_house_p1    ,model   jimeni_1,64,701,0,0,36,36,62,0
+auc_house_p1    ,model   jimeni_0,64,701,0,0,36,54,87,0
+auc_house_p1    ,model   kabe_0  ,64,701,0,0,36,9,19,0
+auc_house_p1    ,model   kabe_1  ,64,701,0,0,36,9,14,0
+auc_house_p2    ,model   jimeni_1,64,50,0,0,36,21,39,0
+auc_house_p2    ,model   jimeni_0,64,50,0,0,36,27,43,0
+auc_house_p2    ,model   kabe    ,64,50,0,0,36,9,19,0
+auc_house_p2    ,model   kabe_2  ,64,50,0,0,36,20,35,0
+auc_saku01      ,model   wood1   ,64,76,0,0,36,102,205,0
+auc_saku02      ,model   wood1   ,64,126,0,0,36,162,303,1
+auc_saku03      ,model   wood1   ,64,126,0,0,36,162,309,0
+board_armor01   ,model   kannban0,64,108,0,0,36,115,173,0
+board_armor01   ,model   mark_01 ,64,108,32768,0,36,6,6,0
+board_armor02   ,model   kannban0,64,118,0,0,36,122,219,0
+board_armor02   ,model   mark_01 ,64,118,32768,0,36,10,25,0
+board_armor03   ,model   komono0 ,64,94,0,0,36,144,227,1
+board_armor03   ,model   mark_01 ,64,94,32768,0,36,4,4,1
+board_delivery  ,model   komono0 ,64,94,0,0,36,144,227,0
+board_delivery  ,model   mark_01 ,64,94,32768,0,36,4,4,0
+board_dish01    ,model   kannban0,64,108,0,0,36,112,170,0
+board_dish01    ,model   mark_01 ,64,108,32768,0,36,6,6,0
+board_dish02    ,model   kannban0,64,118,0,0,36,142,239,0
+board_dish02    ,model   mark_01 ,64,118,32768,0,36,10,25,0
+board_dish03    ,model   komono0 ,64,94,0,0,36,144,227,0
+board_dish03    ,model   mark_01 ,64,94,32768,0,36,4,4,0
+board_gild01    ,model   kannban0,64,144,0,0,36,124,205,0
+board_gild01    ,model   mark_01 ,64,144,32768,0,36,16,38,0
+board_gild03    ,model   komono0 ,64,102,0,0,36,152,243,0
+board_gild03    ,model   mark_01 ,64,102,32768,0,36,4,4,0
+board_goods01   ,model   kannban0,64,108,0,0,36,113,170,0
+board_goods01   ,model   mark_01 ,64,108,32768,0,36,6,6,0
+board_goods02   ,model   kannban0,64,118,0,0,36,142,239,0
+board_goods02   ,model   mark_01 ,64,118,32768,0,36,10,25,0
+board_goods03   ,model   komono0 ,64,94,0,0,36,144,227,0
+board_goods03   ,model   mark_01 ,64,94,32768,0,36,4,4,0
+board_myroom01  ,model   kannban0,64,38,0,0,36,38,83,0
+board_myroom01  ,model   mark_01 ,64,38,32768,0,36,4,4,0
+board_pub01     ,model   komono2 ,64,30,0,0,36,4,4,0
+board_pub01     ,model   kannban0,64,30,0,0,36,28,55,0
+board_pub01     ,model   mark_01 ,64,30,32768,0,36,4,4,0
+board_pub03     ,model   komono0 ,64,94,0,0,36,144,231,0
+board_pub03     ,model   mark_01 ,64,94,32768,0,36,4,4,0
+board_weapon01  ,model   kannban0,64,108,0,0,36,113,170,0
+board_weapon01  ,model   mark_01 ,64,108,32768,0,36,6,6,0
+board_weapon02  ,model   kannban0,64,118,0,0,36,142,239,0
+board_weapon02  ,model   mark_01 ,64,118,32768,0,36,10,25,0
+board_weapon03  ,model   komono0 ,64,94,0,0,36,145,224,0
+board_weapon03  ,model   mark_01 ,64,94,32768,0,36,4,4,0
+chocobo         ,model   ido     ,64,2216,0,0,36,50,87,0
+chocobo         ,model   gaitou  ,64,2216,0,0,36,18,31,0
+chocobo         ,model   komono2 ,64,2216,0,0,36,6,6,0
+chocobo         ,model   shpmado0,64,2216,0,0,36,237,401,0
+chocobo         ,model   kannban0,64,2216,0,0,36,24,30,0
+chocobo         ,model   saku0   ,64,2216,0,0,36,102,173,0
+chocobo         ,model   wood0   ,64,2216,0,0,36,722,1303,0
+chocobo         ,model   renga   ,64,2216,0,0,36,257,399,0
+chocobo         ,model   yane_0  ,64,2216,0,0,36,283,553,0
+chocobo         ,model   jimenk_0,64,2216,0,0,36,327,627,0
+chocobo         ,model   kabe_1  ,64,2216,0,0,36,378,687,0
+chocobo         ,model   funsui  ,64,2216,0,0,36,55,97,0
+chocobo         ,model   wood1   ,64,2216,0,0,36,463,689,0
+chocobo         ,model   rerf2   ,64,2216,0,0,36,14,23,0
+chocobo         ,model   kabe_2  ,64,2216,0,0,36,34,42,0
+chocobo         ,model   rerf4   ,64,2216,0,0,36,72,165,0
+chocobo         ,model   arch    ,64,2216,0,0,36,20,33,0
+chocobo         ,model   orkmado0,64,2216,0,0,36,12,14,0
+chocobo         ,model   door0   ,64,2216,0,0,36,9,14,0
+chocobo         ,model   mark_01 ,64,2216,32768,0,36,9,25,0
+chocobo_in      ,model   kabe_1  ,64,226,0,0,36,172,325,0
+chocobo_in      ,model   jimenk_0,64,226,0,0,36,146,301,0
+chocobo_in      ,                ,64,226,0,0,36,3,3,0
+chocobo_p1      ,model   wood0   ,64,434,0,0,36,389,679,0
+chocobo_p1      ,model   kabe_1  ,64,434,0,0,36,65,111,0
+chocobo_p1      ,model   jimenk_0,64,434,0,0,36,48,71,0
+chocobo_p1      ,model   wood1   ,64,434,0,0,36,53,99,0
+chocobo_p1      ,model   ido     ,64,434,0,0,36,24,30,0
+delux_door      ,model   door1   ,64,176,4096,0,36,230,437,0
+divmdl_000      ,model   jimeni_0,64,36,0,0,36,43,93,0
+divmdl_001      ,model   kabe_0  ,64,535,0,0,36,291,443,0
+divmdl_001      ,model   jimeni_0,64,535,0,0,36,196,343,0
+divmdl_001      ,model   jimeni_2,64,535,0,0,36,96,159,0
+divmdl_001      ,model   kabe_3  ,64,535,0,0,36,102,149,0
+divmdl_001      ,model   kabe_2  ,64,535,0,0,36,101,211,0
+door_orc        ,model   gaitou  ,64,126,0,0,36,66,106,0
+door_orc        ,model   door0   ,64,126,0,0,36,64,181,0
+door01          ,model   door0   ,64,168,0,0,36,69,193,5
+door01          ,model   door0   ,64,168,4096,0,36,49,143,5
+door02          ,model   door0   ,64,168,0,0,36,32,53,0
+door02          ,model   door2   ,64,168,0,0,36,89,179,0
+door02          ,model   door2   ,64,168,4096,0,36,65,123,0
+door02          ,model   door0   ,64,168,4096,0,36,32,53,0
+door03          ,model   door0   ,64,128,0,0,36,97,177,0
+door03          ,model   door0   ,64,128,4096,0,36,74,137,0
+eml0            ,model   kabe_2  ,64,184,32768,0,36,142,238,0
+eml0            ,model   arch    ,64,184,32768,0,36,32,46,0
+eml0            ,model   kabe_0  ,64,184,32768,0,36,32,46,0
+eml0            ,model   kabe_1  ,64,184,32768,0,36,46,71,0
+eml0            ,model   jimeni_2,64,184,32768,0,36,30,42,0
+eml1            ,model   kabe_2  ,64,130,0,0,36,6,9,0
+eml1            ,model   kabe_2  ,64,130,32768,0,36,58,109,0
+eml1            ,model   jimeni_1,64,130,32768,0,36,26,49,0
+eml1            ,model   kabe    ,64,130,32768,0,36,69,127,0
+eml1            ,model   rerf2   ,64,130,32768,0,36,14,21,0
+eml1            ,model   jimenk_0,64,130,32768,0,36,10,17,0
+eml1            ,model   jimeni_0,64,130,32768,0,36,11,16,0
+eml2            ,model   kabe_2  ,64,130,0,0,36,6,9,0
+eml2            ,model   kabe_2  ,64,130,32768,0,36,58,109,0
+eml2            ,model   jimeni_1,64,130,32768,0,36,26,43,0
+eml2            ,model   kabe    ,64,130,32768,0,36,67,119,0
+eml2            ,model   rerf2   ,64,130,32768,0,36,14,21,0
+eml2            ,model   jimenk_0,64,130,32768,0,36,10,17,0
+eml2            ,model   jimeni_0,64,130,32768,0,36,10,12,0
+eml3            ,                ,64,98,0,0,36,4,4,0
+eml3            ,model   jimeni_1,64,98,32768,0,36,14,18,0
+eml3            ,model   kabe    ,64,98,32768,0,36,42,81,0
+eml3            ,model   kabe_2  ,64,98,32768,0,36,78,125,0
+eml3            ,model   jimenk_0,64,98,32768,0,36,4,4,0
+eml3            ,model   jimeni_0,64,98,32768,0,36,6,6,0
+eml4            ,model   kabe_2  ,64,70,32768,0,36,62,109,0
+eml4            ,model   jimeni_1,64,70,32768,0,36,8,10,0
+eml4            ,model   kabe    ,64,70,32768,0,36,28,43,0
+eml4            ,model   jimenk_0,64,70,32768,0,36,4,4,0
+eml5            ,                ,64,93,0,0,36,4,21,0
+eml5            ,model   kabe    ,64,93,32768,0,36,33,89,0
+eml5            ,model   jimeni_1,64,93,32768,0,36,11,13,0
+eml5            ,model   kabe_2  ,64,93,32768,0,36,64,105,0
+eml5            ,model   jimenk_0,64,93,32768,0,36,4,4,0
+eml6            ,model   jimeni_1,64,67,32768,0,36,8,10,0
+eml6            ,model   kabe    ,64,67,32768,0,36,26,41,0
+eml6            ,model   jimenk_0,64,67,32768,0,36,4,4,0
+eml6            ,model   kabe_2  ,64,67,32768,0,36,62,109,0
+eml7            ,model   funsui  ,64,207,0,0,36,60,101,0
+eml7            ,model   kabe_2  ,64,207,0,0,36,24,30,0
+eml7            ,model   jimeni_0,64,207,32768,0,36,56,78,0
+eml7            ,model   kabe_2  ,64,207,32768,0,36,79,125,0
+eml7            ,model   jimeni_2,64,207,32768,0,36,8,10,0
+eml7            ,model   kabe    ,64,207,32768,0,36,8,10,0
+eml7            ,model   funsui  ,64,207,32768,0,36,84,161,0
+eml8            ,model   kabe_2  ,64,168,0,0,36,16,22,0
+eml8            ,model   jimeni_1,64,168,32768,0,36,16,22,0
+eml8            ,model   kabe    ,64,168,32768,0,36,52,79,0
+eml8            ,model   kabe_2  ,64,168,32768,0,36,183,277,0
+eml8            ,model   jimenk_0,64,168,32768,0,36,8,10,0
+eml9            ,model   jimeni_1,64,192,32768,0,36,16,22,0
+eml9            ,model   kabe    ,64,192,32768,0,36,70,111,0
+eml9            ,model   kabe_2  ,64,192,32768,0,36,204,331,0
+eml9            ,model   jimenk_0,64,192,32768,0,36,8,10,0
+eml9            ,model   jimeni_2,64,192,32768,0,36,4,4,0
+emla            ,model   jimeni_1,64,274,32768,0,36,28,40,0
+emla            ,model   kabe    ,64,274,32768,0,36,112,183,0
+emla            ,model   kabe_2  ,64,274,32768,0,36,259,401,0
+emla            ,model   jimeni_0,64,274,32768,0,36,12,16,0
+emla            ,model   jimenk_0,64,274,32768,0,36,16,22,0
+emlb            ,model   kabe    ,64,200,32768,0,36,130,209,0
+emlb            ,model   jimenk_0,64,200,32768,0,36,28,49,0
+emlb            ,model   jimeni_1,64,200,32768,0,36,31,46,0
+emlb            ,model   kabe_2  ,64,200,32768,0,36,104,177,0
+emlc            ,model   jimeni_1,64,91,0,0,36,10,12,0
+emlc            ,model   jimeni_1,64,91,32768,0,36,27,53,0
+emlc            ,model   kabe_0  ,64,91,32768,0,36,74,145,0
+gatehouse01     ,model   shpmado0,64,1922,0,0,36,160,291,0
+gatehouse01     ,model   jimeni_0,64,1922,0,0,36,79,123,0
+gatehouse01     ,model   wood1   ,64,1922,0,0,36,229,339,0
+gatehouse01     ,model   kannban0,64,1922,0,0,36,66,86,0
+gatehouse01     ,model   kabe    ,64,1922,0,0,36,650,1345,0
+gatehouse01     ,model   kabe_2  ,64,1922,0,0,36,755,1453,0
+gatehouse01     ,model   kabe_0  ,64,1922,0,0,36,285,519,0
+gatehouse01     ,model   jimeni_1,64,1922,0,0,36,21,41,0
+gatehouse01     ,model   kabe_1  ,64,1922,0,0,36,148,223,0
+gatehouse01     ,model   arch    ,64,1922,0,0,36,72,131,0
+gatehouse01     ,model   jimenk_0,64,1922,0,0,36,4,4,0
+gatehouse01     ,model   ido     ,64,1922,0,0,36,38,60,0
+gatehouse01     ,model   kabe_3  ,64,1922,0,0,36,27,38,0
+gatehouse01     ,model   jimeni_2,64,1922,0,0,36,8,10,0
+gatehouse01     ,model   funsui  ,64,1922,0,0,36,113,195,0
+gatehouse01     ,                ,64,1922,0,0,36,4,4,0
+gatehouse01     ,model   rerf4   ,64,1922,0,0,36,4,4,0
+gatehouse02     ,model   kabe_0  ,64,352,0,0,36,33,61,0
+gatehouse02     ,model   kabe    ,64,352,0,0,36,139,251,0
+gatehouse02     ,model   jimenk_0,64,352,0,0,36,6,6,0
+gatehouse02     ,model   door0   ,64,352,0,0,36,92,205,0
+gatehouse02     ,model   gaitou  ,64,352,0,0,36,112,197,0
+gatehouse02     ,model   jimeni_2,64,352,0,0,36,40,87,0
+gatehouse02     ,model   kabe_2  ,64,352,0,0,36,68,141,0
+gatehouse02     ,model   wood0   ,64,352,0,0,36,16,27,0
+gatehouse03     ,model   wood0   ,64,288,0,0,36,22,35,2
+gatehouse03     ,model   jimeni_2,64,288,0,0,36,48,75,2
+gatehouse03     ,model   kabe_0  ,64,288,0,0,36,57,95,2
+gatehouse03     ,model   kabe_2  ,64,288,0,0,36,53,105,2
+gatehouse03     ,model   gaitou  ,64,288,0,0,36,114,187,2
+gatehouse03     ,                ,64,288,0,0,36,16,23,2
+gatehouse03     ,model   door0   ,64,288,0,0,36,88,201,2
+gatehouse03     ,model   jimenk_0,64,288,0,0,36,11,25,2
+gatehouse03     ,model   kabe    ,64,288,0,0,36,38,59,2
+gatehouse04     ,model   wood0   ,64,320,0,0,36,22,35,0
+gatehouse04     ,model   jimeni_2,64,320,0,0,36,52,85,0
+gatehouse04     ,model   kabe_0  ,64,320,0,0,36,45,73,0
+gatehouse04     ,model   kabe_2  ,64,320,0,0,36,61,113,0
+gatehouse04     ,model   gaitou  ,64,320,0,0,36,56,97,0
+gatehouse04     ,model   door0   ,64,320,0,0,36,88,201,0
+gatehouse04     ,model   jimenk_0,64,320,0,0,36,12,14,0
+gatehouse04     ,model   komono2 ,64,320,0,0,36,54,93,0
+gatehouse04     ,model   kabe    ,64,320,0,0,36,60,101,0
+gild_door00     ,model   door0   ,64,176,0,0,36,230,437,0
+gild_door01     ,model   door0   ,64,210,0,0,36,174,271,1
+gild_door01     ,model   door0   ,64,210,4096,0,36,148,257,1
+gild_door03     ,model   door0   ,64,272,0,0,36,164,369,0
+gild_door03     ,model   door0   ,64,272,4096,0,36,139,319,0
+gild_in01       ,model   kabe_1  ,64,96,0,0,36,61,111,0
+gild_in01       ,model   jimenk_0,64,96,0,0,36,56,117,0
+gild_in01       ,                ,64,96,0,0,36,6,6,0
+gild_in02       ,model   kabe_1  ,64,218,0,0,36,135,251,0
+gild_in02       ,model   jimenk_0,64,218,0,0,36,162,265,0
+gildhouse01     ,model   saku0   ,64,993,0,0,36,512,762,0
+gildhouse01     ,model   jimenk_0,64,993,0,0,36,132,257,0
+gildhouse01     ,model   wood0   ,64,993,0,0,36,155,233,0
+gildhouse01     ,model   kabe_2  ,64,993,0,0,36,96,146,0
+gildhouse01     ,model   wood1   ,64,993,0,0,36,69,123,0
+gildhouse01     ,                ,64,993,0,0,36,11,15,0
+gildhouse01     ,model   yane_0  ,64,993,0,0,36,60,107,0
+gildhouse01     ,model   kabe_1  ,64,993,0,0,36,84,127,0
+gildhouse01     ,model   kabe_0  ,64,993,0,0,36,172,275,0
+gildhouse01     ,model   funsui  ,64,993,0,0,36,13,18,0
+gildhouse01     ,model   ido     ,64,993,0,0,36,36,52,0
+gildhouse01     ,model   kannban0,64,993,0,0,36,28,43,0
+gildhouse01     ,model   shpmado0,64,993,0,0,36,20,37,0
+gildhouse01     ,model   rerf4   ,64,993,0,0,36,367,553,0
+gildhouse01     ,model   renga   ,64,993,0,0,36,32,46,0
+gildhouse01     ,model   rerf5   ,64,993,0,0,36,36,52,0
+gildhouse01     ,model   jimenk_0,64,993,32768,0,36,9,13,0
+gildhouse01_p1  ,model   wood0   ,64,154,0,0,36,73,111,0
+gildhouse01_p1  ,model   yane_0  ,64,154,0,0,36,18,35,0
+gildhouse01_p1  ,model   kabe_0  ,64,154,0,0,36,27,51,0
+gildhouse01_p1  ,model   jimenk_0,64,154,0,0,36,46,91,0
+gildhouse01_p1  ,model   kabe_1  ,64,154,0,0,36,20,28,0
+gildhouse01_p1  ,model   kabe_2  ,64,154,0,0,36,37,55,0
+gildhouse01_p1  ,model   wood1   ,64,154,0,0,36,16,24,0
+gildhouse01_p1  ,model   shpmado0,64,154,0,0,36,3,3,0
+gildhouse01_p1  ,model   renga   ,64,154,0,0,36,4,4,0
+gildhouse01_p2  ,model   wood0   ,64,206,0,0,36,126,213,0
+gildhouse01_p2  ,                ,64,206,0,0,36,6,9,0
+gildhouse01_p2  ,model   kabe_0  ,64,206,0,0,36,25,36,0
+gildhouse01_p2  ,model   yane_0  ,64,206,0,0,36,22,39,0
+gildhouse01_p2  ,model   jimenk_0,64,206,0,0,36,26,57,0
+gildhouse01_p2  ,model   wood1   ,64,206,0,0,36,13,18,0
+gildhouse01_p2  ,model   shpmado0,64,206,0,0,36,19,27,0
+gildhouse01_p2  ,model   rerf5   ,64,206,0,0,36,13,18,0
+gildhouse01_p2  ,model   rerf4   ,64,206,0,0,36,52,91,0
+gildhouse01_p2  ,model   orkmado0,64,206,0,0,36,32,55,0
+gildhouse01_p2  ,model   jimenk_0,64,206,32768,0,36,8,13,0
+gildhouse02     ,model   jimeni_0,64,192,0,0,36,96,128,0
+gildhouse02     ,model   jimeni_1,64,192,0,0,36,26,47,0
+gildhouse02     ,model   kabe_0  ,64,192,0,0,36,105,207,0
+gildhouse02     ,model   jimenk_0,64,192,0,0,36,19,31,0
+gildhouse02     ,model   kabe_2  ,64,192,0,0,36,44,87,0
+gildhouse02_p1  ,model   jimeni_1,64,155,0,0,36,36,71,0
+gildhouse02_p1  ,model   kabe_0  ,64,155,0,0,36,105,185,0
+gildhouse02_p1  ,model   jimenk_0,64,155,0,0,36,25,47,0
+gildhouse02_p1  ,model   kabe_2  ,64,155,0,0,36,38,73,0
+gildhouse02_p1  ,model   jimeni_0,64,155,0,0,36,6,6,0
+gildhouse02_p2  ,model   jimeni_1,64,174,0,0,36,15,27,0
+gildhouse02_p2  ,model   jimeni_0,64,174,0,0,36,98,130,0
+gildhouse02_p2  ,model   kabe_0  ,64,174,0,0,36,67,119,0
+gildhouse02_p2  ,model   kabe_2  ,64,174,0,0,36,58,109,0
+gildhouse02_p2  ,model   jimenk_0,64,174,0,0,36,19,29,0
+gildhouse02_p3  ,model   kabe_0  ,64,100,0,0,36,60,129,0
+gildhouse02_p3  ,model   jimeni_1,64,100,0,0,36,15,27,0
+gildhouse02_p3  ,model   jimenk_0,64,100,0,0,36,43,73,0
+gildhouse02_p3  ,model   jimeni_0,64,100,0,0,36,6,6,0
+house_00_in     ,model   kabe_1  ,64,284,0,0,36,209,395,0
+house_00_in     ,model   jimenk_0,64,284,0,0,36,202,355,0
+house_01        ,model   saku0   ,64,1434,0,0,36,115,163,0
+house_01        ,model   jimeni_0,64,1434,0,0,36,72,143,0
+house_01        ,model   kabe_1  ,64,1434,0,0,36,101,203,0
+house_01        ,model   wood0   ,64,1434,0,0,36,640,1059,0
+house_01        ,model   kabe_2  ,64,1434,0,0,36,188,361,0
+house_01        ,model   jimenk_0,64,1434,0,0,36,310,663,0
+house_01        ,model   funsui  ,64,1434,0,0,36,120,215,0
+house_01        ,model   yane_0  ,64,1434,0,0,36,169,393,0
+house_01        ,model   renga   ,64,1434,0,0,36,113,199,0
+house_01        ,model   door0   ,64,1434,0,0,36,14,21,0
+house_01_in     ,model   kabe_1  ,64,242,0,0,36,194,425,1
+house_01_in     ,model   jimenk_0,64,242,0,0,36,122,255,1
+house_01s       ,model   jimenk_0,64,748,0,0,36,210,407,0
+house_01s       ,model   renga   ,64,748,0,0,36,106,183,0
+house_01s       ,model   saku0   ,64,748,0,0,36,115,163,0
+house_01s       ,model   funsui  ,64,748,0,0,36,70,127,0
+house_01s       ,model   kabe_2  ,64,748,0,0,36,95,149,0
+house_01s       ,model   kabe_1  ,64,748,0,0,36,36,77,0
+house_01s       ,model   yane_0  ,64,748,0,0,36,169,393,0
+house_01s       ,model   wood0   ,64,748,0,0,36,186,337,0
+house_01s_p1    ,model   jimeni_0,64,686,0,0,36,72,143,0
+house_01s_p1    ,model   kabe_1  ,64,686,0,0,36,74,153,0
+house_01s_p1    ,model   wood0   ,64,686,0,0,36,456,729,0
+house_01s_p1    ,model   kabe_2  ,64,686,0,0,36,110,187,0
+house_01s_p1    ,model   jimenk_0,64,686,0,0,36,113,253,0
+house_01s_p1    ,model   funsui  ,64,686,0,0,36,50,85,0
+house_01s_p1    ,model   renga   ,64,686,0,0,36,9,13,0
+house_01s_p1    ,model   door0   ,64,686,0,0,36,14,21,0
+house_02        ,model   saku0   ,64,865,0,0,36,79,153,1
+house_02        ,model   shpmado0,64,865,0,0,36,90,165,1
+house_02        ,model   yane_0  ,64,865,0,0,36,135,299,1
+house_02        ,model   kabe_1  ,64,865,0,0,36,95,197,1
+house_02        ,model   wood0   ,64,865,0,0,36,361,589,1
+house_02        ,model   funsui  ,64,865,0,0,36,106,211,1
+house_02        ,model   jimenk_0,64,865,0,0,36,133,271,1
+house_02        ,model   kabe_2  ,64,865,0,0,36,122,281,1
+house_02        ,model   jimeni_0,64,865,0,0,36,28,57,1
+house_02_in     ,model   kabe_1  ,64,312,0,0,36,215,419,0
+house_02_in     ,model   jimenk_0,64,312,0,0,36,173,359,0
+house_03        ,model   saku0   ,64,912,0,0,36,148,281,0
+house_03        ,model   yane_0  ,64,912,0,0,36,175,371,0
+house_03        ,model   wood0   ,64,912,0,0,36,261,457,0
+house_03        ,model   kabe_2  ,64,912,0,0,36,129,215,0
+house_03        ,model   shpmado0,64,912,0,0,36,44,73,0
+house_03        ,model   funsui  ,64,912,0,0,36,119,245,0
+house_03        ,model   kabe_1  ,64,912,0,0,36,108,199,0
+house_03        ,model   jimenk_0,64,912,0,0,36,189,377,0
+house_03        ,                ,64,912,0,0,36,10,16,0
+house_03        ,model   ido     ,64,912,0,0,36,21,41,0
+house_03        ,model   renga   ,64,912,0,0,36,22,43,0
+house_03_in     ,model   kabe_1  ,64,304,0,0,36,252,507,1
+house_03_in     ,model   jimenk_0,64,304,0,0,36,161,329,1
+house_03_p1     ,model   saku0   ,64,811,0,0,36,86,106,0
+house_03_p1     ,model   funsui  ,64,811,0,0,36,62,119,0
+house_03_p1     ,model   wood0   ,64,811,0,0,36,449,781,0
+house_03_p1     ,model   kadan   ,64,811,0,0,36,15,22,0
+house_03_p1     ,model   kabe_1  ,64,811,0,0,36,69,141,0
+house_03_p1     ,model   kabe_2  ,64,811,0,0,36,95,159,0
+house_03_p1     ,model   jimenk_0,64,811,0,0,36,101,207,0
+house_03_p1     ,model   jimeni_0,64,811,0,0,36,65,147,0
+house_03_p1     ,                ,64,811,0,0,36,9,12,0
+house_03_p1     ,model   shpmado0,64,811,0,0,36,6,9,0
+house_03_p1     ,model   sibasaku,64,811,0,0,36,127,229,0
+house_04        ,model   wood0   ,64,1291,8192,0,36,595,1057,0
+house_04        ,model   shpmado0,64,1291,8192,0,36,275,465,0
+house_04        ,model   saku0   ,64,1291,8192,0,36,261,386,0
+house_04        ,model   kabe_1  ,64,1291,8192,0,36,232,409,0
+house_04        ,model   jimenk_0,64,1291,8192,0,36,186,375,0
+house_04        ,model   renga   ,64,1291,8192,0,36,130,217,0
+house_04        ,                ,64,1291,8192,0,36,15,23,0
+house_04        ,model   yane_0  ,64,1291,8192,0,36,117,283,0
+house_04        ,model   funsui  ,64,1291,8192,0,36,47,81,0
+house_04        ,model   kabe_2  ,64,1291,8192,0,36,21,49,0
+house_04        ,model   door0   ,64,1291,8192,0,36,7,9,0
+house_04_in     ,model   kabe_1  ,64,328,0,0,36,252,481,0
+house_04_in     ,model   jimenk_0,64,328,0,0,36,224,411,0
+house_04_in     ,                ,64,328,0,0,36,4,4,0
+house_04_p1     ,model   wood0   ,64,333,0,0,36,160,253,0
+house_04_p1     ,model   jimeni_0,64,333,0,0,36,55,131,0
+house_04_p1     ,model   kabe_1  ,64,333,0,0,36,52,107,0
+house_04_p1     ,model   jimenk_0,64,333,0,0,36,15,20,0
+house_04_p1     ,model   kabe_2  ,64,333,0,0,36,11,27,0
+house_04_p1     ,model   kadan   ,64,333,0,0,36,12,27,0
+house_04_p1     ,model   sibasaku,64,333,0,0,36,72,107,0
+house_04_p1     ,model   saku0   ,64,333,0,0,36,67,98,0
+house_05        ,model   shpmado0,64,1205,0,0,36,948,1781,0
+house_05        ,model   kabe_1  ,64,1205,0,0,36,251,447,0
+house_05        ,model   kabe    ,64,1205,0,0,36,81,157,0
+house_05        ,model   yane_0  ,64,1205,0,0,36,320,591,0
+house_05        ,model   kabe_2  ,64,1205,0,0,36,104,211,0
+house_05        ,model   jimenk_0,64,1205,0,0,36,70,121,0
+house_05        ,model   funsui  ,64,1205,0,0,36,60,95,0
+house_05        ,                ,64,1205,0,0,36,4,4,0
+house_05        ,model   wood0   ,64,1205,0,0,36,15,25,0
+house_05        ,model   renga   ,64,1205,0,0,36,22,35,0
+house_05_in     ,model   kabe_1  ,64,358,0,0,36,239,429,0
+house_05_in     ,model   jimenk_0,64,358,0,0,36,227,401,0
+house_05_p1     ,model   kabe_2  ,64,300,0,0,36,147,251,0
+house_05_p1     ,model   jimeni_0,64,300,0,0,36,74,124,0
+house_05_p1     ,model   kabe_1  ,64,300,0,0,36,24,43,0
+house_05_p1     ,model   shpmado0,64,300,0,0,36,110,193,0
+house_05_p1     ,model   kabe    ,64,300,0,0,36,44,87,0
+house_05_p1     ,model   kabe_0  ,64,300,0,0,36,12,19,0
+house_05_p1     ,model   jimeni_1,64,300,0,0,36,10,15,0
+house_05_p1     ,model   siba0   ,64,300,0,0,36,12,14,0
+house_05_p1     ,model   jimenk_0,64,300,0,0,36,8,10,0
+lef_01          ,model   jimeni_1,64,352,0,0,36,199,337,0
+lef_01          ,model   kabe_2  ,64,352,0,0,36,150,275,0
+lef_01          ,model   kabe_3  ,64,352,0,0,36,53,103,0
+lef_01          ,model   kabe_0  ,64,352,0,0,36,154,273,0
+lef_01_p1       ,model   jimeni_1,64,41,0,0,36,90,159,0
+lef_02          ,model   jimeni_2,64,1075,0,0,36,199,345,0
+lef_02          ,model   kabe_0  ,64,1075,0,0,36,520,925,0
+lef_02          ,model   kabe_3  ,64,1075,0,0,36,142,255,0
+lef_02          ,model   jimeni_1,64,1075,0,0,36,49,109,0
+lef_02          ,model   kabe_2  ,64,1075,0,0,36,356,645,0
+lef_02          ,model   jimeni_0,64,1075,0,0,36,319,665,0
+lef_03          ,model   jimeni_0,64,521,0,0,36,126,277,0
+lef_03          ,model   jimeni_2,64,521,0,0,36,44,83,0
+lef_03          ,model   kabe_0  ,64,521,0,0,36,378,625,0
+lef_03          ,model   kabe_2  ,64,521,0,0,36,134,239,0
+lef_03          ,model   kabe_3  ,64,521,0,0,36,114,159,0
+lef_04          ,model   siba0   ,64,1400,0,0,36,188,311,0
+lef_04          ,model   kabe_2  ,64,1400,0,0,36,286,523,0
+lef_04          ,model   jimeni_0,64,1400,0,0,36,283,591,0
+lef_04          ,model   kabe_0  ,64,1400,0,0,36,876,1539,0
+lef_04          ,model   kabe_3  ,64,1400,0,0,36,218,451,0
+lef_04          ,model   jimeni_2,64,1400,0,0,36,92,179,0
+lef_04          ,model   jimeni_1,64,1400,0,0,36,6,11,0
+lef_04          ,model   siba0   ,64,1400,32768,0,36,123,209,0
+lef_05          ,model   kabe_0  ,64,413,0,0,36,225,359,0
+lef_05          ,model   kabe_3  ,64,413,0,0,36,51,99,0
+lef_05          ,model   jimeni_0,64,413,0,0,36,143,359,0
+lef_05          ,model   kabe_2  ,64,413,0,0,36,99,163,0
+lef_05          ,model   jimeni_2,64,413,0,0,36,104,187,0
+lef_05          ,model   jimeni_0,64,413,32768,0,36,10,13,0
+lef_06          ,model   jimeni_0,64,367,0,0,36,127,255,0
+lef_06          ,model   kabe_0  ,64,367,0,0,36,245,453,0
+lef_06          ,model   kabe_2  ,64,367,0,0,36,60,107,0
+lef_06          ,model   kabe_3  ,64,367,0,0,36,64,113,0
+lef_06          ,model   jimeni_2,64,367,0,0,36,25,45,0
+lef_06          ,model   siba0   ,64,367,0,0,36,16,27,0
+lef_06          ,model   siba0   ,64,367,32768,0,36,20,33,0
+lef_06_p1       ,model   jimeni_0,64,35,0,0,36,41,81,0
+lef_07          ,model   kabe_0  ,64,417,0,0,36,241,405,0
+lef_07          ,model   kabe_3  ,64,417,0,0,36,52,105,0
+lef_07          ,model   jimeni_0,64,417,0,0,36,157,315,0
+lef_07          ,model   kabe_2  ,64,417,0,0,36,94,183,0
+lef_07          ,model   jimeni_2,64,417,0,0,36,83,159,0
+lef_07          ,model   siba0   ,64,417,0,0,36,3,3,0
+lef_07          ,model   siba0   ,64,417,32768,0,36,6,11,0
+lef_08          ,model   kabe_0  ,64,384,0,0,36,247,435,0
+lef_08          ,model   kabe_2  ,64,384,0,0,36,123,195,0
+lef_08          ,model   jimeni_2,64,384,0,0,36,29,51,0
+lef_08          ,model   jimeni_0,64,384,0,0,36,116,267,0
+lef_08          ,model   kabe_3  ,64,384,0,0,36,64,103,0
+lef_08          ,model   siba0   ,64,384,0,0,36,21,33,0
+lef_08          ,model   siba0   ,64,384,32768,0,36,20,26,0
+lef_09          ,model   jimeni_0,64,1510,0,0,36,248,443,0
+lef_09          ,model   kabe_2  ,64,1510,0,0,36,438,759,0
+lef_09          ,model   jimeni_1,64,1510,0,0,36,271,475,0
+lef_09          ,model   siba0   ,64,1510,0,0,36,362,581,0
+lef_09          ,model   kabe_0  ,64,1510,0,0,36,524,865,0
+lef_09          ,model   kabe_3  ,64,1510,0,0,36,198,301,0
+lef_09          ,model   jimeni_2,64,1510,0,0,36,30,61,0
+lef_09          ,model   siba0   ,64,1510,32768,0,36,330,579,0
+lef_bridge      ,model   kabe_2  ,64,1669,0,0,36,1303,2499,0
+lef_bridge      ,model   jimeni_1,64,1669,0,0,36,158,325,0
+lef_bridge      ,model   kabe_0  ,64,1669,0,0,36,364,635,0
+lef_bridge      ,model   rerf4   ,64,1669,0,0,36,312,503,0
+lef_bridge      ,model   siba0   ,64,1669,0,0,36,59,125,0
+lef_bridge      ,model   jimeni_0,64,1669,0,0,36,32,47,0
+lef_bridge      ,model   siba0   ,64,1669,32768,0,36,61,91,0
+lef_gate01      ,model   jimeni_1,64,840,0,0,36,155,247,0
+lef_gate01      ,model   kabe_0  ,64,840,0,0,36,304,475,0
+lef_gate01      ,model   kabe_2  ,64,840,0,0,36,203,351,0
+lef_gate01      ,model   kabe_3  ,64,840,0,0,36,118,191,0
+lef_gate01      ,model   siba0   ,64,840,0,0,36,147,230,0
+lef_gate01      ,model   jimeni_0,64,840,0,0,36,318,567,0
+lef_gate01      ,model   jimeni_2,64,840,0,0,36,19,37,0
+lef_gate01      ,model   siba0   ,64,840,32768,0,36,98,169,0
+lef_gate02      ,model   kabe_3  ,64,847,0,0,36,75,125,0
+lef_gate02      ,model   jimeni_1,64,847,0,0,36,154,242,0
+lef_gate02      ,model   kabe_0  ,64,847,0,0,36,327,501,0
+lef_gate02      ,model   kabe_2  ,64,847,0,0,36,203,375,0
+lef_gate02      ,model   siba0   ,64,847,0,0,36,146,231,0
+lef_gate02      ,model   jimeni_0,64,847,0,0,36,318,565,0
+lef_gate02      ,model   jimeni_2,64,847,0,0,36,17,33,0
+lef_gate02      ,model   siba0   ,64,847,32768,0,36,106,183,0
+mid_01          ,model   kabe_0  ,64,653,0,0,36,395,669,0
+mid_01          ,model   jimeni_0,64,653,0,0,36,159,345,0
+mid_01          ,model   kabe_2  ,64,653,0,0,36,203,353,0
+mid_01          ,model   jimeni_2,64,653,0,0,36,7,7,0
+mid_01          ,model   jimeni_1,64,653,0,0,36,81,157,0
+mid_01          ,model   kabe_3  ,64,653,0,0,36,92,136,0
+mid_02          ,model   kabe_0  ,64,881,0,0,36,417,689,0
+mid_02          ,model   jimeni_0,64,881,0,0,36,231,465,0
+mid_02          ,model   kabe_2  ,64,881,0,0,36,202,409,0
+mid_02          ,model   jimeni_2,64,881,0,0,36,7,7,0
+mid_02          ,model   jimeni_1,64,881,0,0,36,83,167,0
+mid_02          ,model   kabe_3  ,64,881,0,0,36,92,136,0
+mid_02          ,model   siba0   ,64,881,0,0,36,169,295,0
+mid_02          ,model   siba0   ,64,881,32768,0,36,139,243,0
+mid_03          ,model   kabe_2  ,64,612,0,0,36,516,1091,0
+mid_03          ,model   arch    ,64,612,0,0,36,68,109,0
+mid_03          ,model   kabe_0  ,64,612,0,0,36,70,107,0
+mid_03          ,model   kabe_1  ,64,612,0,0,36,133,217,0
+mid_03          ,model   jimeni_2,64,612,0,0,36,68,103,0
+mid_03s         ,model   kabe_2  ,64,82,0,0,36,99,203,0
+mid_04          ,model   kabe_0  ,64,931,0,0,36,354,593,0
+mid_04          ,model   kabe_3  ,64,931,0,0,36,110,167,0
+mid_04          ,model   kabe_2  ,64,931,0,0,36,77,163,0
+mid_04          ,model   jimeni_0,64,931,0,0,36,260,559,0
+mid_04          ,model   jimeni_1,64,931,0,0,36,263,525,0
+mid_04          ,model   siba0   ,64,931,0,0,36,114,183,0
+mid_04          ,model   jimeni_2,64,931,0,0,36,10,15,0
+mid_04          ,model   rerf3   ,64,931,0,0,36,8,10,0
+mid_04          ,model   siba0   ,64,931,32768,0,36,117,179,0
+mid_05          ,model   jimeni_0,64,631,0,0,36,309,687,0
+mid_05          ,model   jimeni_1,64,631,0,0,36,188,365,0
+mid_05          ,model   kabe_0  ,64,631,0,0,36,239,399,0
+mid_05          ,model   kabe_3  ,64,631,0,0,36,82,120,0
+mid_05          ,model   siba0   ,64,631,0,0,36,21,30,0
+mid_05          ,model   siba0   ,64,631,32768,0,36,29,53,0
+myroom_01       ,model   wood1   ,64,549,0,0,36,116,183,0
+myroom_01       ,model   kabe_2  ,64,549,0,0,36,99,163,0
+myroom_01       ,model   kabe_0  ,64,549,0,0,36,386,733,0
+myroom_01       ,model   kadan   ,64,549,0,0,36,59,109,0
+myroom_01       ,model   kabe_1  ,64,549,0,0,36,48,75,0
+myroom_01       ,model   mizo    ,64,549,0,0,36,18,22,0
+myroom_01       ,                ,64,549,0,0,36,3,3,0
+myroom_01       ,model   kabe_3  ,64,549,0,0,36,10,12,0
+myroom_01       ,model   ido     ,64,549,0,0,36,28,51,0
+myroom_01       ,model   funsui  ,64,549,0,0,36,10,12,0
+myroom_01       ,model   jimeni_0,64,549,0,0,36,4,4,0
+myroom_01       ,model   rerf4   ,64,549,0,0,36,4,4,0
+myroom_01_p1    ,model   kabe_0  ,64,192,0,0,36,144,309,0
+myroom_01_p1    ,model   kabe_2  ,64,192,0,0,36,19,39,0
+myroom_01_p1    ,model   rerf3   ,64,192,0,0,36,40,63,0
+myroom_01_p1    ,model   ido     ,64,192,0,0,36,16,25,0
+myroom_01_p1    ,model   wood1   ,64,192,0,0,36,10,17,0
+myroom_02       ,model   wood1   ,64,487,0,0,36,112,163,0
+myroom_02       ,model   kabe_2  ,64,487,0,0,36,90,141,0
+myroom_02       ,model   kabe_0  ,64,487,0,0,36,329,627,0
+myroom_02       ,model   kadan   ,64,487,0,0,36,54,101,0
+myroom_02       ,model   kabe_1  ,64,487,0,0,36,55,79,0
+myroom_02       ,model   mizo    ,64,487,0,0,36,18,22,0
+myroom_02       ,                ,64,487,0,0,36,3,3,0
+myroom_02       ,model   jimeni_0,64,487,0,0,36,4,4,0
+myroom_02       ,model   kabe_3  ,64,487,0,0,36,10,12,0
+myroom_02       ,model   funsui  ,64,487,0,0,36,12,16,0
+myroom_02       ,model   rerf4   ,64,487,0,0,36,4,4,0
+myroom_02       ,model   ido     ,64,487,0,0,36,12,24,0
+myroom_02_p1    ,model   kabe_0  ,64,147,0,0,36,175,305,0
+myroom_02_p1    ,model   kabe_2  ,64,147,0,0,36,20,49,0
+myroom_02_p1    ,model   ido     ,64,147,0,0,36,18,29,0
+north_bridge    ,model   kannban0,64,320,0,0,36,141,237,0
+north_bridge    ,model   kabe_0  ,64,320,0,0,36,131,186,0
+north_bridge    ,model   jimenk_0,64,320,0,0,36,24,34,0
+north_bridge    ,model   rerf4   ,64,320,0,0,36,56,74,0
+north_bridge    ,model   jimeni_1,64,320,0,0,36,70,137,0
+north_bridge    ,model   jimeni_0,64,320,0,0,36,66,125,0
+north_castle    ,model   kabe_0  ,64,710,0,0,36,485,803,0
+north_castle    ,model   jimenk_0,64,710,0,0,36,56,78,0
+north_castle    ,model   kabe_2  ,64,710,0,0,36,269,511,0
+north_castle    ,model   jimeni_1,64,710,0,0,36,30,45,0
+north_castle    ,model   jimeni_0,64,710,0,0,36,4,4,0
+north_castle    ,model   shpmado0,64,710,0,0,36,53,78,0
+north_castle    ,model   rerf4   ,64,710,0,0,36,105,211,0
+north_castle    ,model   ido     ,64,710,0,0,36,86,163,0
+north_castle    ,                ,64,710,0,0,36,18,29,0
+north_castle    ,model   wood1   ,64,710,0,0,36,24,53,0
+north_funsui    ,model   rerf5   ,64,355,0,0,36,123,208,0
+north_funsui    ,model   arch    ,64,355,0,0,36,84,151,0
+north_funsui    ,model   funsui  ,64,355,0,0,36,56,103,0
+north_funsui    ,model   jimeni_1,64,355,0,0,36,15,29,0
+north_funsui    ,model   wood1   ,64,355,0,0,36,135,241,0
+north_funsui    ,model   kabe_2  ,64,355,0,0,36,54,93,0
+north_gate      ,model   kabe_0  ,64,1094,0,0,36,591,1055,0
+north_gate      ,model   rerf1   ,64,1094,0,0,36,163,243,0
+north_gate      ,model   rerf2   ,64,1094,0,0,36,69,107,0
+north_gate      ,model   rerf4   ,64,1094,0,0,36,217,387,0
+north_gate      ,model   kabe_2  ,64,1094,0,0,36,418,795,0
+north_gate      ,model   rerf3   ,64,1094,0,0,36,103,154,0
+north_gate      ,model   rerf5   ,64,1094,0,0,36,54,89,0
+north_gate      ,model   shpmado0,64,1094,0,0,36,57,82,0
+north_gate      ,                ,64,1094,0,0,36,16,22,0
+north_gate      ,model   yane_0  ,64,1094,0,0,36,40,70,0
+north_gate      ,model   funsui  ,64,1094,0,0,36,28,65,0
+north_grid      ,model   jimeni_1,64,200,0,0,36,166,325,0
+north_obj01     ,model   yane_0  ,64,106,0,0,36,20,31,0
+north_obj01     ,model   kabe    ,64,106,0,0,36,132,233,0
+north_obj01     ,model   jimeni_2,64,106,0,0,36,4,4,0
+north_obj01     ,model   jimeni_1,64,106,0,0,36,24,30,0
+north_obj01     ,model   kabe_2  ,64,106,0,0,36,4,4,0
+north_obj02     ,model   kabe_0  ,64,84,0,0,36,108,195,0
+north_obj02     ,model   kabe_3  ,64,84,0,0,36,24,34,0
+north_obj02     ,model   kabe_2  ,64,84,0,0,36,12,16,0
+north_obj03     ,model   kabe_0  ,64,18,0,0,36,12,16,1
+north_obj03     ,model   kabe_2  ,64,18,0,0,36,18,39,1
+north_obj04     ,model   jimeni_2,64,108,0,0,36,96,142,0
+north_obj04     ,model   kabe_3  ,64,108,0,0,36,12,16,0
+north_obj04     ,model   yane_0  ,64,108,0,0,36,18,27,0
+north_obj04     ,model   rerf5   ,64,108,0,0,36,16,22,0
+north_obj04     ,model   rerf4   ,64,108,0,0,36,36,52,0
+north_obj04     ,                ,64,108,0,0,36,8,10,0
+north_obj04     ,model   kabe    ,64,108,0,0,36,24,34,0
+north_obj05     ,model   jimeni_2,64,42,0,0,36,24,34,1
+north_obj05     ,model   rerf4   ,64,42,0,0,36,12,16,1
+north_obj05     ,model   kabe_3  ,64,42,0,0,36,12,16,1
+north_obj05     ,model   yane_0  ,64,42,0,0,36,24,28,1
+north_obj06     ,model   kabe_2  ,64,342,0,0,36,242,449,0
+north_obj06     ,model   kabe_0  ,64,342,0,0,36,165,277,0
+north_obj06     ,model   shpmado0,64,342,0,0,36,8,10,0
+north_obj06     ,model   rerf4   ,64,342,0,0,36,105,211,0
+north_obj06     ,                ,64,342,0,0,36,4,4,0
+north_passage   ,model   jimenk_0,64,244,0,0,36,32,46,0
+north_passage   ,model   kabe    ,64,244,0,0,36,44,93,0
+north_passage   ,model   door0   ,64,244,0,0,36,120,178,0
+north_passage   ,model   wood1   ,64,244,0,0,36,8,10,0
+north_passage   ,model   gaitou  ,64,244,0,0,36,84,163,0
+north_passage   ,model   jimeni_1,64,244,0,0,36,15,22,0
+north_passage   ,model   kabe_0  ,64,244,0,0,36,29,52,0
+north_passage   ,model   kabe_2  ,64,244,0,0,36,33,55,0
+north_passage   ,                ,64,244,0,0,36,4,4,0
+north_pi01      ,model   kabe_0  ,64,84,0,0,36,80,145,0
+north_pi01      ,model   jimeni_0,64,84,0,0,36,24,34,0
+north_pi02      ,model   kabe_0  ,64,52,0,0,36,68,123,0
+north_pi02      ,model   jimeni_0,64,52,0,0,36,8,13,0
+north_wall01    ,model   kabe_0  ,64,66,0,0,36,78,123,0
+north_wall01    ,model   kabe_2  ,64,66,0,0,36,46,66,0
+north_wall02    ,model   kabe_2  ,64,56,0,0,36,36,81,1
+north_wall02    ,model   kabe_0  ,64,56,0,0,36,46,75,1
+obj_baketu      ,model   komono2 ,64,72,0,0,36,68,121,1
+obj_board02     ,model   komono0 ,64,42,0,0,36,48,74,0
+obj_board02     ,model   kannban0,64,42,0,0,36,4,4,0
+obj_board03     ,model   komono2 ,64,52,0,0,36,46,87,0
+obj_board03     ,model   mark_01 ,64,52,32768,0,36,4,4,0
+obj_box01       ,model   komono0 ,64,122,0,0,36,122,263,1
+obj_box02       ,model   jimenk_0,64,78,0,0,36,24,34,1
+obj_box02       ,model   komono0 ,64,78,0,0,36,116,187,1
+obj_box02       ,                ,64,78,0,0,36,4,4,1
+obj_box03       ,model   komono0 ,64,64,0,0,36,110,183,1
+obj_box03       ,                ,64,64,0,0,36,4,4,1
+obj_box04       ,model   komono0 ,64,60,0,0,36,98,149,1
+obj_chair01     ,model   funsui  ,64,84,0,0,36,94,173,0
+obj_chair01     ,model   jimeni_0,64,84,0,0,36,18,20,0
+obj_closed      ,model   ido     ,64,44,0,0,36,50,87,0
+obj_closed      ,model   gaitou  ,64,44,0,0,36,18,31,0
+obj_closed      ,model   komono2 ,64,44,0,0,36,6,6,0
+obj_crest       ,model   komono2 ,64,60,0,0,36,52,113,0
+obj_desk01      ,model   komono1 ,64,124,0,0,36,157,265,0
+obj_desk01      ,                ,64,124,0,0,36,56,82,0
+obj_entra       ,model   wood0   ,64,20,0,0,36,38,54,0
+obj_funsui01    ,model   funsui  ,64,240,0,0,36,368,633,0
+obj_funsui01    ,model   ido     ,64,240,0,0,36,5,11,0
+obj_funsui02    ,model   funsui  ,64,118,0,0,36,168,313,0
+obj_funsui02    ,model   jimeni_1,64,118,0,0,36,4,4,0
+obj_gate        ,model   kabe_0  ,64,138,0,0,36,52,119,0
+obj_gate        ,model   kabe_2  ,64,138,0,0,36,104,205,0
+obj_gate        ,model   rerf4   ,64,138,0,0,36,28,38,0
+obj_hide        ,model   komono0 ,64,73,0,0,36,95,147,0
+obj_hide        ,model   ido     ,64,73,0,0,36,24,34,0
+obj_hut         ,model   wood0   ,64,474,0,0,36,93,177,0
+obj_hut         ,model   komono2 ,64,474,0,0,36,255,521,0
+obj_hut         ,model   kabe_1  ,64,474,0,0,36,52,105,0
+obj_hut         ,model   jimeni_0,64,474,0,0,36,6,6,0
+obj_hut         ,model   komono0 ,64,474,0,0,36,6,6,0
+obj_hut         ,                ,64,474,0,0,36,12,14,0
+obj_hut         ,model   ido     ,64,474,0,0,36,28,55,0
+obj_hut         ,model   shpmado0,64,474,0,0,36,64,95,0
+obj_hut         ,model   jimenk_0,64,474,0,0,36,40,57,0
+obj_hut         ,model   kabe_2  ,64,474,0,0,36,18,37,0
+obj_kadan01     ,model   siba0   ,64,88,0,0,36,9,20,0
+obj_kadan01     ,model   kadan   ,64,88,0,0,36,60,157,0
+obj_kadan02     ,model   kadan   ,64,88,0,0,36,116,215,1
+obj_kadan02     ,model   siba0   ,64,88,0,0,36,6,6,1
+obj_light       ,model   komono2 ,64,70,0,0,36,106,215,6
+obj_mihari      ,model   jimeni_1,64,344,0,0,36,14,27,0
+obj_mihari      ,model   kabe    ,64,344,0,0,36,147,259,0
+obj_mihari      ,model   renga   ,64,344,0,0,36,48,79,0
+obj_mihari      ,model   kabe_0  ,64,344,0,0,36,124,205,0
+obj_mihari      ,model   kabe_2  ,64,344,0,0,36,65,103,0
+obj_mihari      ,model   rerf2   ,64,344,0,0,36,58,93,0
+obj_mihari      ,model   jimeni_2,64,344,0,0,36,13,31,0
+obj_mihari      ,model   shpmado0,64,344,0,0,36,12,14,0
+obj_mihari      ,model   yane_0  ,64,344,0,0,36,12,29,0
+obj_mihari      ,model   funsui  ,64,344,0,0,36,56,95,0
+obj_mihari_s    ,model   kabe    ,64,58,0,0,36,34,54,0
+obj_mihari_s    ,model   jimeni_1,64,58,0,0,36,6,11,0
+obj_mihari_s    ,model   jimenk_0,64,58,0,0,36,12,19,0
+obj_mihari_s    ,model   kabe_2  ,64,58,0,0,36,26,51,0
+obj_mihari_s    ,model   rerf2   ,64,58,0,0,36,14,21,0
+obj_railing     ,model   sibasaku,64,180,0,0,36,160,281,0
+obj_railing     ,model   saku0   ,64,180,0,0,36,86,106,0
+obj_saku01      ,model   sibasaku,64,48,0,0,36,74,137,0
+obj_saku02      ,model   sibasaku,64,44,0,0,36,84,126,0
+obj_saku03      ,model   sibasaku,64,30,0,0,36,58,86,0
+obj_taru        ,model   komono0 ,64,92,0,0,36,16,27,0
+obj_taru        ,model   wood0   ,64,92,0,0,36,111,217,0
+obj_water01     ,model   ido     ,64,251,0,0,36,231,485,0
+obj_water02     ,model   gaitou  ,64,98,0,0,36,26,51,0
+obj_water02     ,model   komono2 ,64,98,0,0,36,16,22,0
+obj_water02     ,model   ido     ,64,98,0,0,36,72,157,0
+obj_well        ,model   ido     ,64,512,0,0,36,401,719,0
+obj_well        ,model   komono2 ,64,512,0,0,36,145,253,0
+obj_well        ,                ,64,512,0,0,36,37,57,0
+pa_backbord01   ,model   jimeni_1,64,12,0,0,36,4,4,1
+pa_backbord01   ,model   kabe    ,64,12,0,0,36,12,19,1
+pa_backbord01   ,model   jimenk_0,64,12,0,0,36,4,4,1
+pa_backbord02   ,model   jimeni_1,64,8,0,0,36,4,4,0
+pa_backbord02   ,model   kabe    ,64,8,0,0,36,6,6,0
+pa_backbord02   ,model   jimenk_0,64,8,0,0,36,4,4,0
+pa_end          ,model   funsui  ,64,142,0,0,36,62,121,0
+pa_end          ,model   kabe_2  ,64,142,0,0,36,62,119,0
+pa_end          ,model   kabe    ,64,142,0,0,36,16,29,0
+pa_end          ,model   jimenk_0,64,142,0,0,36,4,4,0
+pa_end          ,model   jimeni_1,64,142,0,0,36,10,16,0
+pa_end          ,model   door0   ,64,142,0,0,36,12,29,0
+pa_end          ,model   rerf3   ,64,142,0,0,36,10,16,0
+pa_gate01       ,model   kabe_2  ,64,70,0,0,36,24,59,0
+pa_gate01       ,model   funsui  ,64,70,0,0,36,68,129,0
+pa_gate01s      ,model   kabe_2  ,64,20,0,0,36,8,10,0
+pa_gate01s      ,model   kabe    ,64,20,0,0,36,18,33,0
+pa_gate01s      ,model   jimeni_2,64,20,0,0,36,4,4,0
+pa_gate01s      ,model   jimenk_0,64,20,0,0,36,4,4,0
+pa_gate02       ,model   funsui  ,64,70,0,0,36,62,121,0
+pa_gate02       ,model   kabe_2  ,64,70,0,0,36,24,53,0
+pa_gate02s      ,model   kabe    ,64,20,0,0,36,16,29,0
+pa_gate02s      ,model   kabe_2  ,64,20,0,0,36,8,10,0
+pa_gate02s      ,model   jimenk_0,64,20,0,0,36,4,4,0
+pa_gate02s      ,model   jimeni_1,64,20,0,0,36,4,4,0
+pa_gate03       ,model   funsui  ,64,70,0,0,36,62,119,0
+pa_gate03       ,model   kabe_2  ,64,70,0,0,36,24,53,0
+pa_gate03s      ,model   kabe    ,64,20,0,0,36,18,33,0
+pa_gate03s      ,model   kabe_2  ,64,20,0,0,36,8,10,0
+pa_gate03s      ,model   jimenk_0,64,20,0,0,36,4,4,0
+pa_gate03s      ,model   jimeni_1,64,20,0,0,36,4,4,0
+pa_gate04       ,model   funsui  ,64,70,0,0,36,66,135,0
+pa_gate04       ,model   kabe_2  ,64,70,0,0,36,26,49,0
+pa_gate04s      ,model   kabe_2  ,64,20,0,0,36,8,10,0
+pa_gate04s      ,model   jimeni_1,64,20,0,0,36,4,4,0
+pa_gate04s      ,model   kabe    ,64,20,0,0,36,18,22,0
+pa_gate04s      ,model   jimenk_0,64,20,0,0,36,4,4,0
+pa_gate05       ,model   funsui  ,64,70,0,0,36,62,119,0
+pa_gate05       ,model   kabe_2  ,64,70,0,0,36,26,49,0
+pa_gate05s      ,model   kabe    ,64,119,0,0,36,33,85,0
+pa_gate05s      ,model   jimeni_1,64,119,0,0,36,11,13,0
+pa_gate05s      ,                ,64,119,0,0,36,4,21,0
+pa_gate05s      ,model   jimenk_0,64,119,0,0,36,10,17,0
+pa_gate05s      ,model   kabe_2  ,64,119,0,0,36,98,157,0
+pa_gate06       ,model   funsui  ,64,70,0,0,36,64,119,0
+pa_gate06       ,model   kabe_2  ,64,70,0,0,36,26,55,0
+pa_gate06s      ,model   jimeni_1,64,69,0,0,36,7,11,0
+pa_gate06s      ,model   kabe_2  ,64,69,0,0,36,24,49,0
+pa_gate06s      ,model   kabe    ,64,69,0,0,36,32,81,0
+pa_gate06s      ,model   jimenk_0,64,69,0,0,36,10,17,0
+pa_gate06s      ,model   jimeni_0,64,69,0,0,36,10,12,0
+pa_gate07       ,model   funsui  ,64,70,0,0,36,62,119,0
+pa_gate07       ,model   kabe_2  ,64,70,0,0,36,24,53,0
+pa_gate07s      ,model   kabe    ,64,124,0,0,36,42,85,0
+pa_gate07s      ,model   jimeni_1,64,124,0,0,36,10,12,0
+pa_gate07s      ,model   kabe_2  ,64,124,0,0,36,106,163,0
+pa_gate07s      ,model   jimenk_0,64,124,0,0,36,10,12,0
+pa_gate07s      ,                ,64,124,0,0,36,4,4,0
+pa_gate07s      ,model   jimeni_0,64,124,0,0,36,6,6,0
+pa_gatepost01   ,model   funsui  ,64,70,0,0,36,58,119,0
+pa_gatepost01   ,model   kabe_2  ,64,70,0,0,36,25,65,0
+pa_gatepost02   ,model   funsui  ,64,84,0,0,36,77,121,0
+pa_gatepost02   ,model   kabe_2  ,64,84,0,0,36,32,46,0
+pa_gatepost02s  ,model   funsui  ,64,112,0,0,36,99,183,0
+pa_gatepost02s  ,model   kabe_2  ,64,112,0,0,36,36,73,0
+pa_passage01    ,model   jimeni_1,64,20,0,0,36,4,4,1
+pa_passage01    ,model   kabe    ,64,20,0,0,36,16,18,1
+pa_passage01    ,model   jimenk_0,64,20,0,0,36,4,4,1
+pa_passage01    ,model   kabe_2  ,64,20,0,0,36,8,10,1
+_flag           ,model   hata    ,64,50,0,0,36,53,98,0
+pa_piller01     ,model   kabe_2  ,64,54,0,0,36,84,143,0
+pa_piller02     ,model   kabe_2  ,64,74,0,0,36,91,135,2
+pa_piller02     ,model   kabe    ,64,74,0,0,36,16,18,2
+pa_piller02     ,model   jimenk_0,64,74,0,0,36,4,4,2
+pa_piller02     ,model   jimeni_1,64,74,0,0,36,4,4,2
+pa_room         ,model   kabe    ,64,396,0,0,36,160,291,0
+pa_room         ,model   kabe_2  ,64,396,0,0,36,359,739,0
+pa_room         ,model   jimenk_0,64,396,0,0,36,21,47,0
+pa_room         ,model   jimeni_2,64,396,0,0,36,25,47,0
+pa_room         ,                ,64,396,0,0,36,3,3,0
+pa_step01       ,model   kabe_2  ,64,122,0,0,36,112,225,1
+pa_step01       ,model   jimeni_0,64,122,0,0,36,22,28,1
+pa_step01       ,model   jimeni_1,64,122,0,0,36,6,11,1
+pa_step01       ,model   kabe    ,64,122,0,0,36,31,47,1
+pa_step01       ,model   jimenk_0,64,122,0,0,36,8,10,1
+pa_step02       ,model   kabe_2  ,64,130,0,0,36,130,225,0
+pa_step02       ,model   jimeni_0,64,130,0,0,36,28,36,0
+pa_step02       ,model   jimeni_1,64,130,0,0,36,8,10,0
+pa_step02       ,model   kabe    ,64,130,0,0,36,24,38,0
+pa_step02       ,model   jimenk_0,64,130,0,0,36,8,10,0
+pa_step03       ,model   jimeni_0,64,40,0,0,36,62,82,0
+pa_turn         ,model   kabe    ,64,24,0,0,36,16,24,2
+pa_turn         ,model   jimenk_0,64,24,0,0,36,6,11,2
+pa_turn         ,model   jimeni_1,64,24,0,0,36,4,4,2
+pa_turn         ,model   kabe_2  ,64,24,0,0,36,6,11,2
+pf_box01        ,model   komono1 ,64,76,0,0,36,96,154,0
+pf_box02        ,model   komono1 ,64,40,0,0,36,56,97,0
+pf_box03        ,model   komono1 ,64,20,0,0,36,29,38,0
+pf_char         ,model   komono1 ,64,82,0,0,36,129,257,0
+pf_stand        ,model   komono1 ,64,176,0,0,36,194,353,0
+pf_tent         ,model   tent0   ,64,716,0,0,36,450,1097,1
+pf_tent         ,model   komono2 ,64,716,0,0,36,9,19,1
+pf_tent         ,model   wood0   ,64,716,0,0,36,90,181,1
+pf_tent         ,                ,64,716,0,0,36,26,43,1
+pf_tent         ,model   wood1   ,64,716,0,0,36,130,271,1
+piller_01       ,model   kabe_2  ,64,76,0,0,36,46,81,3
+piller_01       ,model   kabe_0  ,64,76,0,0,36,50,81,3
+piller_01       ,model   kabe_3  ,64,76,0,0,36,12,16,3
+piller_02       ,model   kabe_2  ,64,72,0,0,36,42,77,0
+piller_02       ,model   kabe_0  ,64,72,0,0,36,46,74,0
+piller_02       ,model   kabe_3  ,64,72,0,0,36,12,16,0
+piller_03       ,model   kabe_2  ,64,78,0,0,36,42,77,0
+piller_03       ,model   kabe_0  ,64,78,0,0,36,52,80,0
+piller_03       ,model   kabe_3  ,64,78,0,0,36,12,16,0
+piller_04       ,model   kabe_2  ,64,74,0,0,36,51,103,0
+piller_04       ,model   kabe_0  ,64,74,0,0,36,38,64,0
+piller_04       ,model   kabe_3  ,64,74,0,0,36,8,8,0
+rig_01          ,model   jimeni_1,64,353,0,0,36,193,321,0
+rig_01          ,model   kabe_2  ,64,353,0,0,36,145,269,0
+rig_01          ,model   kabe_3  ,64,353,0,0,36,57,101,0
+rig_01          ,model   kabe_0  ,64,353,0,0,36,158,277,0
+rig_01_p1       ,model   jimeni_1,64,40,0,0,36,87,157,0
+rig_02          ,model   jimeni_2,64,633,0,0,36,176,353,0
+rig_02          ,model   jimeni_1,64,633,0,0,36,48,95,0
+rig_02          ,model   kabe_3  ,64,633,0,0,36,70,123,0
+rig_02          ,model   kabe_0  ,64,633,0,0,36,208,357,0
+rig_02          ,model   kabe_2  ,64,633,0,0,36,96,187,0
+rig_02          ,model   jimeni_0,64,633,0,0,36,285,575,0
+rig_03          ,model   jimeni_2,64,555,0,0,36,84,135,0
+rig_03          ,model   kabe_3  ,64,555,0,0,36,148,251,0
+rig_03          ,model   kabe_0  ,64,555,0,0,36,381,603,0
+rig_03          ,model   kabe_2  ,64,555,0,0,36,99,153,0
+rig_03          ,model   jimeni_0,64,555,0,0,36,148,305,0
+rig_04          ,model   kabe_0  ,64,517,0,0,36,353,603,0
+rig_04          ,model   jimeni_2,64,517,0,0,36,16,29,0
+rig_04          ,model   jimeni_0,64,517,0,0,36,106,253,0
+rig_04          ,model   kabe_3  ,64,517,0,0,36,172,317,0
+rig_04          ,model   kabe_2  ,64,517,0,0,36,139,243,0
+rig_05          ,model   kabe_0  ,64,339,0,0,36,213,317,0
+rig_05          ,model   jimeni_0,64,339,0,0,36,114,257,0
+rig_05          ,model   kabe_3  ,64,339,0,0,36,54,79,0
+rig_05          ,model   kabe_2  ,64,339,0,0,36,79,161,0
+rig_05          ,model   jimeni_2,64,339,0,0,36,10,13,0
+rig_06          ,model   kabe_2  ,64,559,0,0,36,83,171,0
+rig_06          ,model   jimeni_2,64,559,0,0,36,134,241,0
+rig_06          ,model   jimeni_0,64,559,0,0,36,323,639,0
+rig_06          ,model   kabe_0  ,64,559,0,0,36,206,313,0
+rig_06          ,model   kabe_3  ,64,559,0,0,36,54,79,0
+rig_06          ,model   jimeni_0,64,559,32768,0,36,4,4,0
+rig_08          ,model   jimeni_0,64,65,0,0,36,70,139,0
+rig_09          ,model   jimeni_0,64,66,0,0,36,73,169,0
+rig_10          ,model   jimeni_0,64,168,0,0,36,169,343,1
+rig_bridge      ,model   kabe_2  ,64,1660,0,0,36,1379,2669,0
+rig_bridge      ,model   jimeni_1,64,1660,0,0,36,161,325,0
+rig_bridge      ,model   kabe_0  ,64,1660,0,0,36,324,537,0
+rig_bridge      ,model   rerf4   ,64,1660,0,0,36,314,499,0
+rig_bridge      ,model   siba0   ,64,1660,0,0,36,59,125,0
+rig_bridge      ,model   jimeni_0,64,1660,0,0,36,29,38,0
+rig_bridge      ,model   siba0   ,64,1660,32768,0,36,46,66,0
+rig_gate01      ,model   kabe_2  ,64,819,0,0,36,198,345,0
+rig_gate01      ,model   kabe_0  ,64,819,0,0,36,306,481,0
+rig_gate01      ,model   siba0   ,64,819,0,0,36,150,230,0
+rig_gate01      ,model   jimeni_0,64,819,0,0,36,321,563,0
+rig_gate01      ,model   jimeni_2,64,819,0,0,36,19,33,0
+rig_gate01      ,model   jimeni_1,64,819,0,0,36,157,247,0
+rig_gate01      ,model   kabe_3  ,64,819,0,0,36,116,197,0
+rig_gate01      ,model   siba0   ,64,819,32768,0,36,68,100,0
+rig_gate02      ,model   kabe_0  ,64,825,0,0,36,311,487,1
+rig_gate02      ,model   kabe_2  ,64,825,0,0,36,199,381,1
+rig_gate02      ,model   siba0   ,64,825,0,0,36,147,230,1
+rig_gate02      ,model   jimeni_0,64,825,0,0,36,317,565,1
+rig_gate02      ,model   jimeni_2,64,825,0,0,36,19,43,1
+rig_gate02      ,model   jimeni_1,64,825,0,0,36,159,245,1
+rig_gate02      ,model   kabe_3  ,64,825,0,0,36,119,191,1
+rig_gate02      ,model   siba0   ,64,825,32768,0,36,68,100,1
+ro_box          ,model   kudamono,64,176,0,0,36,35,85,0
+ro_box          ,model   komono1 ,64,176,0,0,36,185,315,0
+ro_box          ,                ,64,176,0,0,36,8,10,0
+ro_box          ,model   komono0 ,64,176,0,0,36,6,11,0
+ro_kake         ,model   komono2 ,64,35,0,0,36,35,77,0
+ro_sara         ,model   komono2 ,64,30,0,0,36,26,45,1
+ro_table        ,model   komono2 ,64,28,0,0,36,37,79,0
+ro_tent         ,model   tent0   ,64,290,0,0,36,110,217,0
+ro_tent         ,model   wood0   ,64,290,0,0,36,152,311,0
+ro_tent         ,model   wood1   ,64,290,0,0,36,70,102,0
+ro_tent         ,model   jimenk_0,64,290,0,0,36,24,34,0
+ro_tent         ,model   tent1   ,64,290,0,0,36,36,69,0
+ro_tent_p1      ,model   tent0   ,64,628,0,0,36,329,721,0
+ro_tent_p1      ,model   wood0   ,64,628,0,0,36,375,787,0
+ro_tent_p1      ,model   wood1   ,64,628,0,0,36,66,110,0
+ro_tent_p1      ,                ,64,628,0,0,36,4,4,0
+ro_tubo01       ,model   komono2 ,64,128,0,0,36,60,94,0
+ro_tubo01       ,model   tubo    ,64,128,0,0,36,52,90,0
+ro_tubo02       ,model   tubo    ,64,128,0,0,36,102,183,0
+ro_turi         ,model   komono2 ,64,66,0,0,36,58,137,2
+step_01         ,model   jimeni_2,64,66,0,0,36,38,65,0
+step_01         ,model   jimeni_0,64,66,0,0,36,84,141,0
+step_02         ,model   jimeni_0,64,130,0,0,36,152,257,0
+step_02         ,model   jimeni_2,64,130,0,0,36,56,137,0
+step_03         ,model   jimeni_0,64,176,0,0,36,212,541,0
+step_03         ,model   jimeni_2,64,176,0,0,36,27,49,0
+vera_01         ,model   wood0   ,64,668,0,0,36,239,389,0
+vera_01         ,model   saku0   ,64,668,0,0,36,415,695,0
+vera_01         ,model   jimenk_0,64,668,0,0,36,126,215,0
+vera_01         ,model   wood1   ,64,668,0,0,36,65,118,0
+vera_02         ,model   jimenk_0,64,160,0,0,36,84,145,0
+vera_02         ,model   saku0   ,64,160,0,0,36,161,273,0
+vera_03         ,model   jimenk_0,64,160,0,0,36,88,143,0
+vera_03         ,model   saku0   ,64,160,0,0,36,170,305,0
+vera_04         ,model   jimenk_0,64,244,0,0,36,62,107,0
+vera_04         ,model   saku0   ,64,244,0,0,36,294,489,0
+vera_05         ,model   wood0   ,64,238,0,0,36,54,109,0
+vera_05         ,model   saku0   ,64,238,0,0,36,184,307,0
+vera_05         ,model   jimenk_0,64,238,0,0,36,56,93,0
+vera_05         ,model   wood1   ,64,238,0,0,36,15,22,0
+vera_06         ,model   saku0   ,64,178,0,0,36,176,295,0
+vera_06         ,model   jimenk_0,64,178,0,0,36,62,105,0
+vera_07         ,model   saku0   ,64,146,0,0,36,142,223,0
+vera_07         ,model   jimenk_0,64,146,0,0,36,50,87,0
+vera_08         ,model   saku0   ,64,130,0,0,36,134,229,0
+vera_08         ,model   jimenk_0,64,130,0,0,36,37,59,0
+vera_09         ,model   saku0   ,64,132,0,0,36,134,225,0
+vera_09         ,model   jimenk_0,64,132,0,0,36,42,71,0
+vera_10         ,model   saku0   ,64,148,0,0,36,152,255,0
+vera_10         ,model   jimenk_0,64,148,0,0,36,43,71,0
+vera_end        ,model   saku0   ,64,92,0,0,36,112,173,2
+vera_end        ,model   jimenk_0,64,92,0,0,36,18,31,2
+vera_step01     ,model   wood0   ,64,750,0,0,36,182,313,0
+vera_step01     ,model   saku0   ,64,750,0,0,36,418,675,0
+vera_step01     ,model   door0   ,64,750,0,0,36,12,19,0
+vera_step01     ,model   jimenk_0,64,750,0,0,36,372,609,0
+vera_step01     ,model   wood1   ,64,750,0,0,36,45,70,0
+vera_step02     ,model   jimenk_0,64,649,0,0,36,378,663,0
+vera_step02     ,model   wood0   ,64,649,0,0,36,111,178,0
+vera_step02     ,model   saku0   ,64,649,0,0,36,312,541,0
+vera_step02     ,model   door0   ,64,649,0,0,36,8,13,0
+vera_step02     ,model   wood1   ,64,649,0,0,36,36,62,0
+chok_san01      ,model   jimenk_0,64,363,0,0,36,190,381,0
+chok_san01      ,model   yane_0  ,64,363,0,0,36,55,119,0
+chok_san01      ,model   wood1   ,64,363,0,0,36,49,77,0
+chok_san01      ,model   funsui  ,64,363,0,0,36,12,16,0
+chok_san01      ,model   wood0   ,64,363,0,0,36,169,293,0
+chok_san01      ,model   kabe_1  ,64,363,0,0,36,41,71,0
+chok_san01      ,model   kabe_2  ,64,363,0,0,36,44,69,0
+chok_san01      ,model   door0   ,64,363,0,0,36,7,9,0
+chok_san01      ,model   shpmado0,64,363,0,0,36,5,5,0
+chok_san02      ,model   funsui  ,64,44,0,0,36,6,11,0
+chok_san02      ,model   yane_0  ,64,44,0,0,36,30,49,0
+chok_san02      ,model   wood0   ,64,44,0,0,36,18,29,0
+chok_san02      ,model   jimeni_0,64,44,0,0,36,14,23,0
+chok_san02      ,model   kabe_1  ,64,44,0,0,36,4,4,0
+01hunsui        ,funsui  mz02    ,64,44,32768,0,36,57,86,0
+02hunsui        ,funsui  sib1    ,64,44,32768,0,36,57,86,0
+03hunsui        ,funsui  umi02   ,64,44,32768,0,36,57,86,0
+gdhnsi          ,                ,64,8,0,0,36,8,14,0
+awgd            ,funsui  sib1    ,64,16,32768,0,36,28,49,0
+sh-u            ,funsui  umi02   ,64,24,32768,0,36,27,64,0
+awan            ,effect  abuk    ,64,2,0,0,36,4,4,0
+ltcube          ,                ,64,2,0,0,36,4,4,0
+ltlanp          ,effect  lanp    ,64,24,0,0,36,36,77,0
+2windw          ,                ,64,88,0,0,36,174,262,0
+4windw          ,                ,64,80,0,0,36,149,239,0
+2ltlanp         ,                ,64,24,0,0,36,32,46,0
+2ltlanp         ,effect  4tyramp ,64,24,32768,0,36,16,22,0
+sunsphere       ,                ,64,144,0,0,36,81,186,0
+suny_a01        ,suny    suny_a01,64,668,0,0,36,117,211,0
+suny_a01        ,suny    suny_a01,64,668,32768,0,36,493,975,0
+moonsphere      ,                ,64,80,0,0,36,49,157,0
+clod_a01        ,clod    clod_a01,64,668,0,0,36,117,211,0
+clod_a01        ,clod    clod_a01,64,668,32768,0,36,493,975,0
+sunsphere       ,                ,64,144,0,0,36,81,186,0
+cld_fine_a01    ,fine    fine_a01,64,128,0,0,36,108,158,0
+sunsphere       ,                ,64,144,0,0,36,81,186,0
+moonsphere      ,                ,64,80,0,0,36,49,157,0
+star            ,star    star01  ,64,172,0,0,36,516,1029,0
+clod_a01        ,mist    clod_a01,64,668,0,0,36,117,211,0
+clod_a01        ,mist    clod_a01,64,668,32768,0,36,493,975,0
+sunsphere       ,                ,64,144,0,0,36,81,186,0

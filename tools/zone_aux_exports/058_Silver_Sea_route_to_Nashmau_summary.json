@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 58,
+    "name": "Silver Sea route to Nashmau",
+    "model": "ROM4/0/11.DAT",
+    "dialog": "ROM4/1/3.DAT",
+    "npc": "ROM4/1/57.DAT",
+    "event": "ROM4/0/63.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\11.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\57.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\3.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\63.DAT"
+  },
+  "npc_record_count": 41,
+  "named_npc_count": 38,
+  "event_token_count": 4,
+  "placement_candidate_count": 0,
+  "npc_csv": "tools\\zone_aux_exports\\058_Silver_Sea_route_to_Nashmau_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\058_Silver_Sea_route_to_Nashmau_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\058_Silver_Sea_route_to_Nashmau_npc_placement_candidates.csv"
+}

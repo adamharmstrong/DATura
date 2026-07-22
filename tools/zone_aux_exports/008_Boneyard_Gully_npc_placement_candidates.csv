@@ -1,0 +1,3 @@
+npc_index,name,record_id,record_tag,event_ref_count,event_ref_offset,position_offset,x,y,z,confidence,raw_x,raw_y,raw_z,raw_values
+217,???,32999,256,9,11048,11120,76.35,2.2,76.36,30,7635,220,7636,7635 7636 220 5 7637 7638 7639 7640
+232,Ramblix,33015,256,2,30160,30284,76.2,0.6,2.0,70,7620,60,200,7620 200 60 485 1107369984 -266469342 1249902591 2147483632

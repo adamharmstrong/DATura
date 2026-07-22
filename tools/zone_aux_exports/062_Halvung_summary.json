@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 62,
+    "name": "Halvung",
+    "model": "ROM4/0/15.DAT",
+    "dialog": "ROM4/1/7.DAT",
+    "npc": "ROM4/1/61.DAT",
+    "event": "ROM4/0/67.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\15.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\61.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\7.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\67.DAT"
+  },
+  "npc_record_count": 562,
+  "named_npc_count": 554,
+  "event_token_count": 103,
+  "placement_candidate_count": 31,
+  "npc_csv": "tools\\zone_aux_exports\\062_Halvung_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\062_Halvung_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\062_Halvung_npc_placement_candidates.csv"
+}

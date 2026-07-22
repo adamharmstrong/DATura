@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 230,
+    "name": "Southern San d'Oria",
+    "model": "ROM/1/31.DAT",
+    "dialog": "ROM/25/39.DAT",
+    "npc": "ROM/27/39.DAT",
+    "event": "ROM/21/39.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\31.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\39.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\39.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\39.DAT"
+  },
+  "npc_record_count": 722,
+  "named_npc_count": 451,
+  "event_token_count": 11442,
+  "placement_candidate_count": 295,
+  "npc_csv": "tools\\zone_aux_exports\\230_Southern_San_d_Oria_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\230_Southern_San_d_Oria_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\230_Southern_San_d_Oria_npc_placement_candidates.csv"
+}

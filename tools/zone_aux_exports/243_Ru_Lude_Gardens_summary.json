@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 243,
+    "name": "Ru'Lude Gardens",
+    "model": "ROM/1/39.DAT",
+    "dialog": "ROM/25/52.DAT",
+    "npc": "ROM/27/52.DAT",
+    "event": "ROM/21/52.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\39.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\52.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\52.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\52.DAT"
+  },
+  "npc_record_count": 329,
+  "named_npc_count": 253,
+  "event_token_count": 10124,
+  "placement_candidate_count": 198,
+  "npc_csv": "tools\\zone_aux_exports\\243_Ru_Lude_Gardens_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\243_Ru_Lude_Gardens_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\243_Ru_Lude_Gardens_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 168,
+    "name": "Chamber of Oracles",
+    "model": "ROM2/0/11.DAT",
+    "dialog": "ROM2/17/101.DAT",
+    "npc": "ROM2/13/111.DAT",
+    "event": "ROM2/13/21.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\11.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\111.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\101.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\21.DAT"
+  },
+  "npc_record_count": 251,
+  "named_npc_count": 245,
+  "event_token_count": 528,
+  "placement_candidate_count": 53,
+  "npc_csv": "tools\\zone_aux_exports\\168_Chamber_of_Oracles_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\168_Chamber_of_Oracles_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\168_Chamber_of_Oracles_npc_placement_candidates.csv"
+}

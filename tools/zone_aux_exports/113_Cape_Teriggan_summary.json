@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 113,
+    "name": "Cape Teriggan",
+    "model": "ROM2/0/0.DAT",
+    "dialog": "ROM2/17/46.DAT",
+    "npc": "ROM2/13/95.DAT",
+    "event": "ROM2/13/5.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\0\\0.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\95.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\17\\46.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM2\\13\\5.DAT"
+  },
+  "npc_record_count": 461,
+  "named_npc_count": 449,
+  "event_token_count": 255,
+  "placement_candidate_count": 57,
+  "npc_csv": "tools\\zone_aux_exports\\113_Cape_Teriggan_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\113_Cape_Teriggan_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\113_Cape_Teriggan_npc_placement_candidates.csv"
+}

@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 218,
+    "name": "Abyssea - Altepa",
+    "model": "ROM/258/110.DAT",
+    "dialog": "ROM/25/27.DAT",
+    "npc": "ROM/27/27.DAT",
+    "event": "ROM/21/27.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\258\\110.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\27\\27.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\25\\27.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\21\\27.DAT"
+  },
+  "npc_record_count": 635,
+  "named_npc_count": 620,
+  "event_token_count": 137,
+  "placement_candidate_count": 166,
+  "npc_csv": "tools\\zone_aux_exports\\218_Abyssea_-_Altepa_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\218_Abyssea_-_Altepa_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\218_Abyssea_-_Altepa_npc_placement_candidates.csv"
+}

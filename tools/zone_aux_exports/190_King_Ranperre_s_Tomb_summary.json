@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 190,
+    "name": "King Ranperre's Tomb",
+    "model": "ROM/1/14.DAT",
+    "dialog": "ROM/24/127.DAT",
+    "npc": "ROM/26/127.DAT",
+    "event": "ROM/20/127.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\1\\14.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\127.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\127.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\127.DAT"
+  },
+  "npc_record_count": 574,
+  "named_npc_count": 569,
+  "event_token_count": 340,
+  "placement_candidate_count": 43,
+  "npc_csv": "tools\\zone_aux_exports\\190_King_Ranperre_s_Tomb_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\190_King_Ranperre_s_Tomb_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\190_King_Ranperre_s_Tomb_npc_placement_candidates.csv"
+}

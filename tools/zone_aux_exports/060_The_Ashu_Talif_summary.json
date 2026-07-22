@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 60,
+    "name": "The Ashu Talif",
+    "model": "ROM4/0/13.DAT",
+    "dialog": "ROM4/1/5.DAT",
+    "npc": "ROM4/1/59.DAT",
+    "event": "ROM4/0/65.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\13.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\59.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\1\\5.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM4\\0\\65.DAT"
+  },
+  "npc_record_count": 79,
+  "named_npc_count": 77,
+  "event_token_count": 15,
+  "placement_candidate_count": 0,
+  "npc_csv": "tools\\zone_aux_exports\\060_The_Ashu_Talif_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\060_The_Ashu_Talif_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\060_The_Ashu_Talif_npc_placement_candidates.csv"
+}

@@ -1,0 +1,499 @@
+==============================================================================
+FFXI Hi-Mesh List - Full File Paths
+(Expanded from Hi-mesh_list.txt - original by FalconCool)
+==============================================================================
+
+
+------------------------------------------------------------------------------
+Mithra
+------------------------------------------------------------------------------
+
+Camera setting:
+  ROM/66/66.dat
+  ROM/66/67.dat
+  ROM/66/68.dat
+  ROM/66/69.dat
+
+Body animation:  *modded
+  ROM/66/74.dat
+  ROM/66/75.dat
+
+Body Mesh (no equipment):
+  ROM/63/100.dat
+  ROM/63/101.dat
+
+Body Mesh (initial equipment):  *
+  ROM/63/102.dat
+  ROM/63/103.dat
+
+F1A Face animation data:  *
+  ROM/66/80.dat
+  ROM/66/81.dat
+
+F2 Face animation data:
+  ROM/66/86.dat
+  ROM/66/87.dat
+
+F3 Face animation data:
+  ROM/66/92.dat
+  ROM/66/93.dat
+
+F4 Face animation data:
+  ROM/66/98.dat
+  ROM/66/99.dat
+
+F5 Face animation data:
+  ROM/66/104.dat
+  ROM/66/105.dat
+
+F6 Face animation data:
+  ROM/66/110.dat
+  ROM/66/111.dat
+
+F7 Face animation data:
+  ROM/66/116.dat
+  ROM/66/117.dat
+
+F8 Face animation data:
+  ROM/66/122.dat
+  ROM/66/123.dat
+
+F1A Face Mesh:
+  ROM/63/104.dat
+
+F1B Face animation data:  *
+  ROM/66/81.dat
+
+F1B Face Mesh:
+  ROM/63/105.dat
+
+
+------------------------------------------------------------------------------
+Elvaan Female
+------------------------------------------------------------------------------
+
+(unlabeled):
+  ROM/67/119.dat
+  ROM/67/111.dat
+
+(unlabeled):
+  ROM/64/32.dat
+  ROM/64/33.dat
+  ROM/64/34.dat
+  ROM/64/35.dat
+
+Body animation 1:  *
+  ROM/64/40.dat
+
+Body animation 2:  *
+  ROM/64/41.dat
+
+F1 Face animation data:
+  ROM/64/46.dat
+  ROM/64/47.dat
+
+F2 Face animation data:
+  ROM/64/52.dat
+  ROM/64/53.dat
+
+F3 Face animation data:
+  ROM/64/58.dat
+  ROM/64/59.dat
+
+F4 Face animation data:
+  ROM/64/64.dat
+  ROM/64/65.dat
+
+F5 Face animation data:
+  ROM/64/70.dat
+  ROM/64/71.dat
+
+F6 Face animation data:
+  ROM/64/76.dat
+  ROM/64/77.dat
+
+F7 Face animation data:
+  ROM/64/82.dat
+  ROM/64/83.dat
+
+F8 Face animation data:
+  ROM/64/88.dat
+  ROM/64/89.dat
+
+Body Mesh (no equipment):
+  ROM/63/0.dat
+  ROM/63/1.dat
+
+Body Mesh (initial equipment):
+  ROM/63/2.dat
+  ROM/63/3.dat
+
+F8 Face Mesh:
+  ROM/63/18.dat
+  ROM/63/19.dat
+
+
+------------------------------------------------------------------------------
+Elvaan Male
+------------------------------------------------------------------------------
+
+Body Mesh (no equipment):
+  ROM/63/20.dat
+  ROM/63/21.dat
+
+Body Mesh (initial equipment):
+  ROM/63/22.dat
+  ROM/63/23.dat
+
+F1A Face Mesh:
+  ROM/63/24.dat
+  ROM/63/25.dat
+
+(unlabeled):
+  ROM/64/90.dat
+  ROM/64/91.dat
+  ROM/64/92.dat
+  ROM/64/93.dat
+
+Body animation:
+  ROM/64/98.dat
+  ROM/64/99.dat
+
+F1 Face animation data:
+  ROM/64/104.dat
+  ROM/64/105.dat
+
+F2 Face animation data:
+  ROM/64/110.dat
+  ROM/64/111.dat
+
+F3 Face animation data:
+  ROM/64/116.dat
+  ROM/64/117.dat
+
+F4 Face animation data:
+  ROM/64/122.dat
+  ROM/64/123.dat
+
+F5 Face animation data:
+  ROM/64/0.dat
+  ROM/64/1.dat
+
+F6 Face animation data:
+  ROM/64/6.dat
+  ROM/64/7.dat
+
+F8 Face animation data:
+  ROM/64/18.dat
+  ROM/64/19.dat
+
+(unlabeled):
+  ROM/67/110.dat
+  ROM/67/118.dat
+
+
+------------------------------------------------------------------------------
+Human Female
+------------------------------------------------------------------------------
+
+(unlabeled):
+  ROM/65/80.dat
+  ROM/65/81.dat
+
+Body animation:
+  ROM/65/86.dat
+  ROM/65/87.dat
+
+F1 Face animation data:
+  ROM/65/92.dat
+  ROM/65/93.dat
+
+F2 Face animation data:
+  ROM/65/98.dat
+  ROM/65/99.dat
+
+F3 Face animation data:
+  ROM/65/104.dat
+  ROM/65/105.dat
+
+F4 Face animation data:
+  ROM/65/110.dat
+  ROM/65/111.dat
+
+F5 Face animation data:
+  ROM/65/116.dat
+  ROM/65/117.dat
+
+F6 Face animation data:
+  ROM/65/122.dat
+  ROM/65/123.dat
+
+F7 Face animation data:
+  ROM/66/0.dat
+  ROM/66/1.dat
+
+F8 Face animation data:
+  ROM/66/6.dat
+  ROM/66/7.dat
+
+Body Mesh (no equipment):
+  ROM/63/60.dat
+  ROM/63/61.dat
+
+Body Mesh (initial equipment):
+  ROM/63/62.dat
+  ROM/63/63.dat
+
+(unlabeled):
+  ROM/63/64.dat
+  ROM/63/65.dat
+
+
+------------------------------------------------------------------------------
+Human Male
+------------------------------------------------------------------------------
+
+(unlabeled):
+  ROM/67/108.dat
+  ROM/67/116.dat
+
+Body Mesh (no equipment):
+  ROM/63/80.dat
+  ROM/63/81.dat
+
+Body Mesh (initial equipment):
+  ROM/63/82.dat
+  ROM/63/83.dat
+
+(unlabeled):
+  ROM/63/86.dat
+  ROM/63/87.dat
+
+(unlabeled):
+  ROM/66/8.dat
+  ROM/66/9.dat
+  ROM/66/10.dat
+  ROM/66/11.dat
+
+Body animation:
+  ROM/66/16.dat
+  ROM/66/17.dat
+
+F1 Face animation data:
+  ROM/66/22.dat
+  ROM/66/23.dat
+
+F2 Face animation data:
+  ROM/66/28.dat
+  ROM/66/29.dat
+
+F3 Face animation data:
+  ROM/66/34.dat
+  ROM/66/35.dat
+
+F4 Face animation data:
+  ROM/66/40.dat
+  ROM/66/41.dat
+
+F5 Face animation data:
+  ROM/66/46.dat
+  ROM/66/47.dat
+
+F6 Face animation data:
+  ROM/66/52.dat
+  ROM/66/53.dat
+
+F7 Face animation data:
+  ROM/66/58.dat
+  ROM/66/59.dat
+
+F8 Face animation data:
+  ROM/66/64.dat
+  ROM/66/65.dat
+
+
+------------------------------------------------------------------------------
+Tarutaru Male
+------------------------------------------------------------------------------
+
+Body Mesh (no equipment):
+  ROM/64/12.dat
+  ROM/64/13.dat
+
+Body Mesh (initial equipment):
+  ROM/64/14.dat
+  ROM/64/15.dat
+
+(unlabeled):
+  ROM/64/16.dat
+  ROM/64/17.dat
+
+(unlabeled):
+  ROM/67/54.dat
+  ROM/67/55.dat
+  ROM/67/56.dat
+  ROM/67/57.dat
+
+Body animation:
+  ROM/67/58.dat
+  ROM/67/59.dat
+
+F1 Face animation data:
+  ROM/67/64.dat
+  ROM/67/65.dat
+
+F2 Face animation data:
+  ROM/67/70.dat
+  ROM/67/71.dat
+
+F3 Face animation data:
+  ROM/67/76.dat
+  ROM/67/77.dat
+
+F4 Face animation data:
+  ROM/67/82.dat
+  ROM/67/83.dat
+
+F5 Face animation data:
+  ROM/67/88.dat
+  ROM/67/89.dat
+
+F6 Face animation data:  [NOTE: original lists "94,94" - likely a typo for 94,95]
+  ROM/67/94.dat
+  ROM/67/95.dat
+
+F7 Face animation data:
+  ROM/67/100.dat
+  ROM/67/101.dat
+
+F8 Face animation data:
+  ROM/67/106.dat
+  ROM/67/107.dat
+
+(unlabeled):
+  ROM/67/112.dat
+  ROM/67/120.dat
+
+
+------------------------------------------------------------------------------
+Tarutaru Female
+------------------------------------------------------------------------------
+
+Body Mesh (no equipment):
+  ROM/63/120.dat
+  ROM/63/121.dat
+
+Body Mesh (initial equipment):
+  ROM/63/122.dat
+  ROM/63/123.dat
+
+F1 Head Mesh:
+  ROM/63/124.dat
+  ROM/63/125.dat
+
+Body animation:
+  ROM/67/4.dat
+  ROM/67/5.dat
+
+F1 Face animation data:
+  ROM/67/10.dat
+  ROM/67/11.dat
+
+F2 Face animation data:
+  ROM/67/16.dat
+  ROM/67/17.dat
+
+F3 Face animation data:
+  ROM/67/22.dat
+  ROM/67/23.dat
+
+F4 Face animation data:
+  ROM/67/28.dat
+  ROM/67/29.dat
+
+F5 Face animation data:
+  ROM/67/34.dat
+  ROM/67/35.dat
+
+F6 Face animation data:
+  ROM/67/40.dat
+  ROM/67/41.dat
+
+F7 Face animation data:
+  ROM/67/46.dat
+  ROM/67/47.dat
+
+F8 Face animation data:
+  ROM/67/52.dat
+  ROM/67/53.dat
+
+(unlabeled):
+  ROM/67/113.dat
+  ROM/67/121.dat
+  ROM/67/124.dat
+  ROM/67/125.dat
+  ROM/67/126.dat
+  ROM/67/127.dat
+
+
+------------------------------------------------------------------------------
+Galka
+------------------------------------------------------------------------------
+
+Body Mesh (no equipment):
+  ROM/63/40.dat
+  ROM/63/41.dat
+
+Body Mesh (initial equipment):
+  ROM/63/42.dat
+  ROM/63/43.dat
+
+F1 Head Mesh:
+  ROM/63/44.dat
+  ROM/63/45.dat
+
+(unlabeled):
+  ROM/65/20.dat
+  ROM/65/21.dat
+  ROM/65/22.dat
+  ROM/65/23.dat
+
+Body animation:
+  ROM/65/28.dat
+  ROM/65/29.dat
+
+F1 Face animation data:
+  ROM/65/34.dat
+  ROM/65/35.dat
+
+F2 Face animation data:
+  ROM/65/40.dat
+  ROM/65/41.dat
+
+F3 Face animation data:
+  ROM/65/46.dat
+  ROM/65/47.dat
+
+F4 Face animation data:
+  ROM/65/52.dat
+  ROM/65/53.dat
+
+F5 Face animation data:
+  ROM/65/58.dat
+  ROM/65/59.dat
+
+F6 Face animation data:
+  ROM/65/64.dat
+  ROM/65/65.dat
+
+F7 Face animation data:
+  ROM/65/70.dat
+  ROM/65/71.dat
+
+F8 Face animation data:
+  ROM/65/76.dat
+  ROM/65/77.dat
+
+(unlabeled):
+  ROM/67/115.dat
+  ROM/67/123.dat

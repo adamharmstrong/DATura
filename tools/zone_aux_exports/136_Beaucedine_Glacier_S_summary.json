@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 136,
+    "name": "Beaucedine Glacier [S]",
+    "model": "ROM5/0/21.DAT",
+    "dialog": "ROM/24/73.DAT",
+    "npc": "ROM/26/73.DAT",
+    "event": "ROM/20/73.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM5\\0\\21.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\26\\73.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\24\\73.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\20\\73.DAT"
+  },
+  "npc_record_count": 872,
+  "named_npc_count": 814,
+  "event_token_count": 4781,
+  "placement_candidate_count": 68,
+  "npc_csv": "tools\\zone_aux_exports\\136_Beaucedine_Glacier_S_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\136_Beaucedine_Glacier_S_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\136_Beaucedine_Glacier_S_npc_placement_candidates.csv"
+}

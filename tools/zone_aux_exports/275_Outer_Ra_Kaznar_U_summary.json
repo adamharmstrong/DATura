@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 275,
+    "name": "Outer Ra'Kaznar [U]",
+    "model": "ROM9/0/22.DAT",
+    "dialog": "ROM9/5/120.DAT",
+    "npc": "ROM9/6/64.DAT",
+    "event": "ROM9/5/72.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\0\\22.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\6\\64.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\120.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM9\\5\\72.DAT"
+  },
+  "npc_record_count": 331,
+  "named_npc_count": 331,
+  "event_token_count": 9,
+  "placement_candidate_count": 16,
+  "npc_csv": "tools\\zone_aux_exports\\275_Outer_Ra_Kaznar_U_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\275_Outer_Ra_Kaznar_U_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\275_Outer_Ra_Kaznar_U_npc_placement_candidates.csv"
+}

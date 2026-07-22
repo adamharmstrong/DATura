@@ -1,0 +1,23 @@
+{
+  "zone": {
+    "id": 39,
+    "name": "Dynamis - Valkurm",
+    "model": "ROM3/5/2.DAT",
+    "dialog": "ROM3/2/49.DAT",
+    "npc": "ROM3/3/21.DAT",
+    "event": "ROM3/0/105.DAT"
+  },
+  "paths": {
+    "model": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\5\\2.DAT",
+    "npc": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\3\\21.DAT",
+    "dialog": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\2\\49.DAT",
+    "event": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM3\\0\\105.DAT"
+  },
+  "npc_record_count": 632,
+  "named_npc_count": 632,
+  "event_token_count": 2,
+  "placement_candidate_count": 2,
+  "npc_csv": "tools\\zone_aux_exports\\039_Dynamis_-_Valkurm_npc_names.csv",
+  "event_csv": "tools\\zone_aux_exports\\039_Dynamis_-_Valkurm_event_tokens.csv",
+  "placement_csv": "tools\\zone_aux_exports\\039_Dynamis_-_Valkurm_npc_placement_candidates.csv"
+}
