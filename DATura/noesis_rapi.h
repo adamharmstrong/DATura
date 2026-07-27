@@ -542,13 +542,14 @@ struct FFXIVertex
 
 struct FFXISkinVertex
 {
+    static const int kMaxWeights = 8;
     bool  skinned;
     int   weightCount;
-    int   boneIdx[2];
-    int   mirrorAxis[2];
-    float boneWt[2];
-    float pos[2][3];
-    float nrm[2][3];
+    int   boneIdx[kMaxWeights];
+    int   mirrorAxis[kMaxWeights];
+    float boneWt[kMaxWeights];
+    float pos[kMaxWeights][3];
+    float nrm[kMaxWeights][3];
 
     FFXISkinVertex() { Reset(); }
     void Reset()
@@ -561,6 +562,23 @@ struct FFXISkinVertex
         memset(pos, 0, sizeof(pos));
         memset(nrm, 0, sizeof(nrm));
     }
+};
+
+// SQLE creation models describe their animation layout in the skeleton itself.
+// The five counts are, in order, translation, quaternion, scale, and two
+// currently-unused channel groups.  Keeping the parent-relative bind transform
+// here lets the character-creation viewer build FrameChannel clips after the
+// mesh and its separate head skeleton have been combined.
+struct FFXISqleBoneInfo
+{
+    int parentIndex;
+    int fileIndex;
+    int sourceBoneIndex;
+    int channelCounts[5];
+    float bindTranslation[3];
+    float bindQuaternion[4];
+    float bindScale[3];
+    float rootOffset[3];
 };
 
 struct noesisModel_t
@@ -587,6 +605,7 @@ struct noesisModel_t
     noesisAnim_t         *pAnim;
     modelBone_t          *pBones;
     int                   boneCount;
+    std::vector<FFXISqleBoneInfo> sqleBones;
 
     noesisModel_t()
         : pMatData(nullptr), pAnim(nullptr), pBones(nullptr), boneCount(0)
@@ -658,6 +677,7 @@ public:
     // ---- D3D9 device binding -------------------------------------------------------
     void SetDevice(IDirect3DDevice9 *pDevice) { mpDevice = pDevice; }
     IDirect3DDevice9 *GetDevice() const       { return mpDevice; }
+    void SetTextureCompressionEnabled(bool enabled);
 
     // ---- Current-file tracking (for paired file and DAT-set loading) ---------------
     void        SetCurrentFilePath(const char *path);
@@ -866,6 +886,7 @@ private:
 
     //---- Resource pools ------------------------------------------------------------
     IDirect3DDevice9       *mpDevice;
+    bool                    mTextureCompressionEnabled;
     std::vector<void *>     mAllocs;         // tracked for bulk free
     std::vector<char *>     mStringPool;
     std::vector<noesisTex_t *>      mTexPool;

@@ -81,9 +81,169 @@ static void Creation_ApplySceneOffset(float pos[3], const float *offset)
 	pos[2] += offset[2];
 }
 
+struct Creation_SkinInfluence
+{
+	int boneIndex;
+	float weight;
+};
+
+typedef std::vector<std::vector<Creation_SkinInfluence> > Creation_ShapeSkin;
+
+static int Creation_FindSqleChunk(const unsigned char *pData, const int dataSize,
+	const int chunkType, const int startOfs)
+{
+	for (int ofs = (startOfs + 15) & ~15; ofs + 104 <= dataSize; ofs += 16)
+	{
+		if (memcmp(pData + ofs, "SQLE", 4) == 0 &&
+			*(const unsigned short *)(pData + ofs + 10) == chunkType)
+			return ofs;
+	}
+	return -1;
+}
+
+static bool Creation_ParseSqleSkeleton(const unsigned char *pData, const int dataSize,
+	const int fileIndex, const int combinedBoneStart, const float *sceneOffset,
+	std::vector<FFXISqleBoneInfo> &outBones)
+{
+	const int chunkOfs = Creation_FindSqleChunk(pData, dataSize, 11, 0);
+	if (chunkOfs < 0)
+		return false;
+	const int boneCount = Creation_ReadI32(pData, dataSize, chunkOfs + 96);
+	const int recordsOfs = chunkOfs + 100;
+	if (boneCount <= 0 || boneCount > 1024 || recordsOfs + boneCount * 64 > dataSize)
+		return false;
+
+	outBones.reserve(outBones.size() + boneCount);
+	for (int boneIndex = 0; boneIndex < boneCount; ++boneIndex)
+	{
+		const int boneOfs = recordsOfs + boneIndex * 64;
+		FFXISqleBoneInfo info = {};
+		info.parentIndex = Creation_ReadI32(pData, dataSize, boneOfs + 60);
+		if (info.parentIndex >= 0)
+			info.parentIndex += combinedBoneStart;
+		info.fileIndex = fileIndex;
+		info.sourceBoneIndex = boneIndex;
+		for (int channelGroup = 0; channelGroup < 5; ++channelGroup)
+			info.channelCounts[channelGroup] = Creation_ReadI32(pData, dataSize, boneOfs + 40 + channelGroup * 4);
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			info.bindTranslation[axis] = Creation_ReadF32(pData, dataSize, boneOfs + axis * 4);
+			info.bindScale[axis] = Creation_ReadF32(pData, dataSize, boneOfs + 28 + axis * 4);
+			info.rootOffset[axis] = sceneOffset ? sceneOffset[axis] : 0.0f;
+		}
+		for (int component = 0; component < 4; ++component)
+			info.bindQuaternion[component] = Creation_ReadF32(pData, dataSize, boneOfs + 12 + component * 4);
+		outBones.push_back(info);
+	}
+	return true;
+}
+
+static void Creation_ParseSqleSkins(const unsigned char *pData, const int dataSize,
+	std::vector<Creation_ShapeSkin> &outSkins)
+{
+	outSkins.clear();
+	for (int searchOfs = 0;;)
+	{
+		const int chunkOfs = Creation_FindSqleChunk(pData, dataSize, 21, searchOfs);
+		if (chunkOfs < 0)
+			break;
+		searchOfs = chunkOfs + 16;
+
+		const int clusterCount = Creation_ReadI32(pData, dataSize, chunkOfs + 96);
+		const int vertexCount = Creation_ReadI32(pData, dataSize, chunkOfs + 100);
+		if (clusterCount <= 0 || clusterCount > 1024 || vertexCount <= 0 || vertexCount > 1000000)
+			continue;
+
+		Creation_ShapeSkin skin((size_t)vertexCount);
+		int cursor = chunkOfs + 104;
+		bool valid = true;
+		for (int clusterIndex = 0; clusterIndex < clusterCount && valid; ++clusterIndex)
+		{
+			if (cursor + 8 > dataSize) { valid = false; break; }
+			const int boneIndex = Creation_ReadI32(pData, dataSize, cursor);
+			const int influenceCount = Creation_ReadI32(pData, dataSize, cursor + 4);
+			cursor += 8;
+			if (boneIndex < 0 || influenceCount < 0 || influenceCount > vertexCount ||
+				cursor + influenceCount * 8 > dataSize)
+			{
+				valid = false;
+				break;
+			}
+			const int indicesOfs = cursor;
+			const int weightsOfs = cursor + influenceCount * 4;
+			for (int influenceIndex = 0; influenceIndex < influenceCount; ++influenceIndex)
+			{
+				const int vertexIndex = Creation_ReadI32(pData, dataSize, indicesOfs + influenceIndex * 4);
+				const float weight = Creation_ReadF32(pData, dataSize, weightsOfs + influenceIndex * 4);
+				if (vertexIndex >= 0 && vertexIndex < vertexCount && weight > 0.0f)
+					skin[(size_t)vertexIndex].push_back({ boneIndex, weight });
+			}
+			cursor += influenceCount * 8;
+		}
+		if (valid)
+			outSkins.push_back(std::move(skin));
+	}
+}
+
+static void Creation_SetPendingSkin(noeRAPI_t *pRapi, const Creation_ShapeSkin *pShapeSkin,
+	const int vertIndex, const int combinedBoneStart, const modelBone_t *pBones,
+	const int boneCount, const float pos[3], const float nrm[3])
+{
+	if (!pShapeSkin || vertIndex < 0 || vertIndex >= (int)pShapeSkin->size() || !pBones)
+	{
+		pRapi->rpgSetPendingSkinData(NULL);
+		return;
+	}
+	const std::vector<Creation_SkinInfluence> &influences = (*pShapeSkin)[(size_t)vertIndex];
+	if (influences.empty())
+	{
+		pRapi->rpgSetPendingSkinData(NULL);
+		return;
+	}
+
+	std::vector<Creation_SkinInfluence> sortedInfluences = influences;
+	std::sort(sortedInfluences.begin(), sortedInfluences.end(),
+		[](const Creation_SkinInfluence &a, const Creation_SkinInfluence &b) { return a.weight > b.weight; });
+	const int weightCount = std::min((int)sortedInfluences.size(), FFXISkinVertex::kMaxWeights);
+	float totalWeight = 0.0f;
+	for (int weightIndex = 0; weightIndex < weightCount; ++weightIndex)
+		totalWeight += sortedInfluences[(size_t)weightIndex].weight;
+	if (weightCount <= 0 || totalWeight <= 0.000001f)
+	{
+		pRapi->rpgSetPendingSkinData(NULL);
+		return;
+	}
+
+	FFXISkinVertex skin;
+	skin.skinned = true;
+	skin.weightCount = weightCount;
+	for (int weightIndex = 0; weightIndex < skin.weightCount; ++weightIndex)
+	{
+		const Creation_SkinInfluence &influence = sortedInfluences[(size_t)weightIndex];
+		const int boneIndex = combinedBoneStart + influence.boneIndex;
+		if (boneIndex < 0 || boneIndex >= boneCount)
+			continue;
+		skin.boneIdx[weightIndex] = boneIndex;
+		skin.boneWt[weightIndex] = influence.weight / totalWeight;
+		const RichMat43 invBind = ((const RichMat43 &)pBones[boneIndex].mat).GetInverse();
+		const RichMat44 invBind44 = invBind.ToMat44();
+		const RichVec4 localPos = invBind44.TransformVec4(RichVec4(pos[0], pos[1], pos[2], 1.0f));
+		RichVec3 localNrm = invBind44.TransformNormal(RichVec3(nrm));
+		localNrm.Normalize();
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			skin.pos[weightIndex][axis] = localPos[axis];
+			skin.nrm[weightIndex][axis] = localNrm[axis];
+		}
+	}
+	pRapi->rpgSetPendingSkinData(&skin);
+}
+
 static void Creation_EmitStrip(noeRAPI_t *pRapi, const unsigned char *pData, const int dataSize,
 	const int posOfs, const int normalOfs, const int uvOfs,
-	const std::vector<int> &strip, const float *sceneOffset)
+	const std::vector<int> &strip, const float *sceneOffset,
+	const Creation_ShapeSkin *pShapeSkin, const int combinedBoneStart,
+	const modelBone_t *pBones, const int boneCount)
 {
 	if (strip.size() < 3)
 		return;
@@ -120,6 +280,7 @@ static void Creation_EmitStrip(noeRAPI_t *pRapi, const unsigned char *pData, con
 		pRapi->rpgVertNormal3f(nrm);
 		pRapi->rpgVertUV2f(uv, 0);
 		pRapi->rpgVertColor4ub(rgba);
+		Creation_SetPendingSkin(pRapi, pShapeSkin, vertIndex, combinedBoneStart, pBones, boneCount, pos, nrm);
 		pRapi->rpgVertex3f(pos);
 	}
 	pRapi->rpgEnd();
@@ -127,7 +288,9 @@ static void Creation_EmitStrip(noeRAPI_t *pRapi, const unsigned char *pData, con
 
 static void Creation_EmitTriangleList(noeRAPI_t *pRapi, const unsigned char *pData, const int dataSize,
 	const int posOfs, const int normalOfs, const int uvOfs,
-	const std::vector<int> &indices, const float *sceneOffset)
+	const std::vector<int> &indices, const float *sceneOffset,
+	const Creation_ShapeSkin *pShapeSkin, const int combinedBoneStart,
+	const modelBone_t *pBones, const int boneCount)
 {
 	if (indices.size() < 3)
 		return;
@@ -162,13 +325,16 @@ static void Creation_EmitTriangleList(noeRAPI_t *pRapi, const unsigned char *pDa
 		pRapi->rpgVertNormal3f(nrm);
 		pRapi->rpgVertUV2f(uv, 0);
 		pRapi->rpgVertColor4ub(rgba);
+		Creation_SetPendingSkin(pRapi, pShapeSkin, vertIndex, combinedBoneStart, pBones, boneCount, pos, nrm);
 		pRapi->rpgVertex3f(pos);
 	}
 	pRapi->rpgEnd();
 }
 
 static bool Creation_RenderShape(noeRAPI_t *pRapi, const unsigned char *pData, const int dataSize,
-	const int shapeOfs, const char *materialName, const float *sceneOffset)
+	const int shapeOfs, const char *materialName, const float *sceneOffset,
+	const Creation_ShapeSkin *pShapeSkin, const int combinedBoneStart,
+	const modelBone_t *pBones, const int boneCount)
 {
 	const int textOfs = Creation_FindShapeText(pData, dataSize, shapeOfs);
 	if (textOfs < 0)
@@ -238,7 +404,8 @@ static bool Creation_RenderShape(noeRAPI_t *pRapi, const unsigned char *pData, c
 				}
 				if (validList)
 				{
-					Creation_EmitTriangleList(pRapi, pData, dataSize, posOfs, normalOfs, uvOfs, triIndices, sceneOffset);
+					Creation_EmitTriangleList(pRapi, pData, dataSize, posOfs, normalOfs, uvOfs, triIndices, sceneOffset,
+						pShapeSkin, combinedBoneStart, pBones, boneCount);
 					codeIndex += cmd;
 				}
 			}
@@ -257,23 +424,40 @@ static bool Creation_RenderShape(noeRAPI_t *pRapi, const unsigned char *pData, c
 			if (vertIndex >= 0 && vertIndex < vertCount)
 				strip.push_back(vertIndex);
 		}
-		Creation_EmitStrip(pRapi, pData, dataSize, posOfs, normalOfs, uvOfs, strip, sceneOffset);
+		Creation_EmitStrip(pRapi, pData, dataSize, posOfs, normalOfs, uvOfs, strip, sceneOffset,
+			pShapeSkin, combinedBoneStart, pBones, boneCount);
 	}
 
 	return true;
 }
 
 static int Creation_RenderDAT(noeRAPI_t *rapi, BYTE *fileBuffer, int bufferLen,
-	const char *materialName, const float *sceneOffset = NULL)
+	const char *opaqueMaterialName, const char *alphaMaterialName = NULL,
+	const char *blackKeyMaterialName = NULL,
+	const std::vector<bool> *shapeUsesAlpha = NULL,
+	const std::vector<bool> *shapeUsesBlackKey = NULL, const float *sceneOffset = NULL,
+	const std::vector<Creation_ShapeSkin> *pShapeSkins = NULL, const int combinedBoneStart = 0,
+	const modelBone_t *pBones = NULL, const int boneCount = 0)
 {
 	int renderedShapeCount = 0;
+	int shapeIndex = 0;
 	for (int shapeOfs = 0; shapeOfs + 0x60 < bufferLen;)
 	{
 		if (!Creation_IsShapeBlock(fileBuffer, bufferLen, shapeOfs))
 			break;
 
-		if (Creation_RenderShape(rapi, fileBuffer, bufferLen, shapeOfs, materialName, sceneOffset))
+		const bool useAlpha = alphaMaterialName && shapeUsesAlpha &&
+			shapeIndex < (int)shapeUsesAlpha->size() && (*shapeUsesAlpha)[shapeIndex];
+		const bool useBlackKey = blackKeyMaterialName && shapeUsesBlackKey &&
+			shapeIndex < (int)shapeUsesBlackKey->size() && (*shapeUsesBlackKey)[shapeIndex];
+		const char *materialName = useAlpha ? alphaMaterialName :
+			(useBlackKey ? blackKeyMaterialName : opaqueMaterialName);
+		const Creation_ShapeSkin *pShapeSkin = pShapeSkins && shapeIndex < (int)pShapeSkins->size() ?
+			&(*pShapeSkins)[(size_t)shapeIndex] : NULL;
+		if (Creation_RenderShape(rapi, fileBuffer, bufferLen, shapeOfs, materialName, sceneOffset,
+			pShapeSkin, combinedBoneStart, pBones, boneCount))
 			++renderedShapeCount;
+		++shapeIndex;
 
 		const int blockSize = Creation_ReadI32(fileBuffer, bufferLen, shapeOfs + 4);
 		const int nextShapeOfs = Creation_FindNextShapeBlock(fileBuffer, bufferLen, shapeOfs, blockSize);
@@ -333,117 +517,268 @@ static int Creation_FindDMBTextureBlock(const unsigned char *pData, const int da
 				bestOfs = ofs;
 			}
 		}
+
 	}
 
 	return bestOfs;
 }
 
-static bool Creation_UseSourceAlphaForPixel(const int alphaMode,
-	const int x, const int y, const int width, const int height)
+static char Creation_ToLowerASCII(const char c)
 {
-	switch (alphaMode)
-	{
-	case FFXI_CREATION_ALPHA_HUMANOID_HEAD:
-		return y < (height / 2) &&
-			!(x >= (width * 3 / 4) && y < (height / 4));
-	case FFXI_CREATION_ALPHA_ELVAAN_F_HEAD:
-		return y < (height / 2);
-	case FFXI_CREATION_ALPHA_TARU_HEAD:
-		return y < (height / 2) &&
-			!(x >= (width / 2) && x < (width * 3 / 4) &&
-			  y >= (height / 4) && y < (height / 2));
-	case FFXI_CREATION_ALPHA_MITHRA_HEAD:
-		return x >= (width / 2) &&
-			!(x >= (width * 3 / 4) && y >= (height * 3 / 4));
-	case FFXI_CREATION_ALPHA_GALKA_HEAD:
-		return x >= (width * 3 / 4);
-	default:
-		return false;
-	}
+	return (c >= 'A' && c <= 'Z') ? (char)(c + ('a' - 'A')) : c;
 }
 
-static bool Creation_IsMatteBlackCutoutPixel(const unsigned char *pPixel)
+static bool Creation_EqualASCIIInsensitive(const std::string &a, const std::string &b)
 {
-	return pPixel[3] >= 250 &&
-		pPixel[0] <= 3 && pPixel[1] <= 3 && pPixel[2] <= 3;
-}
-
-static bool Creation_IsSolidMatteBlackPatch(const unsigned char *pixels,
-	const int pixOfs, const int bytesPerPixel, const int width, const int height,
-	const int x, const int y)
-{
-	if (bytesPerPixel <= 3 || x < 2 || y < 2 || x >= width - 2 || y >= height - 2)
+	if (a.size() != b.size())
 		return false;
-
-	for (int py = y - 2; py <= y + 2; ++py)
-	{
-		for (int px = x - 2; px <= x + 2; ++px)
-		{
-			const unsigned char *pPixel = pixels + pixOfs + (py * width + px) * bytesPerPixel;
-			if (!Creation_IsMatteBlackCutoutPixel(pPixel))
-				return false;
-		}
-	}
+	for (size_t i = 0; i < a.size(); ++i)
+		if (Creation_ToLowerASCII(a[i]) != Creation_ToLowerASCII(b[i]))
+			return false;
 	return true;
 }
 
-static noesisMaterial_t *Creation_BuildDMBMaterial(noeRAPI_t *rapi,
-	BYTE *materialBuffer, int materialLen, const char *materialName,
-	CArrayList<noesisTex_t *> &textures, const int alphaMode)
+static bool Creation_EndsWithASCIIInsensitive(const std::string &text, const char *suffix)
+{
+	if (!suffix)
+		return false;
+	const size_t suffixLen = strlen(suffix);
+	if (text.size() < suffixLen)
+		return false;
+	for (size_t i = 0; i < suffixLen; ++i)
+		if (Creation_ToLowerASCII(text[text.size() - suffixLen + i]) !=
+			Creation_ToLowerASCII(suffix[i]))
+			return false;
+	return true;
+}
+
+static void Creation_GetDMBShapeMaterialFlags(const BYTE *materialBuffer, const int materialLen,
+	std::vector<bool> &shapeUsesAlpha, std::vector<bool> &shapeUsesBlackKey)
+{
+	shapeUsesAlpha.clear();
+	shapeUsesBlackKey.clear();
+	if (!materialBuffer || materialLen <= 0)
+		return;
+
+	std::vector<std::string> sortedShapeNames;
+	std::vector<std::string> geometryShapeNames;
+	for (int ofs = 0; ofs < materialLen;)
+	{
+		if (materialBuffer[ofs] < 0x20 || materialBuffer[ofs] > 0x7E)
+		{
+			++ofs;
+			continue;
+		}
+
+		const int stringOfs = ofs;
+		while (ofs < materialLen && materialBuffer[ofs] >= 0x20 && materialBuffer[ofs] <= 0x7E)
+			++ofs;
+		if (ofs >= materialLen || materialBuffer[ofs] != 0 || ofs - stringOfs < 4)
+			continue;
+
+		std::string value((const char *)materialBuffer + stringOfs, ofs - stringOfs);
+		if (Creation_EndsWithASCIIInsensitive(value, "Shape_sort"))
+		{
+			value.resize(value.size() - strlen("_sort"));
+			size_t nameOfs = value.size();
+			while (nameOfs > 0)
+			{
+				const char c = value[nameOfs - 1];
+				if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+					(c >= '0' && c <= '9') || c == '_'))
+					break;
+				--nameOfs;
+			}
+			value = value.substr(nameOfs);
+			sortedShapeNames.push_back(value);
+		}
+		else if (Creation_EndsWithASCIIInsensitive(value, "shape.sqo"))
+		{
+			const size_t slash = value.find_last_of("/\\");
+			std::string shapeName = value.substr(slash == std::string::npos ? 0 : slash + 1);
+			shapeName.resize(shapeName.size() - strlen(".sqo"));
+			geometryShapeNames.push_back(shapeName);
+		}
+		++ofs;
+	}
+
+	for (size_t shapeIndex = 0; shapeIndex < geometryShapeNames.size(); ++shapeIndex)
+	{
+		bool sorted = false;
+		for (size_t sortedIndex = 0; sortedIndex < sortedShapeNames.size(); ++sortedIndex)
+		{
+			if (Creation_EqualASCIIInsensitive(geometryShapeNames[shapeIndex], sortedShapeNames[sortedIndex]))
+			{
+				sorted = true;
+				break;
+			}
+		}
+		const bool namedAlphaShape =
+			Creation_EqualASCIIInsensitive(geometryShapeNames[shapeIndex], "alphaShape");
+		shapeUsesAlpha.push_back(sorted || namedAlphaShape);
+		// Hume male's strap shape contains an opaque lace/trim overlay on an
+		// exported black, zero-alpha backing. It is not tagged *_sort, so it
+		// needs the hard color-key material rather than general body masking.
+		shapeUsesBlackKey.push_back(
+			Creation_EqualASCIIInsensitive(geometryShapeNames[shapeIndex], "strapShape"));
+	}
+}
+
+static bool Creation_BuildDMBMaterials(noeRAPI_t *rapi,
+	BYTE *materialBuffer, int materialLen, const char *opaqueMaterialName,
+	const char *alphaMaterialName, const char *blackKeyMaterialName,
+	CArrayList<noesisTex_t *> &textures,
+	CArrayList<noesisMaterial_t *> &materials, const int alphaMode)
 {
 	if (!materialBuffer || materialLen <= 0)
-		return NULL;
+		return false;
 
 	const int texBlockOfs = Creation_FindDMBTextureBlock(materialBuffer, materialLen);
 	if (texBlockOfs < 0)
-		return NULL;
+		return false;
 
 	const int width = Creation_ReadI32(materialBuffer, materialLen, texBlockOfs + 0x40);
 	const int height = Creation_ReadI32(materialBuffer, materialLen, texBlockOfs + 0x44);
 	const int bytesPerPixel = Creation_ReadI32(materialBuffer, materialLen, texBlockOfs + 0x48);
 	const int pixOfs = texBlockOfs + 0x60;
 
-	unsigned char *rgba = (unsigned char *)rapi->Noesis_UnpooledAlloc(width * height * 4);
+	std::vector<unsigned char> blackAlphaKey;
+	if (alphaMode == FFXI_CREATION_ALPHA_BODY_CUTOUT && bytesPerPixel > 3)
+	{
+		blackAlphaKey.resize(width * height, 0);
+		for (int y = 1; y < height - 1; ++y)
+		{
+			for (int x = 1; x < width - 1; ++x)
+			{
+				bool solidKey = true;
+				for (int py = y - 1; py <= y + 1 && solidKey; ++py)
+				{
+					for (int px = x - 1; px <= x + 1; ++px)
+					{
+						const unsigned char *p = materialBuffer + pixOfs +
+							(py * width + px) * bytesPerPixel;
+						// Values below 16 collapse to the transparent zero nibble when
+						// the source is encoded as DXT3.
+						if (p[3] >= 16 || p[0] > 16 || p[1] > 16 || p[2] > 16)
+						{
+							solidKey = false;
+							break;
+						}
+					}
+				}
+				if (solidKey)
+					blackAlphaKey[y * width + x] = 1;
+			}
+		}
+
+		const std::vector<unsigned char> keyCores = blackAlphaKey;
+		for (int y = 0; y < height; ++y)
+		{
+			for (int x = 0; x < width; ++x)
+			{
+				const unsigned char *p = materialBuffer + pixOfs +
+					(y * width + x) * bytesPerPixel;
+				if (p[3] >= 16 || p[0] > 16 || p[1] > 16 || p[2] > 16)
+					continue;
+				for (int py = std::max(0, y - 2); py <= std::min(height - 1, y + 2); ++py)
+				{
+					for (int px = std::max(0, x - 2); px <= std::min(width - 1, x + 2); ++px)
+					{
+						if (keyCores[py * width + px])
+							blackAlphaKey[y * width + x] = 1;
+					}
+				}
+			}
+		}
+	}
+
+	unsigned char *opaqueRgba = (unsigned char *)rapi->Noesis_UnpooledAlloc(width * height * 4);
+	unsigned char *alphaRgba = (unsigned char *)rapi->Noesis_UnpooledAlloc(width * height * 4);
+	unsigned char *blackKeyRgba = (unsigned char *)rapi->Noesis_UnpooledAlloc(width * height * 4);
 	for (int y = 0; y < height; ++y)
 	{
 		const unsigned char *src = materialBuffer + pixOfs + y * width * bytesPerPixel;
 		for (int x = 0; x < width; ++x)
 		{
 			const unsigned char *srcPixel = src + x * bytesPerPixel;
-			unsigned char *dst = rgba + (y * width + x) * 4;
-			dst[0] = srcPixel[2];
-			dst[1] = srcPixel[1];
-			dst[2] = srcPixel[0];
-			const bool greenKey =
-				srcPixel[1] > 220 && srcPixel[0] < 80 && srcPixel[2] < 80;
-			const bool matteBlackKey =
-				Creation_IsSolidMatteBlackPatch(materialBuffer, pixOfs, bytesPerPixel, width, height, x, y);
-			if (greenKey)
-				dst[3] = 0;
-			else if (alphaMode == FFXI_CREATION_ALPHA_BODY_CUTOUT && bytesPerPixel > 3)
-				dst[3] = matteBlackKey ? 0 : 255;
-			else if (bytesPerPixel > 3 &&
-				Creation_UseSourceAlphaForPixel(alphaMode, x, y, width, height))
-				dst[3] = (unsigned char)std::min<int>((int)srcPixel[3] << 2, 255);
+			unsigned char *opaqueDst = opaqueRgba + (y * width + x) * 4;
+			unsigned char *alphaDst = alphaRgba + (y * width + x) * 4;
+			unsigned char *blackKeyDst = blackKeyRgba + (y * width + x) * 4;
+			for (int channel = 0; channel < 3; ++channel)
+			{
+				const unsigned char value = srcPixel[2 - channel];
+				opaqueDst[channel] = value;
+				alphaDst[channel] = value;
+				blackKeyDst[channel] = value;
+			}
+			// The fourth DMB channel is only opacity on alpha-enabled surfaces.
+			// Opaque body surfaces use it solely to confirm the exporter's exact
+			// black, zero-alpha color key; other dark texture detail stays opaque.
+			opaqueDst[3] = 255;
+			blackKeyDst[3] = !blackAlphaKey.empty() && blackAlphaKey[y * width + x] ? 0 : 255;
+			if (bytesPerPixel > 3)
+			{
+				// Match the DXT3 handling used by the retail DAT path: FFXI authors
+				// opacity in the lower half of the decoded 4-bit range, so expand a
+				// decoded nibble by roughly 1.875 before applying the alpha test.
+				const int dxtAlphaNibble = srcPixel[3] >> 4;
+				alphaDst[3] = (unsigned char)std::min(dxtAlphaNibble * 32, 255);
+			}
 			else
-				dst[3] = 255;
+			{
+				alphaDst[3] = 255;
+			}
 		}
 	}
 
-	char texName[64];
-	sprintf_s(texName, "%s_tex", materialName ? materialName : "creation_default");
-	noesisTex_t *pTex = rapi->Noesis_TextureAlloc(texName, width, height, rgba, NOESISTEX_RGBA32);
-	pTex->shouldFreeData = true;
+	char opaqueTexName[64];
+	char alphaTexName[64];
+	char blackKeyTexName[64];
+	sprintf_s(opaqueTexName, "%s_tex", opaqueMaterialName ? opaqueMaterialName : "creation_default");
+	sprintf_s(alphaTexName, "%s_tex", alphaMaterialName ? alphaMaterialName : "creation_alpha");
+	sprintf_s(blackKeyTexName, "%s_tex", blackKeyMaterialName ? blackKeyMaterialName : "creation_black_key");
+	noesisTex_t *pOpaqueTex = rapi->Noesis_TextureAlloc(
+		opaqueTexName, width, height, opaqueRgba, NOESISTEX_RGBA32);
+	noesisTex_t *pAlphaTex = rapi->Noesis_TextureAlloc(
+		alphaTexName, width, height, alphaRgba, NOESISTEX_RGBA32);
+	noesisTex_t *pBlackKeyTex = rapi->Noesis_TextureAlloc(
+		blackKeyTexName, width, height, blackKeyRgba, NOESISTEX_RGBA32);
+	pOpaqueTex->shouldFreeData = true;
+	pAlphaTex->shouldFreeData = true;
+	pBlackKeyTex->shouldFreeData = true;
 
-	noesisMaterial_t *pMat = rapi->Noesis_GetMaterialList(1, true);
-	pMat->name = rapi->Noesis_PooledString(materialName ? materialName : "creation_default");
-	pMat->texIdx = textures.Num();
-	pMat->flags = NMATFLAG_TWOSIDED;
-	pMat->noDefaultBlend = true;
-	pMat->alphaTest = alphaMode != FFXI_CREATION_ALPHA_SOLID ? 0.08f : 0.5f;
+	const int opaqueTexIndex = textures.Num();
+	textures.Append(pOpaqueTex);
+	const int alphaTexIndex = textures.Num();
+	textures.Append(pAlphaTex);
+	const int blackKeyTexIndex = textures.Num();
+	textures.Append(pBlackKeyTex);
 
-	textures.Append(pTex);
-	return pMat;
+	noesisMaterial_t *pOpaqueMat = rapi->Noesis_GetMaterialList(1, true);
+	pOpaqueMat->name = rapi->Noesis_PooledString(opaqueMaterialName ? opaqueMaterialName : "creation_default");
+	pOpaqueMat->texIdx = opaqueTexIndex;
+	pOpaqueMat->flags = NMATFLAG_TWOSIDED;
+	pOpaqueMat->noDefaultBlend = true;
+	pOpaqueMat->alphaTest = 0.0f;
+
+	noesisMaterial_t *pAlphaMat = rapi->Noesis_GetMaterialList(1, true);
+	pAlphaMat->name = rapi->Noesis_PooledString(alphaMaterialName ? alphaMaterialName : "creation_alpha");
+	pAlphaMat->texIdx = alphaTexIndex;
+	pAlphaMat->flags = NMATFLAG_TWOSIDED;
+	pAlphaMat->noDefaultBlend = true;
+	pAlphaMat->alphaTest = 0.5f;
+
+	noesisMaterial_t *pBlackKeyMat = rapi->Noesis_GetMaterialList(1, true);
+	pBlackKeyMat->name = rapi->Noesis_PooledString(
+		blackKeyMaterialName ? blackKeyMaterialName : "creation_black_key");
+	pBlackKeyMat->texIdx = blackKeyTexIndex;
+	pBlackKeyMat->flags = NMATFLAG_TWOSIDED;
+	pBlackKeyMat->noDefaultBlend = true;
+	pBlackKeyMat->alphaTest = 0.5f;
+	materials.Append(pOpaqueMat);
+	materials.Append(pAlphaMat);
+	materials.Append(pBlackKeyMat);
+	return true;
 }
 
 bool Model_FF11_CheckCreationDAT(BYTE *fileBuffer, int bufferLen, noeRAPI_t *rapi)
@@ -529,19 +864,79 @@ noesisModel_t *Model_FF11_LoadCreationDATList(BYTE **fileBuffers, int *bufferLen
 	void *pCtx = rapi->rpgCreateContext();
 	rapi->rpgSetOption(RPGOPT_TRIWINDBACKWARD, true);
 
-	CArrayList<noesisTex_t *> textures;
-	CArrayList<noesisMaterial_t *> materials;
-	char materialNames[8][32] = {};
+	std::vector<FFXISqleBoneInfo> sqleBones;
+	std::vector<Creation_ShapeSkin> sqleSkins[8];
+	int fileBoneStarts[8] = {};
+	int fileBoneCounts[8] = {};
 	for (int fileIndex = 0; fileIndex < fileCount && fileIndex < 8; ++fileIndex)
 	{
-		sprintf_s(materialNames[fileIndex], "creation_mat_%i", fileIndex);
-		noesisMaterial_t *pMat = NULL;
+		fileBoneStarts[fileIndex] = (int)sqleBones.size();
+		const float *sceneOffset = meshOffsets ? (meshOffsets + fileIndex * 3) : NULL;
+		Creation_ParseSqleSkeleton(fileBuffers[fileIndex], bufferLens[fileIndex], fileIndex,
+			fileBoneStarts[fileIndex], sceneOffset, sqleBones);
+		fileBoneCounts[fileIndex] = (int)sqleBones.size() - fileBoneStarts[fileIndex];
+		Creation_ParseSqleSkins(fileBuffers[fileIndex], bufferLens[fileIndex], sqleSkins[fileIndex]);
+	}
+
+	modelBone_t *pCombinedBones = NULL;
+	if (!sqleBones.empty())
+	{
+		pCombinedBones = rapi->Noesis_AllocBones((int)sqleBones.size());
+		for (int boneIndex = 0; boneIndex < (int)sqleBones.size(); ++boneIndex)
+		{
+			const FFXISqleBoneInfo &info = sqleBones[(size_t)boneIndex];
+			modelBone_t &bone = pCombinedBones[boneIndex];
+			bone.index = boneIndex;
+			sprintf_s(bone.name, "sqle_%i_%04i", info.fileIndex, info.sourceBoneIndex);
+			RichQuat q(info.bindQuaternion[0], info.bindQuaternion[1],
+				info.bindQuaternion[2], info.bindQuaternion[3]);
+			RichMat43 local = q.ToMat43(false);
+			local[0] = local[0] * info.bindScale[0];
+			local[1] = local[1] * info.bindScale[1];
+			local[2] = local[2] * info.bindScale[2];
+			local[3] = RichVec3(info.bindTranslation);
+
+			// Conjugate by the Y reflection used for creation geometry.  Applying
+			// it to each local transform keeps hierarchy multiplication intact.
+			static const float signs[3] = { 1.0f, -1.0f, 1.0f };
+			for (int row = 0; row < 3; ++row)
+				for (int col = 0; col < 3; ++col)
+					local[row][col] *= signs[row] * signs[col];
+			for (int axis = 0; axis < 3; ++axis)
+				local[3][axis] *= signs[axis];
+			if (info.parentIndex < 0)
+				for (int axis = 0; axis < 3; ++axis)
+					local[3][axis] += info.rootOffset[axis];
+
+			(RichMat43 &)bone.mat = local;
+			bone.eData.parent = (info.parentIndex >= 0 && info.parentIndex < (int)sqleBones.size()) ?
+				pCombinedBones + info.parentIndex : NULL;
+		}
+		rapi->rpgMultiplyBones(pCombinedBones, (int)sqleBones.size());
+		rapi->rpgSetExData_Bones(pCombinedBones, (int)sqleBones.size());
+	}
+
+	CArrayList<noesisTex_t *> textures;
+	CArrayList<noesisMaterial_t *> materials;
+	char opaqueMaterialNames[8][32] = {};
+	char alphaMaterialNames[8][32] = {};
+	char blackKeyMaterialNames[8][32] = {};
+	std::vector<bool> shapeUsesAlpha[8];
+	std::vector<bool> shapeUsesBlackKey[8];
+	for (int fileIndex = 0; fileIndex < fileCount && fileIndex < 8; ++fileIndex)
+	{
+		sprintf_s(opaqueMaterialNames[fileIndex], "creation_mat_%i", fileIndex);
+		sprintf_s(alphaMaterialNames[fileIndex], "creation_mat_%i_alpha", fileIndex);
+		sprintf_s(blackKeyMaterialNames[fileIndex], "creation_mat_%i_black_key", fileIndex);
 		if (materialBuffers && materialLens)
-			pMat = Creation_BuildDMBMaterial(rapi, materialBuffers[fileIndex], materialLens[fileIndex],
-				materialNames[fileIndex], textures,
+		{
+			Creation_GetDMBShapeMaterialFlags(materialBuffers[fileIndex], materialLens[fileIndex],
+				shapeUsesAlpha[fileIndex], shapeUsesBlackKey[fileIndex]);
+			Creation_BuildDMBMaterials(rapi, materialBuffers[fileIndex], materialLens[fileIndex],
+				opaqueMaterialNames[fileIndex], alphaMaterialNames[fileIndex],
+				blackKeyMaterialNames[fileIndex], textures, materials,
 				materialAlphaModes ? materialAlphaModes[fileIndex] : FFXI_CREATION_ALPHA_SOLID);
-		if (pMat)
-			materials.Append(pMat);
+		}
 	}
 	if (materials.Num() > 0)
 	{
@@ -556,15 +951,26 @@ noesisModel_t *Model_FF11_LoadCreationDATList(BYTE **fileBuffers, int *bufferLen
 		const int bufferLen = bufferLens[fileIndex];
 		if (!Model_FF11_CheckCreationDAT(fileBuffer, bufferLen, rapi))
 			continue;
-		const char *materialName = (fileIndex < 8) ? materialNames[fileIndex] : "creation_default";
+		const char *opaqueMaterialName = (fileIndex < 8) ? opaqueMaterialNames[fileIndex] : "creation_default";
+		const char *alphaMaterialName = (fileIndex < 8) ? alphaMaterialNames[fileIndex] : NULL;
+		const char *blackKeyMaterialName = (fileIndex < 8) ? blackKeyMaterialNames[fileIndex] : NULL;
+		const std::vector<bool> *alphaFlags = (fileIndex < 8) ? &shapeUsesAlpha[fileIndex] : NULL;
+		const std::vector<bool> *blackKeyFlags = (fileIndex < 8) ? &shapeUsesBlackKey[fileIndex] : NULL;
 		const float *sceneOffset = meshOffsets ? (meshOffsets + fileIndex * 3) : NULL;
-		renderedShapeCount += Creation_RenderDAT(rapi, fileBuffer, bufferLen, materialName, sceneOffset);
+		renderedShapeCount += Creation_RenderDAT(rapi, fileBuffer, bufferLen,
+			opaqueMaterialName, alphaMaterialName, blackKeyMaterialName,
+			alphaFlags, blackKeyFlags, sceneOffset,
+			(fileIndex < 8) ? &sqleSkins[fileIndex] : NULL,
+			(fileIndex < 8) ? fileBoneStarts[fileIndex] : 0,
+			pCombinedBones, (int)sqleBones.size());
 	}
 
 	noesisModel_t *pMdl = NULL;
 	if (renderedShapeCount > 0)
 	{
 		pMdl = rapi->rpgConstructModelAndSort();
+		if (pMdl)
+			pMdl->sqleBones = sqleBones;
 		numMdl = pMdl ? 1 : 0;
 	}
 

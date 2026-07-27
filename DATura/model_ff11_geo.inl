@@ -46,11 +46,13 @@ public:
 	{
 		SGeoDrawState()
 		{
-			mEnableShinyMat = false;
+			mEnableReflection = false;
+			mReflectionTextureFactorAlpha = 0.0f;
 			mMaterialName[0] = 0;
 		}
 
-		bool mEnableShinyMat;
+		bool mEnableReflection;
+		float mReflectionTextureFactorAlpha;
 		char mMaterialName[CFFXITextureHandler::skTexNameLength + 1];
 	};
 
@@ -75,13 +77,18 @@ public:
 
 	struct SGeoNativeDrawState
 	{
-		unsigned char mColor[4]; //just a guess, alpha seems to frequently switch between 0 and 128
-		float mUnknown1[2];
-		unsigned int mUnknown3;
-		float mUnknown4[4];
-		unsigned int mUnknown5;
-		float mSpecular[2];
+		unsigned char mTextureFactorBGRA[4]; // +0x00
+		unsigned char mState04[8];           // +0x05 contains the blend mode
+		unsigned char mState0C[4];           // +0x0F is the display type
+		float mReflectionEnable;             // +0x10: 1.0 enables the environment stage
+		float mUnknown14;
+		float mUnknown18;
+		float mUnknown1C;
+		unsigned int mUnknown20;
+		float mReflectionIntensity;          // +0x24: TEXTUREFACTOR alpha = value * 0.5
+		float mUnknown28;
 	};
+	static_assert(sizeof(SGeoNativeDrawState) == 44, "Unexpected 0x8010 state size.");
 
 	struct SGeoHeaderData
 	{
@@ -161,10 +168,11 @@ public:
 					{
 					case skDrawCmd_DrawState:
 						{
-							//draw state isn't mapped out. might have 2-sided and blending bits in here.
 							const SGeoNativeDrawState *pNativeState = get_and_incr_offset<SGeoNativeDrawState>(pDrawCommands, drawCommandOfs);
-							//might be something like exponent and scale
-							drawState.mEnableShinyMat = (pNativeState->mSpecular[0] > 128.0f || pNativeState->mSpecular[1] != 0.0f);
+							drawState.mEnableReflection = pNativeState->mReflectionEnable == 1.0f;
+							drawState.mReflectionTextureFactorAlpha =
+								std::max(0.0f, std::min(255.0f,
+									pNativeState->mReflectionIntensity * 0.5f));
 							UpdateDrawState(pRapi, drawState);
 						}
 						break;
@@ -414,7 +422,7 @@ protected:
 
 	static void UpdateDrawState(noeRAPI_t *pRapi, SGeoDrawState &drawState)
 	{
-		if (drawState.mEnableShinyMat && (!gpFF11Opts || !gpFF11Opts->noShinyMaterials))
+		if (drawState.mEnableReflection && (!gpFF11Opts || !gpFF11Opts->noShinyMaterials))
 		{
 			char materialName[CFFXITextureHandler::skTexNameLength + CFFXITextureHandler::skMaterialNamePad];
 			sprintf_s(materialName, "%s%s", drawState.mMaterialName, CFFXITextureHandler::skpShinySuffix);

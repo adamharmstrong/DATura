@@ -14,6 +14,7 @@
 
 noeRAPI_t::noeRAPI_t(IDirect3DDevice9 *pDevice)
     : mpDevice(pDevice)
+    , mTextureCompressionEnabled(true)
     , mPrimType(RPGEO_TRIANGLE)
     , mInPrimitive(false)
     , mTriWindBackward(false)
@@ -28,6 +29,29 @@ noeRAPI_t::noeRAPI_t(IDirect3DDevice9 *pDevice)
 
 noeRAPI_t::~noeRAPI_t()
 {
+    // Models and material-data containers are allocated by this RAPI and share
+    // the texture/material objects owned by the pools below. Release the model
+    // shells and pointer arrays first, while those referenced objects still live.
+    std::vector<noesisMatData_t *> matDataPool;
+    for (noesisModel_t *model : mModelPool)
+    {
+        if (!model)
+            continue;
+        model->ReleaseD3DBuffers();
+        if (model->pMatData &&
+            std::find(matDataPool.begin(), matDataPool.end(), model->pMatData) == matDataPool.end())
+        {
+            matDataPool.push_back(model->pMatData);
+        }
+        delete model;
+    }
+    for (noesisMatData_t *matData : matDataPool)
+    {
+        delete[] matData->mats;
+        delete[] matData->textures;
+        delete matData;
+    }
+
     // Free unmanaged allocations
     for (void *p : mAllocs)
         free(p);
@@ -274,19 +298,22 @@ static void UnpackDXT5Block(const unsigned char *pBlock,
             const unsigned int a = alphaTable[aIdx];
             const unsigned int c = colBuf[idx] & 0x00FFFFFF;
             pOut[dstY*imageW+dstX] = (a << 24) | c;
-        }
+    }
 }
 
-unsigned char *noeRAPI_t::Noesis_ConvertDXT(int w, int h, unsigned char *data,
-                                              noesisTexType_e texType)
+static bool DecompressDXTToBuffer(int w, int h, const unsigned char *data,
+                                  noesisTexType_e texType, unsigned int *pOut)
 {
-    unsigned int *pOut = (unsigned int *)malloc(w * h * 4);
-    mAllocs.push_back(pOut);
-    memset(pOut, 0, w * h * 4);
+    if (!data || !pOut || w <= 0 || h <= 0 ||
+        (texType != NOESISTEX_DXT1 && texType != NOESISTEX_DXT3 &&
+         texType != NOESISTEX_DXT5))
+    {
+        return false;
+    }
 
+    memset(pOut, 0, (size_t)w * (size_t)h * 4);
     const int blockSize = (texType == NOESISTEX_DXT1) ? 8 : 16;
     const unsigned char *pSrc = data;
-
     for (int by = 0; by < h; by += 4)
     {
         for (int bx = 0; bx < w; bx += 4)
@@ -301,7 +328,27 @@ unsigned char *noeRAPI_t::Noesis_ConvertDXT(int w, int h, unsigned char *data,
             pSrc += blockSize;
         }
     }
+    return true;
+}
 
+unsigned char *noeRAPI_t::Noesis_ConvertDXT(int w, int h, unsigned char *data,
+                                              noesisTexType_e texType)
+{
+    if (!data || w <= 0 || h <= 0 ||
+        (texType != NOESISTEX_DXT1 && texType != NOESISTEX_DXT3 && texType != NOESISTEX_DXT5))
+    {
+        return nullptr;
+    }
+
+    const size_t pixelCount = (size_t)w * (size_t)h;
+    if (pixelCount > (size_t)INT_MAX / 4)
+        return nullptr;
+
+    unsigned int *pOut = (unsigned int *)malloc(pixelCount * 4);
+    if (!pOut)
+        return nullptr;
+    mAllocs.push_back(pOut);
+    DecompressDXTToBuffer(w, h, data, texType, pOut);
     return (unsigned char *)pOut;
 }
 
@@ -349,21 +396,72 @@ noesisTex_t *noeRAPI_t::Noesis_TextureAllocEx(const char *name, int w, int h,
 // Upload a noesisTex_t to a D3D9 texture.  Called lazily if no device at alloc time.
 void noeRAPI_t::UploadTexture(noesisTex_t *pTex)
 {
-    if (!mpDevice || !pTex || pTex->pD3DTex)
+    if (!mpDevice || !pTex || pTex->pD3DTex || !pTex->data ||
+        pTex->w <= 0 || pTex->h <= 0 || pTex->dataLen <= 0)
         return;
 
-    D3DFORMAT fmt = D3DFMT_A8R8G8B8;
+    D3DFORMAT sourceFmt = D3DFMT_A8R8G8B8;
     switch (pTex->texType)
     {
-    case NOESISTEX_DXT1: fmt = D3DFMT_DXT1; break;
-    case NOESISTEX_DXT3: fmt = D3DFMT_DXT3; break;
-    case NOESISTEX_DXT5: fmt = D3DFMT_DXT5; break;
-    default:              fmt = D3DFMT_A8R8G8B8; break;
+    case NOESISTEX_DXT1: sourceFmt = D3DFMT_DXT1; break;
+    case NOESISTEX_DXT3: sourceFmt = D3DFMT_DXT3; break;
+    case NOESISTEX_DXT5: sourceFmt = D3DFMT_DXT5; break;
+    default:              sourceFmt = D3DFMT_A8R8G8B8; break;
+    }
+
+    const bool sourceIsCompressed = sourceFmt != D3DFMT_A8R8G8B8;
+    const D3DFORMAT fmt =
+        (sourceIsCompressed && !mTextureCompressionEnabled) ? D3DFMT_A8R8G8B8 : sourceFmt;
+
+    size_t requiredDataSize = 0;
+    if (!sourceIsCompressed)
+    {
+        const size_t pixelCount = (size_t)pTex->w * (size_t)pTex->h;
+        if (pixelCount > (size_t)INT_MAX / 4)
+            return;
+        requiredDataSize = pixelCount * 4;
+    }
+    else
+    {
+        const size_t blockSize = (sourceFmt == D3DFMT_DXT1) ? 8 : 16;
+        requiredDataSize = (((size_t)pTex->w + 3) / 4) *
+                           (((size_t)pTex->h + 3) / 4) * blockSize;
+    }
+
+    if (requiredDataSize == 0 || requiredDataSize > (size_t)pTex->dataLen)
+    {
+        OutputDebugStringA("WARNING: Texture pixel buffer is truncated; upload skipped.\n");
+        return;
+    }
+
+    const unsigned char *uploadData = pTex->data;
+    std::vector<unsigned int> expandedPixels;
+    if (sourceIsCompressed && !mTextureCompressionEnabled)
+    {
+        const size_t pixelCount = (size_t)pTex->w * (size_t)pTex->h;
+        expandedPixels.resize(pixelCount);
+        if (!DecompressDXTToBuffer(pTex->w, pTex->h, pTex->data,
+                                   pTex->texType, expandedPixels.data()))
+        {
+            OutputDebugStringA("WARNING: DXT texture decompression failed.\n");
+            return;
+        }
+        uploadData = reinterpret_cast<const unsigned char *>(expandedPixels.data());
     }
 
     IDirect3DTexture9 *pTex9 = nullptr;
-    HRESULT hr = mpDevice->CreateTexture(pTex->w, pTex->h, 1, 0,
+    bool autoGenerateMips = true;
+    HRESULT hr = mpDevice->CreateTexture(pTex->w, pTex->h, 0,
+                                          D3DUSAGE_AUTOGENMIPMAP,
                                           fmt, D3DPOOL_MANAGED, &pTex9, nullptr);
+    if (FAILED(hr))
+    {
+        // Some older drivers reject automatic generation for compressed formats.
+        // Preserve the validated top-level texture as a one-level fallback.
+        autoGenerateMips = false;
+        hr = mpDevice->CreateTexture(pTex->w, pTex->h, 1, 0,
+                                     fmt, D3DPOOL_MANAGED, &pTex9, nullptr);
+    }
     if (FAILED(hr))
     {
         OutputDebugStringA("WARNING: CreateTexture failed\n");
@@ -371,40 +469,67 @@ void noeRAPI_t::UploadTexture(noesisTex_t *pTex)
     }
 
     D3DLOCKED_RECT lr;
-    if (SUCCEEDED(pTex9->LockRect(0, &lr, nullptr, 0)))
+    if (FAILED(pTex9->LockRect(0, &lr, nullptr, 0)))
     {
-        if (fmt == D3DFMT_A8R8G8B8)
-        {
+        OutputDebugStringA("WARNING: Texture LockRect failed\n");
+        pTex9->Release();
+        return;
+    }
+
+    if (fmt == D3DFMT_A8R8G8B8)
+    {
             // RGBA32: each texel = 4 bytes.
             // Source data from Noesis is D3DCOLOR (ARGB) — matches D3DFMT_A8R8G8B8 directly.
-            const unsigned char *pSrc = pTex->data;
-            unsigned char       *pDst = (unsigned char *)lr.pBits;
-            for (int y = 0; y < pTex->h; ++y)
-            {
-                memcpy(pDst, pSrc, pTex->w * 4);
-                pSrc += pTex->w * 4;
-                pDst += lr.Pitch;
-            }
-        }
-        else
-        {
-            // DXT: rows of 4-texel blocks, each block-row is (w/4) * blockSize bytes
-            const int blockSize = (fmt == D3DFMT_DXT1) ? 8 : 16;
-            const int rowBytes  = ((pTex->w + 3) / 4) * blockSize;
-            const unsigned char *pSrc = pTex->data;
-            unsigned char       *pDst = (unsigned char *)lr.pBits;
-            const int blockRows = (pTex->h + 3) / 4;
-            for (int by = 0; by < blockRows; ++by)
-            {
-                memcpy(pDst, pSrc, rowBytes);
-                pSrc += rowBytes;
-                pDst += lr.Pitch;
-            }
-        }
-        pTex9->UnlockRect(0);
+		const unsigned char *pSrc = uploadData;
+		unsigned char       *pDst = (unsigned char *)lr.pBits;
+		for (int y = 0; y < pTex->h; ++y)
+		{
+			memcpy(pDst, pSrc, pTex->w * 4);
+			pSrc += pTex->w * 4;
+			pDst += lr.Pitch;
+		}
+    }
+    else
+    {
+            // DXT: rows of 4-texel blocks, each row is ceil(w/4) * blockSize bytes.
+		const int blockSize = (fmt == D3DFMT_DXT1) ? 8 : 16;
+		const int rowBytes  = ((pTex->w + 3) / 4) * blockSize;
+		const unsigned char *pSrc = uploadData;
+		unsigned char       *pDst = (unsigned char *)lr.pBits;
+		const int blockRows = (pTex->h + 3) / 4;
+		for (int by = 0; by < blockRows; ++by)
+		{
+			memcpy(pDst, pSrc, rowBytes);
+			pSrc += rowBytes;
+			pDst += lr.Pitch;
+		}
+    }
+    pTex9->UnlockRect(0);
+
+    if (autoGenerateMips && pTex9->GetLevelCount() > 1)
+    {
+        pTex9->SetAutoGenFilterType(D3DTEXF_LINEAR);
+        pTex9->GenerateMipSubLevels();
     }
 
     pTex->pD3DTex = pTex9;
+}
+
+void noeRAPI_t::SetTextureCompressionEnabled(bool enabled)
+{
+    if (mTextureCompressionEnabled == enabled)
+        return;
+
+    mTextureCompressionEnabled = enabled;
+    for (noesisTex_t *pTex : mTexPool)
+    {
+        if (pTex && pTex->pD3DTex)
+        {
+            pTex->pD3DTex->Release();
+            pTex->pD3DTex = nullptr;
+        }
+    }
+    UploadPendingTextures();
 }
 
 // Upload any textures that didn't have a device at creation time.

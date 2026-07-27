@@ -21,8 +21,19 @@ The resource browser currently recognizes:
 
 Text is decoded as Windows CP932 with known FFXI element, Auto-Translate,
 resource-reference, and dialog control markers. Rare private glyphs may still
-appear as fallback characters. Audio support is header inspection only, and the
-graphic scanner inventories embedded headers without exporting their pixels.
+appear as fallback characters. The graphic scanner inventories embedded headers
+without exporting their pixels.
+
+## Audio playback
+
+The **Audio > Music / SFX Player...** menu scans the configured FFXI installation
+for installed `BGMStream` music and `SeWave` sound effects. The player supports
+searching by name, ID, bank, format, or path; double-click playback; stop and loop
+controls; and opening an individual `.bgw` or `.spw` file. ADPCM and raw PCM
+payloads are decoded to a temporary WAV cache for playback without modifying or
+redistributing the source game files. Catalog scanning and first-time decoding
+run in the background so the DATura interface remains responsive. ATRAC3 headers
+are listed for inspection, but that codec is not currently previewable.
 
 For parser regression checks, build `tools/ffxi_resource_probe.vcxproj` and run:
 

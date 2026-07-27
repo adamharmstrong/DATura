@@ -103,8 +103,9 @@ def decode_map(payload):
         pos += xor_len
 
     node_count = u24le(out, 4)
-    for i in range(min(node_count, max(0, (len(out) - 32) // 96))):
-        off = 32 + i * 96
+    node_stride = 100
+    for i in range(min(node_count, max(0, (len(out) - 32) // node_stride))):
+        off = 32 + i * node_stride
         for j in range(16):
             out[off + j] ^= 0x55
     return bytes(out)

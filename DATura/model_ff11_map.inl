@@ -213,6 +213,7 @@ protected:
 
 		// First int stores bucket position/flags. The remaining entries are
 		// {transform offset, geometry offset} pairs, terminated by zero.
+		const unsigned int bucketFlags = (unsigned int)ReadInt32LE(pData, dataSize, entryOfs);
 		entryOfs += 4;
 		for (int pairCount = 0; pairCount < 4096; ++pairCount)
 		{
@@ -227,13 +228,14 @@ protected:
 			const int geometryOfs = ReadInt32LE(pData, dataSize, entryOfs);
 			entryOfs += 4;
 			if (geometryOfs != 0)
-				CollectOfficialCollisionGridMesh(pData, dataSize, transformOfs, geometryOfs, gridX, gridY);
+				CollectOfficialCollisionGridMesh(pData, dataSize, transformOfs, geometryOfs, gridX, gridY, bucketFlags);
 		}
 	}
 
 	static void CollectOfficialCollisionGridMesh(const unsigned char *pData, const int dataSize,
 												const int transformOfs, const int geometryOfs,
-												const int gridX, const int gridY)
+												const int gridX, const int gridY,
+												const unsigned int bucketFlags)
 	{
 		if (!RangeIsValid(transformOfs, 16 * 4, dataSize) || !RangeIsValid(geometryOfs, 0x10, dataSize))
 			return;
@@ -263,6 +265,7 @@ protected:
 		meshDebug.gridY = gridY;
 		meshDebug.transformOfs = transformOfs;
 		meshDebug.geometryOfs = geometryOfs;
+		meshDebug.bucketFlags = bucketFlags;
 		sprintf_s(meshDebug.displayName, "Grid %03d,%03d mesh %05d",
 				  gridX, gridY, (int)gFF11LastCollisionMeshes.size());
 		bool haveMeshBounds = false;
@@ -270,9 +273,14 @@ protected:
 		for (int triIndex = 0; triIndex < triCount; ++triIndex)
 		{
 			const int triOfs = trisOfs + triIndex * 8;
-			const int idx0 = (int)(ReadUInt16LE(pData, dataSize, triOfs + 0) & 0x3FFF);
-			const int idx1 = (int)(ReadUInt16LE(pData, dataSize, triOfs + 2) & 0x3FFF);
-			const int idx2 = (int)(ReadUInt16LE(pData, dataSize, triOfs + 4) & 0x3FFF);
+			const unsigned short rawIndices[3] = {
+				ReadUInt16LE(pData, dataSize, triOfs + 0),
+				ReadUInt16LE(pData, dataSize, triOfs + 2),
+				ReadUInt16LE(pData, dataSize, triOfs + 4)
+			};
+			const int idx0 = (int)(rawIndices[0] & 0x3FFF);
+			const int idx1 = (int)(rawIndices[1] & 0x3FFF);
+			const int idx2 = (int)(rawIndices[2] & 0x3FFF);
 			if (idx0 >= vertexCount || idx1 >= vertexCount || idx2 >= vertexCount)
 				continue;
 
@@ -280,6 +288,8 @@ protected:
 			const int indices[3] = { idx0, idx1, idx2 };
 			for (int v = 0; v < 3; ++v)
 			{
+				outTri.indexFlags[v] = (unsigned char)(rawIndices[v] >> 14);
+				meshDebug.indexFlagValueMask |= 1u << outTri.indexFlags[v];
 				const int vertOfs = verticesOfs + indices[v] * 12;
 				const float x = ReadFloatLE(pData, dataSize, vertOfs + 0);
 				const float y = ReadFloatLE(pData, dataSize, vertOfs + 4);
@@ -360,7 +370,6 @@ static bool FF11_MapGeoNameUsesHardAlpha(const char *name)
 		"_umisaku-ami",
 		"_wakame",
 		"ami",
-		"cry_line",
 		"dust",
 		"himono",
 		"hit_cry",
@@ -455,10 +464,14 @@ public:
 		int mFlag; //typically 64 for super header, varying for sub
 	};
 
-	// XIM's zone-mesh state decoder: 0x2000 disables the normal back-face
-	// cull, while 0x8000 selects the translucent, depth-biased layer pass.
+	// MeshBlockResource reads one dword after the texture name. Its low 28 bits
+	// are the vertex count; the high nibble becomes these runtime u16 flags.
+	// MeshBlockManager confirms 0x8000 = transparent and 0x2000 = no culling.
+	static const unsigned int skMapGeoVertexCountMask = 0x0FFFFFFF;
 	static const int skMapGeoFlag_DisableBackFaceCull = 0x2000;
 	static const int skMapGeoFlag_AlphaBlend = 0x8000;
+	static const int skMapGeoFlag_Unknown4000 = 0x4000;
+	static const int skMapGeoFlag_Unknown1000 = 0x1000;
 
 	static const int skDefaultVertColorFixShift = 0;
 	static const int skDefaultVertAlphaFixShift = 0;
@@ -489,6 +502,12 @@ public:
 								const unsigned char *pChunkData, const int dataSize)
 	{
 		noeRAPI_t *pRapi = dat.GetRAPI();
+		if (dataSize < (int)sizeof(SMapGeoHeader))
+		{
+			pRapi->LogOutput("WARNING: Ignoring undersized MapGeo chunk.\n");
+			return true;
+		}
+
 		unsigned char *pDecrypted = (unsigned char *)pRapi->Noesis_UnpooledAlloc(dataSize);
 		memcpy(pDecrypted, pChunkData, dataSize);
 		FF11Decrypt::DecryptChunk(pDecrypted, CFFXIDat::skChunkType_MapGeo, dataSize);
@@ -506,7 +525,6 @@ public:
 		SMapGeoData &geoData = mMapGeoList[index];
 		const SMapGeoHeader *pMapGeoHdr = geoData.mpMapGeoHdr;
 		const unsigned char *pDrawData = (const unsigned char *)pMapGeoHdr;
-		const int endDrawOfs = geoData.mDataSize - sizeof(SDrawHeader);
 		const unsigned int objectFlags0 = (pMapObject) ? pMapObject->mObjectFlags[0] : 0;
 		const unsigned int objectFlags1 = (pMapObject) ? pMapObject->mObjectFlags[1] : 0;
 
@@ -534,26 +552,90 @@ public:
 		char matName[CFFXITextureHandler::skTexNameLength + CFFXITextureHandler::skMaterialNamePad];
 
 		int drawOfs = sizeof(SMapGeoHeader);
-		while (drawOfs <= endDrawOfs)
+		bool malformedMapGeo = false;
+		while (MapGeoRangeFits(drawOfs, 1, sizeof(SDrawHeader), geoData.mDataSize))
 		{
 			const SDrawHeader *pSuperHeader = get_and_incr_offset<SDrawHeader>(pDrawData, drawOfs);
-			for (int superIndex = 0; superIndex < pSuperHeader->mSegCount && drawOfs <= endDrawOfs; ++superIndex)
+			if (pSuperHeader->mSegCount < 0)
 			{
-				const SDrawHeader *pSubHeader = get_and_incr_offset<SDrawHeader>(pDrawData, drawOfs);
-				for (int subIndex = 0; subIndex < pSubHeader->mSegCount && drawOfs <= endDrawOfs; ++subIndex)
+				malformedMapGeo = true;
+				break;
+			}
+
+			// Early Sel Phiner data uses the same MMB envelope but occasionally
+			// omits one level of draw headers. In that layout the first batch follows
+			// the current header directly and always uses the 36-byte vertex record.
+			const bool batchesFollowSuperHeader =
+				MapGeoBatchLooksPlausible(pDrawData, drawOfs, geoData.mDataSize, 36);
+			const int superEntryCount = batchesFollowSuperHeader ? 1 : pSuperHeader->mSegCount;
+			for (int superIndex = 0; superIndex < superEntryCount && !malformedMapGeo; ++superIndex)
+			{
+				const SDrawHeader *pSubHeader = pSuperHeader;
+				if (!batchesFollowSuperHeader)
+				{
+					if (!MapGeoRangeFits(drawOfs, 1, sizeof(SDrawHeader), geoData.mDataSize))
+					{
+						malformedMapGeo = true;
+						break;
+					}
+					pSubHeader = get_and_incr_offset<SDrawHeader>(pDrawData, drawOfs);
+				}
+				if (pSubHeader->mSegCount < 0)
+				{
+					malformedMapGeo = true;
+					break;
+				}
+
+				for (int subIndex = 0; subIndex < pSubHeader->mSegCount; ++subIndex)
 				{
 					NoeAssert((drawOfs & 3) == 0);
 					const int batchDrawOfs = drawOfs;
+					const int batchPrefixSize = CFFXITextureHandler::skTexNameLength + sizeof(unsigned int);
+					if (!MapGeoRangeFits(drawOfs, 1, batchPrefixSize, geoData.mDataSize))
+					{
+						malformedMapGeo = true;
+						break;
+					}
 					const char *pMatName = get_and_incr_offset<char>(pDrawData, drawOfs, CFFXITextureHandler::skTexNameLength);
 
-					const unsigned short vertCount = *get_and_incr_offset<unsigned short>(pDrawData, drawOfs);
-					const unsigned short blendFlags = *get_and_incr_offset<unsigned short>(pDrawData, drawOfs);
-					const int vertStride = (pSubHeader->mFlag == 0) ? 48 : 36;
+					const unsigned int verticeCountAndFlags =
+						*get_and_incr_offset<unsigned int>(pDrawData, drawOfs);
+					const unsigned int rawVertCount = verticeCountAndFlags & skMapGeoVertexCountMask;
+					const unsigned short blendFlags =
+						(unsigned short)((verticeCountAndFlags >> 16) & 0xF000);
+					if (rawVertCount > (unsigned int)INT_MAX)
+					{
+						malformedMapGeo = true;
+						break;
+					}
+					const int vertCount = (int)rawVertCount;
+					// Retail map groups use super flag 64. The prototype hierarchy uses
+					// flags 0/96, including five nested (non-flattened) groups.
+					const bool legacy36ByteVertices = batchesFollowSuperHeader ||
+						pSuperHeader->mFlag == 0 || pSuperHeader->mFlag == 96;
+					const int vertStride = (legacy36ByteVertices || pSubHeader->mFlag != 0) ? 36 : 48;
+					if (!MapGeoRangeFits(drawOfs, vertCount, vertStride, geoData.mDataSize) ||
+						!MapGeoRangeFits(drawOfs + vertStride * (int)vertCount, 2,
+									 sizeof(unsigned short), geoData.mDataSize))
+					{
+						malformedMapGeo = true;
+						break;
+					}
 					const unsigned char *pVertData = get_and_incr_offset<unsigned char>(pDrawData, drawOfs, vertStride * vertCount);
 					const unsigned short indexCount = *get_and_incr_offset<unsigned short>(pDrawData, drawOfs);
 					const unsigned short flags2 = *get_and_incr_offset<unsigned short>(pDrawData, drawOfs);
+					if (!MapGeoRangeFits(drawOfs, indexCount, sizeof(unsigned short), geoData.mDataSize))
+					{
+						malformedMapGeo = true;
+						break;
+					}
 					const unsigned short *pIndexData = get_and_incr_offset<unsigned short>(pDrawData, drawOfs, indexCount);
 					align_offset(drawOfs, 4);
+					if (drawOfs > geoData.mDataSize)
+					{
+						malformedMapGeo = true;
+						break;
+					}
 
 					ff11MapGeoDrawBatchDebug_t batchDebug = {};
 					memcpy(batchDebug.objectName, pMapGeoHdr->mObjectName, CFFXIMapHandler::skObjectNameLength);
@@ -579,7 +661,8 @@ public:
 					batchDebug.flags2 = flags2;
 					batchDebug.superFlag = pSuperHeader->mFlag;
 					batchDebug.subFlag = pSubHeader->mFlag;
-					batchDebug.galkaReeveBlendMultiplier = (blendFlags & 0xF000) >> 12;
+					batchDebug.runtimeFlag4000 = (blendFlags & skMapGeoFlag_Unknown4000) != 0;
+					batchDebug.runtimeFlag1000 = (blendFlags & skMapGeoFlag_Unknown1000) != 0;
 					batchDebug.galkaReeveUseAlpha = (blendFlags & skMapGeoFlag_AlphaBlend) != 0;
 					batchDebug.galkaReeveWouldAlphaBlend = batchDebug.galkaReeveUseAlpha;
 					memcpy(batchDebug.superBounds, pSuperHeader->mBounds, sizeof(batchDebug.superBounds));
@@ -603,8 +686,13 @@ public:
 					memcpy(matName, pMatName, CFFXITextureHandler::skTexNameLength);
 					matName[CFFXITextureHandler::skTexNameLength] = 0;
 					const bool explicitObjectTransparency = (objectFlags0 & 0x01000000) != 0;
-					const bool hardAlpha = (explicitObjectTransparency && vertStride == 48) ||
-						FF11_MapGeoNameUsesHardAlpha(pMapGeoHdr->mObjectName);
+					// The 0x8000 draw state is authoritative for translucent overlay
+					// records. Some objects contain both an opaque/cutout base and
+					// soft-blended detail batches; forcing the latter through the alpha
+					// test tears away most of their half-alpha geometry.
+					const bool hardAlpha = !batchDebug.galkaReeveWouldAlphaBlend &&
+						((explicitObjectTransparency && vertStride == 48) ||
+						 FF11_MapGeoNameUsesHardAlpha(pMapGeoHdr->mObjectName));
 					const bool shouldBlend = !hardAlpha && batchDebug.galkaReeveWouldAlphaBlend;
 					const bool backFaceCull = (blendFlags & skMapGeoFlag_DisableBackFaceCull) == 0;
 					batchDebug.daturaHardAlpha = hardAlpha;
@@ -635,12 +723,7 @@ public:
 					{
 						if (emitRender)
 							pRapi->LogOutput("WARNING: Unexpected vert/index count.\n");
-						break;
-					}
-					else if (drawOfs > geoData.mDataSize)
-					{
-						if (emitRender)
-							pRapi->LogOutput("WARNING: Ran off end of MapGeo.\n");
+						malformedMapGeo = true;
 						break;
 					}
 
@@ -775,6 +858,8 @@ public:
 				}
 			}
 		}
+		if (malformedMapGeo && emitRender)
+			pRapi->LogOutput("WARNING: Ignoring malformed MapGeo draw data at offset %i.\n", drawOfs);
 
 		if (emitRender)
 			pRapi->rpgSetTransform(NULL);
@@ -816,6 +901,56 @@ public:
 	const TMapGeoList &GetMapGeoList() const { return mMapGeoList; }
 
 protected:
+	static bool MapGeoRangeFits(const int offset, const int count, const int elementSize, const int dataSize)
+	{
+		return offset >= 0 && offset <= dataSize && count >= 0 && elementSize > 0 &&
+			count <= (dataSize - offset) / elementSize;
+	}
+
+	static bool MapGeoBatchLooksPlausible(const unsigned char *pData, const int offset,
+									  const int dataSize, const int vertStride)
+	{
+		const int prefixSize = CFFXITextureHandler::skTexNameLength + sizeof(unsigned int);
+		if (!MapGeoRangeFits(offset, 1, prefixSize, dataSize))
+			return false;
+
+		bool hasPrintableNameByte = false;
+		for (int i = 0; i < CFFXITextureHandler::skTexNameLength; ++i)
+		{
+			const unsigned char c = pData[offset + i];
+			if (c != 0 && (c < 0x20 || c > 0x7E))
+				return false;
+			if (c >= 0x20 && c <= 0x7E)
+				hasPrintableNameByte = true;
+		}
+		if (!hasPrintableNameByte)
+			return false;
+
+		unsigned int verticeCountAndFlags = 0;
+		memcpy(&verticeCountAndFlags, pData + offset + CFFXITextureHandler::skTexNameLength,
+			sizeof(verticeCountAndFlags));
+		const unsigned int rawVertCount = verticeCountAndFlags & skMapGeoVertexCountMask;
+		if (rawVertCount > (unsigned int)INT_MAX)
+			return false;
+		const int vertCount = (int)rawVertCount;
+		if (vertCount == 0)
+			return false;
+
+		const int vertDataOfs = offset + prefixSize;
+		if (!MapGeoRangeFits(vertDataOfs, vertCount, vertStride, dataSize))
+			return false;
+		const int indexHeaderOfs = vertDataOfs + vertStride * (int)vertCount;
+		if (!MapGeoRangeFits(indexHeaderOfs, 2, sizeof(unsigned short), dataSize))
+			return false;
+
+		unsigned short indexCount = 0;
+		memcpy(&indexCount, pData + indexHeaderOfs, sizeof(indexCount));
+		if (indexCount < 3)
+			return false;
+		const int indexDataOfs = indexHeaderOfs + sizeof(unsigned short) * 2;
+		return MapGeoRangeFits(indexDataOfs, indexCount, sizeof(unsigned short), dataSize);
+	}
+
 	static bool BuildHighDetailFallbackName(char *dst, const char *src)
 	{
 		memcpy(dst, src, CFFXIMapHandler::skObjectNameLength);

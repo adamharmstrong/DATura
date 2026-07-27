@@ -197,10 +197,15 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 
 	CFFXIMapHandler *pMapHandler = datHandlers.MapHandler();
 	CFFXIMapGeoHandler *pMapGeoHandler = datHandlers.MapGeoHandler();
-	CFFXIEffectHandler *pEffectMeshHandler = datHandlers.EffectMeshHandler();
+	CFFXIEffectHandler *pEffectModelHandler = datHandlers.EffectModelHandler();
+	CFFXIEffectHandler *pEffectAnimatedHandler = datHandlers.EffectAnimatedHandler();
+	CFFXIEffectHandler *pEffectMorphHandler = datHandlers.EffectMorphHandler();
 	const CFFXIMapGeoHandler::TMapGeoList &mapGeoList = pMapGeoHandler->GetMapGeoList();
 	const int mapGeoCount = mapGeoList.size();
-	const int effectMeshCount = pEffectMeshHandler ? (int)pEffectMeshHandler->EffectMeshes().size() : 0;
+	const int effectMeshCount =
+		(pEffectModelHandler ? (int)pEffectModelHandler->EffectMeshes().size() : 0) +
+		(pEffectAnimatedHandler ? (int)pEffectAnimatedHandler->EffectMeshes().size() : 0) +
+		(pEffectMorphHandler ? (int)pEffectMorphHandler->EffectMeshes().size() : 0);
 
 	const bool shouldRenderEffectMeshes = (gpFF11Opts && gpFF11Opts->renderEffectMeshes && effectMeshCount > 0);
 	const bool anyGeoDataIsPresent = (mapGeoCount > 0 || pGeoHandler->GeoDataIsPresent() || shouldRenderEffectMeshes);
@@ -316,7 +321,12 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 
 	if (shouldRenderEffectMeshes)
 	{
-		pEffectMeshHandler->RenderEffectMeshes(pRapi);
+		if (pEffectModelHandler)
+			pEffectModelHandler->RenderEffectMeshes(pRapi);
+		if (pEffectAnimatedHandler)
+			pEffectAnimatedHandler->RenderEffectMeshes(pRapi);
+		if (pEffectMorphHandler)
+			pEffectMorphHandler->RenderEffectMeshes(pRapi);
 	}
 
 	//construct the model from the combined rendering
@@ -386,6 +396,35 @@ noesisModel_t *Model_FF11_LoadDAT(BYTE *fileBuffer, int bufferLen, int &numMdl, 
 	Model_FF11_SetPreviewOffset(rapi);
 
 	numMdl = (pMdl) ? 1 : 0;
+	return pMdl;
+}
+
+noesisModel_t *Model_FF11_LoadTextureDAT(BYTE *fileBuffer, int bufferLen, int &numMdl, noeRAPI_t *rapi)
+{
+	numMdl = 0;
+	if (!fileBuffer || bufferLen <= 0 || !rapi)
+	{
+		return NULL;
+	}
+
+	CFFXIDat dat(fileBuffer, bufferLen, rapi);
+	CFFXIDefaultHandlerSet datHandlers(&dat);
+	if (!dat.ParseChunksOfInterest() ||
+		!dat.RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Texture))
+	{
+		return NULL;
+	}
+
+	CFFXITextureHandler *pTextureHandler = datHandlers.TextureHandler();
+	if (!pTextureHandler || pTextureHandler->Textures().Num() <= 0)
+	{
+		return NULL;
+	}
+
+	noesisMatData_t *pMd = rapi->Noesis_GetMatDataFromLists(
+		pTextureHandler->Materials(), pTextureHandler->Textures());
+	noesisModel_t *pMdl = rapi->Noesis_AllocModelContainer(pMd, NULL, 0);
+	numMdl = pMdl ? 1 : 0;
 	return pMdl;
 }
 
@@ -465,10 +504,14 @@ static void Model_FF11_TryAnnotateEffectChunk(ff11DatChunkDebug_t &chunkDebug, c
 	if (dataSize < 16)
 		return;
 
-	if (chunkDebug.type != 0x21 && chunkDebug.type != 0x25)
+	if (chunkDebug.type != CFFXIDat::skChunkType_EffectModel &&
+		chunkDebug.type != CFFXIDat::skChunkType_EffectAnimated &&
+		chunkDebug.type != CFFXIDat::skChunkType_EffectMorph)
 		return;
 
-	const int materialOfs = (chunkDebug.type == 0x25) ? 0x10 : 0x08;
+	const int materialOfs = (chunkDebug.type == CFFXIDat::skChunkType_EffectMorph) ? 0x10 :
+		(chunkDebug.type == CFFXIDat::skChunkType_EffectModel ?
+			((pChunkData[0] == 3) ? 0x10 : 0x0E) : 0x08);
 	if (materialOfs + 16 > dataSize)
 		return;
 
@@ -482,6 +525,32 @@ static void Model_FF11_TryAnnotateEffectChunk(ff11DatChunkDebug_t &chunkDebug, c
 	memcpy(chunkDebug.effectMaterialName, pChunkData + materialOfs, 16);
 	chunkDebug.effectMaterialName[16] = 0;
 	chunkDebug.hasEffectMetadata = true;
+}
+
+static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug, const unsigned char *pChunkData, const int dataSize)
+{
+	if (chunkDebug.type != CFFXIDat::skChunkType_Generator || dataSize < 0x80)
+		return;
+
+	unsigned int previousEnd = 0x80;
+	for (int i = 0; i < 4; ++i)
+	{
+		unsigned int sectionEnd = 0;
+		memcpy(&sectionEnd, pChunkData + 0x70 + i * 4, sizeof(sectionEnd));
+		if (sectionEnd < previousEnd || sectionEnd > (unsigned int)dataSize)
+			return;
+		chunkDebug.generatorSectionOffsets[i] = sectionEnd;
+		previousEnd = sectionEnd;
+	}
+	chunkDebug.hasGeneratorMetadata = true;
+}
+
+static void Model_FF11_TryAnnotateKeyframeChunk(ff11DatChunkDebug_t &chunkDebug, const unsigned char *, const int dataSize)
+{
+	if (chunkDebug.type != CFFXIDat::skChunkType_Keyframe || dataSize < 8 || ((dataSize - 8) & 7) != 0)
+		return;
+	chunkDebug.keyframePairCount = (dataSize - 8) / 8;
+	chunkDebug.hasKeyframeMetadata = true;
 }
 
 static void Model_FF11_TrimChunkName(char *dst, const int dstSize, const char *src)
@@ -752,8 +821,9 @@ noesisModel_t *Model_FF11_LoadDATSet(BYTE *fileBuffer, int bufferLen, int &numMd
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Geo);
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Map);
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_MapGeo);
-					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectSmall);
-					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectMesh);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectModel);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectAnimated);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectMorph);
 				}
 			}
 			else
@@ -834,6 +904,10 @@ bool CFFXIDat::ParseChunksOfInterest()
 		chunkDebug.dataOffset = chunk.mDataOffset;
 		chunkDebug.size = chunk.mSize;
 		chunkDebug.supported = (validateChunkResult == kVCR_Supported);
+		chunkDebug.isShadow = chunk.mIsShadow;
+		chunkDebug.isExtracted = chunk.mIsExtracted;
+		chunkDebug.version = chunk.mVersion;
+		chunkDebug.isVirtual = chunk.mIsVirtual;
 
 		char dirName[8] = {};
 		Model_FF11_TrimChunkName(dirName, sizeof(dirName), chunk.mName);
@@ -848,6 +922,8 @@ bool CFFXIDat::ParseChunksOfInterest()
 		}
 		Model_FF11_BuildChunkDirectoryPath(chunkDebug.directoryPath, sizeof(chunkDebug.directoryPath), dirStack);
 		Model_FF11_TryAnnotateEffectChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
+		Model_FF11_TryAnnotateGeneratorChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
+		Model_FF11_TryAnnotateKeyframeChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
 		Model_FF11_TryAnnotateEnvironmentChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
 		Model_FF11_TryAnnotateSoundPointerChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
 		gFF11LastDatChunks.push_back(chunkDebug);
@@ -930,6 +1006,7 @@ void CFFXIDefaultHandlerSet::RegisterHandlersWithDat(CFFXIDat &dat)
 	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpGeoHandler, CFFXIGeoHandler);
 	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpMapHandler, CFFXIMapHandler);
 	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpMapGeoHandler, CFFXIMapGeoHandler);
-	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpEffectSmallHandler, CFFXIEffectHandler, CFFXIDat::skChunkType_EffectSmall);
-	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpEffectMeshHandler, CFFXIEffectHandler, CFFXIDat::skChunkType_EffectMesh);
+	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpEffectModelHandler, CFFXIEffectHandler, CFFXIDat::skChunkType_EffectModel);
+	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpEffectAnimatedHandler, CFFXIEffectHandler, CFFXIDat::skChunkType_EffectAnimated);
+	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpEffectMorphHandler, CFFXIEffectHandler, CFFXIDat::skChunkType_EffectMorph);
 }

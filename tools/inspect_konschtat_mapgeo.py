@@ -56,7 +56,7 @@ def decrypt_object_map(buf):
         pos += xor_len
 
     node_count = u24le(out, 4)
-    node_stride = 96
+    node_stride = 100
     max_nodes = max(0, (len(out) - 32) // node_stride)
     for i in range(min(node_count, max_nodes)):
         off = 32 + i * node_stride

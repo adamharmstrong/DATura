@@ -11,11 +11,17 @@
 #include "character_dat_table.h"
 #include "character_creation_dat_table.h"
 #include "ffxi_internal_lists.h"
+#include "prototype_area_table.h"
+#include "npc_monster_dat_table.h"
+#include "companion_dat_table.h"
 #include "ffxi_resource.h"
 #include "bgw_player.h"
+#include "audio_player.h"
+#include "texture_viewer.h"
 #include "resource.h"
 #include <shlobj.h>     // SHBrowseForFolder, SHGetPathFromIDList
 #include <commctrl.h>
+#include <uxtheme.h>
 #include <windowsx.h>
 #include <cmath>
 #include <cstdio>
@@ -24,10 +30,12 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <memory>
 #include <algorithm>
 #include <random>
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "uxtheme.lib")
 
 //========================================================================================
 // Menu IDs
@@ -36,6 +44,7 @@
 #define IDM_FILE_OPEN_DAT    1001
 #define IDM_FILE_OPEN_DATSET 1002
 #define IDM_FILE_EXIT        1003
+#define IDM_FILE_RETURN_TITLE 1004
 
 #define IDM_SETTINGS_SET_PATH      2001
 #define IDM_SETTINGS_RESET_PATH    2002
@@ -61,6 +70,13 @@
 #define IDM_VIEW_ZONE_OBJECTS 6003
 #define IDM_RESOURCE_CURRENT_ZONE 6101
 #define IDM_RESOURCE_OPEN_DAT     6102
+#define IDM_AUDIO_PLAYER          6201
+#define IDM_AUDIO_STOP            6202
+#define IDM_TEXTURE_VIEWER        6251
+#define IDM_COMPANION_BROWSER     6261
+#define IDM_PROTOTYPE_AREA_BASE   6300
+#define IDM_NPC_MODEL_BASE       10000
+#define IDM_MONSTER_MODEL_BASE   12000
 #define IDC_PATH_DIALOG_OK 7001
 #define IDC_ZONE_OBJECT_LIST 7201
 #define IDC_ZONE_LABEL 7202
@@ -100,6 +116,8 @@
 #define IDC_RESOURCE_PATH_LABEL 7240
 #define IDC_RESOURCE_LIST       7241
 #define IDC_RESOURCE_STATUS     7242
+#define IDC_RESOURCE_SEPARATE_TYPES 7243
+#define IDC_RESOURCE_TYPE_TABS      7244
 #define WM_ZONE_OBJECT_POPULATE (WM_APP + 31)
 
 #define IDC_LP_RACE        8100
@@ -155,6 +173,14 @@
 #define IDC_CONFIG_MAX_SOUNDS    8317
 #define IDC_CONFIG_HARDWARE_CURSOR 8318
 #define IDC_CONFIG_MIRROR_WORLD    8319
+#define IDC_CONFIG_DRAW_DISTANCE   8320
+#define IDC_CONFIG_TEXTURE_COMPRESSION 8321
+#define IDC_CONFIG_COLOR_THEME       8322
+#define IDC_COMPANION_CATEGORY     8400
+#define IDC_COMPANION_LIST         8401
+#define IDC_COMPANION_PATH         8402
+#define IDC_COMPANION_LOAD         8403
+#define IDC_COMPANION_CLOSE        8404
 
 //========================================================================================
 // Window / D3D9 state
@@ -187,8 +213,14 @@ enum DATuraWindowMode
 enum DATuraEnvironmentalAnimationMode
 {
     kDATuraEnvAnim_Off = 0,
-    kDATuraEnvAnim_Normal = 1,
+    kDATuraEnvAnim_Simple = 1,
     kDATuraEnvAnim_Smooth = 2
+};
+
+enum DATuraColorTheme
+{
+    kDATuraTheme_Dark = 0,
+    kDATuraTheme_Light = 1
 };
 
 struct DATuraResolutionOption
@@ -216,6 +248,14 @@ static const char *kMaxSoundOptionLabels[] =
 };
 static const int kMaxSoundOptionCount = (int)(sizeof(kMaxSoundOptions) / sizeof(kMaxSoundOptions[0]));
 
+static const float kDrawDistanceOptions[] = { 500.0f, 1000.0f, 2000.0f, 4000.0f, 8000.0f };
+static const char *kDrawDistanceOptionLabels[] =
+{
+    "500", "1000", "2000", "4000", "8000"
+};
+static const int kDrawDistanceOptionCount =
+    (int)(sizeof(kDrawDistanceOptions) / sizeof(kDrawDistanceOptions[0]));
+
 // Loaded model state
 static noesisModel_t *g_pZoneModel   = nullptr;
 static noeRAPI_t     *g_pZoneRapi    = nullptr;
@@ -229,6 +269,7 @@ static noesisModel_t *g_pTitleUiModel   = nullptr;
 static noeRAPI_t     *g_pTitleUiRapi    = nullptr;
 static HWND           g_hLowPolyPanel = NULL;
 static HWND           g_hHighPolyCreationPanel = NULL;
+static HWND           g_hCompanionBrowser = NULL;
 static HWND           g_hConfigDialog = NULL;
 static HWND           g_hZoneObjectPanel = NULL;
 static HWND           g_hZoneLabel = NULL;
@@ -259,6 +300,12 @@ static HWND           g_hResourceBrowser = NULL;
 static HWND           g_hResourcePathLabel = NULL;
 static HWND           g_hResourceList = NULL;
 static HWND           g_hResourceStatus = NULL;
+static HWND           g_hResourceSeparateTypes = NULL;
+static HWND           g_hResourceTypeTabs = NULL;
+static bool           g_resourceSeparateByType = false;
+static std::vector<FFXIResource::Row> g_resourceRows;
+static std::vector<std::wstring> g_resourceKinds;
+static std::wstring   g_resourceBaseStatus;
 static HWND           g_hZoneUnrefEdits[9] = {};
 static HWND           g_hZoneUnrefLabels[9] = {};
 static HWND           g_hZoneUnrefApplyButton = NULL;
@@ -288,7 +335,28 @@ static bool           g_enableHardwareMouseCursor = true;
 static bool           g_enableMipMapping = true;
 static bool           g_enableBumpMapping = false;
 static bool           g_enableEnvironmentalAnimation = true;
-static bool           g_mirrorWorldZones = true;
+static int            g_drawDistanceIndex = 2;
+static bool           g_enableTextureCompression = true;
+static int            g_colorTheme = kDATuraTheme_Dark;
+static HBRUSH         g_hThemeWindowBrush = NULL;
+static HBRUSH         g_hThemeControlBrush = NULL;
+static HBRUSH         g_hThemeEditBrush = NULL;
+static HFONT          g_hThemeFont = NULL;
+static HFONT          g_hThemeSectionFont = NULL;
+static HMENU          g_hMainMenu = NULL;
+
+struct MenuVisualEntry
+{
+    std::string text;
+    bool separator = false;
+    bool hasSubmenu = false;
+    bool menuBarItem = false;
+};
+static std::vector<std::unique_ptr<MenuVisualEntry> > g_menuVisualEntries;
+// FFXI zone DAT coordinates need an X-axis flip to match the retail client.
+// Leave that correction enabled when this option is off; checking the option
+// deliberately displays the raw, mirrored orientation instead.
+static bool           g_mirrorWorldZones = false;
 static std::vector<std::string> g_hiddenZoneObjects;
 static bool           g_showCollisionGeometry = false;
 static std::string    g_highlightedZoneObject;
@@ -380,6 +448,7 @@ static const float kPlayerCollisionHeight = 3.2f;
 // Registry keys used to persist a user-overridden path.
 static const char kAppRegKey[]   = "Software\\FFXIViewer";
 static const char kAppPathValue[]= "FFXIPath";
+static const char kAppThemeValue[] = "ColorTheme";
 
 // Hard-coded default FFXI installation path.
 static const char kDefaultFFXIPath[] =
@@ -454,13 +523,75 @@ static const int kWeaponTypeCount = (int)(sizeof(kWeaponTypeLabels) / sizeof(kWe
 
 static const char *kAnimationModeLabels[] =
 {
-    "General", "Battle", "Weapon", "Emote", "Other"
+    "Battle",
+    "Emote",
+    "General",
+    "Ability",
+    "Hand-to-Hand",
+    "Dagger",
+    "Sword",
+    "Club",
+    "Axe",
+    "Katana",
+    "G. Sword",
+    "Staff",
+    "G. Axe",
+    "G. Katana",
+    "Scythe",
+    "Polearm",
+    "Archery",
+    "Marksmanship",
+    "Mannequin",
+    "Others",
+    "NPC WS",
+    "Dancer",
+    "unknown",
+    "Motion",
+    "Weapon Skills",
+    "All"
 };
 static const int kAnimationModeCount = (int)(sizeof(kAnimationModeLabels) / sizeof(kAnimationModeLabels[0]));
 
+struct LowPolyAnimationCategory
+{
+    const char *label;
+    int slot;
+    const char *prefix;
+};
+
+static const LowPolyAnimationCategory kLowPolyAnimationCategories[] =
+{
+    { "Battle",        kFFXIInternalPCSlot_Action, "Battle" },
+    { "Emote",         kFFXIInternalPCSlot_Action, "Emote" },
+    { "General",       kFFXIInternalPCSlot_Action, "General" },
+    { "Ability",       kFFXIInternalPCSlot_Action, "Ability" },
+    { "Hand-to-Hand",  kFFXIInternalPCSlot_Action, "Hand-to-Hand" },
+    { "Dagger",        kFFXIInternalPCSlot_Action, "Dagger" },
+    { "Sword",         kFFXIInternalPCSlot_Action, "Sword" },
+    { "Club",          kFFXIInternalPCSlot_Action, "Club" },
+    { "Axe",           kFFXIInternalPCSlot_Action, "Axe" },
+    { "Katana",        kFFXIInternalPCSlot_Action, "Katana" },
+    { "G. Sword",      kFFXIInternalPCSlot_Action, "G. Sword" },
+    { "Staff",         kFFXIInternalPCSlot_Action, "Staff" },
+    { "G. Axe",        kFFXIInternalPCSlot_Action, "G. Axe" },
+    { "G. Katana",     kFFXIInternalPCSlot_Action, "G. Katana" },
+    { "Scythe",        kFFXIInternalPCSlot_Action, "Scythe" },
+    { "Polearm",       kFFXIInternalPCSlot_Action, "Polearm" },
+    { "Archery",       kFFXIInternalPCSlot_Action, "Archery" },
+    { "Marksmanship",  kFFXIInternalPCSlot_Action, "Marksmanship" },
+    { "Mannequin",     kFFXIInternalPCSlot_Action, "Mannequin" },
+    { "Others",        kFFXIInternalPCSlot_Action, "Others" },
+    { "NPC WS",        kFFXIInternalPCSlot_Action, "NPC WS" },
+    { "Dancer",        kFFXIInternalPCSlot_Action, "Dancer" },
+    { "unknown",       kFFXIInternalPCSlot_Action, "unknown" },
+    { "Motion",        kFFXIInternalPCSlot_Motion, nullptr },
+    { "Weapon Skills", kFFXIInternalPCSlot_WS,     nullptr },
+    { "All",           kFFXIInternalPCSlot_Action, nullptr },
+};
+
 static const int kArmorVariantCount = 128;
 static const int kWeaponVariantCount = 128;
-static const int kFaceVariantCount = 32;
+static const int kFaceVariantCount = 16;
 
 static void LoadPlayerRaceModel(int raceIndex);
 static void ReloadPlayerModelFromControls();
@@ -479,6 +610,7 @@ static HWND HighPolyCreationPanelControl(int id);
 static void PullHighPolyCreationStateFromControls();
 static void PullLowPolyStateFromControls();
 static void SyncLowPolyControlsFromState();
+static void ClampLowPolyState();
 static void ShowFFXIPathInfoDialog(const char *title, const char *labelText, const char *pathText);
 static void ShowCurrentFFXIPathDialog();
 static void ShowZoneObjectPanel();
@@ -496,6 +628,9 @@ static void ToggleEditGameMode();
 static const char *EnvironmentalAnimationModeName();
 static void SetEnvironmentalAnimationMode(int mode);
 static void ApplyDisplaySettings();
+static void ApplyColorTheme(HWND hWnd);
+static void SetColorTheme(int theme);
+static void RefreshMainMenuTheme();
 static int MaxSoundOptionIndexFromValue(int value);
 static void SyncAppMusic();
 static void SetCameraCursorHidden(bool hidden);
@@ -530,6 +665,204 @@ static bool ReadHKLMString(const char *keyPath, const char *valueName,
               && (type == REG_SZ || type == REG_EXPAND_SZ);
     RegCloseKey(hKey);
     return ok;
+}
+
+static bool IsDarkColorTheme()
+{
+    return g_colorTheme == kDATuraTheme_Dark;
+}
+
+static COLORREF ThemeWindowColor()
+{
+    return IsDarkColorTheme() ? RGB(27, 33, 39) : RGB(244, 246, 248);
+}
+
+static COLORREF ThemeControlColor()
+{
+    return IsDarkColorTheme() ? RGB(34, 40, 46) : RGB(255, 255, 255);
+}
+
+static COLORREF ThemeEditColor()
+{
+    return IsDarkColorTheme() ? RGB(42, 48, 55) : RGB(255, 255, 255);
+}
+
+static COLORREF ThemeTextColor()
+{
+    return IsDarkColorTheme() ? RGB(226, 231, 236) : RGB(31, 36, 41);
+}
+
+static COLORREF ThemeMutedTextColor()
+{
+    return IsDarkColorTheme() ? RGB(151, 161, 171) : RGB(91, 99, 107);
+}
+
+static void RecreateThemeResources()
+{
+    if (g_hThemeWindowBrush)
+        DeleteObject(g_hThemeWindowBrush);
+    if (g_hThemeControlBrush)
+        DeleteObject(g_hThemeControlBrush);
+    if (g_hThemeEditBrush)
+        DeleteObject(g_hThemeEditBrush);
+    g_hThemeWindowBrush = CreateSolidBrush(ThemeWindowColor());
+    g_hThemeControlBrush = CreateSolidBrush(ThemeControlColor());
+    g_hThemeEditBrush = CreateSolidBrush(ThemeEditColor());
+
+    if (!g_hThemeFont)
+    {
+        g_hThemeFont = CreateFontA(
+            -15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+    }
+    if (!g_hThemeSectionFont)
+    {
+        g_hThemeSectionFont = CreateFontA(
+            -15, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, ANSI_CHARSET,
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+    }
+}
+
+typedef HRESULT (WINAPI *DwmSetWindowAttributeFn)(HWND, DWORD, LPCVOID, DWORD);
+typedef int (WINAPI *SetPreferredAppModeFn)(int);
+typedef void (WINAPI *FlushMenuThemesFn)();
+
+static void ApplyNativeMenuTheme()
+{
+    // Native HMENU popup windows do not inherit SetWindowTheme from their
+    // owner. Windows exposes these uxtheme entry points specifically so the
+    // menu bar, nested popup menus, separators, arrows, and checkmarks all use
+    // the same application color mode. Resolve them dynamically to retain
+    // compatibility with Windows versions that predate application dark mode.
+    HMODULE hUxTheme = LoadLibraryW(L"uxtheme.dll");
+    if (!hUxTheme)
+        return;
+
+    SetPreferredAppModeFn setPreferredAppMode =
+        (SetPreferredAppModeFn)GetProcAddress(hUxTheme, MAKEINTRESOURCEA(135));
+    FlushMenuThemesFn flushMenuThemes =
+        (FlushMenuThemesFn)GetProcAddress(hUxTheme, MAKEINTRESOURCEA(136));
+    if (setPreferredAppMode)
+    {
+        const int kPreferredAppModeAllowDark = 1;
+        const int kPreferredAppModeForceLight = 3;
+        setPreferredAppMode(IsDarkColorTheme()
+            ? kPreferredAppModeAllowDark
+            : kPreferredAppModeForceLight);
+    }
+    if (flushMenuThemes)
+        flushMenuThemes();
+
+    FreeLibrary(hUxTheme);
+}
+
+static void ApplyWindowChromeTheme(HWND hWnd)
+{
+    if (!hWnd)
+        return;
+
+    HMODULE hDwmApi = LoadLibraryW(L"dwmapi.dll");
+    DwmSetWindowAttributeFn setAttribute = hDwmApi
+        ? (DwmSetWindowAttributeFn)GetProcAddress(hDwmApi, "DwmSetWindowAttribute")
+        : NULL;
+    if (setAttribute)
+    {
+        const BOOL useDark = IsDarkColorTheme() ? TRUE : FALSE;
+        // Attribute 20 is DWMWA_USE_IMMERSIVE_DARK_MODE on current Windows 10/11.
+        // Attribute 19 covers the earlier Windows 10 implementation.
+        if (FAILED(setAttribute(hWnd, 20, &useDark, sizeof(useDark))))
+            setAttribute(hWnd, 19, &useDark, sizeof(useDark));
+
+        // Ask Windows 11 for the same softly rounded top-level corners used by
+        // the CEXI reference. Older versions simply ignore this attribute.
+        const DWORD roundedCorners = 2; // DWMWCP_ROUND
+        setAttribute(hWnd, 33, &roundedCorners, sizeof(roundedCorners));
+    }
+    if (hDwmApi)
+        FreeLibrary(hDwmApi);
+}
+
+static BOOL CALLBACK ApplyThemeToChild(HWND hChild, LPARAM)
+{
+    wchar_t className[32] = {};
+    GetClassNameW(hChild, className, (int)(sizeof(className) / sizeof(className[0])));
+    const bool isComboBox = _wcsicmp(className, L"ComboBox") == 0;
+    const wchar_t *subApp = IsDarkColorTheme()
+        ? (isComboBox ? L"DarkMode_CFD" : L"DarkMode_Explorer")
+        : L"Explorer";
+    SetWindowTheme(hChild, subApp, NULL);
+    const LONG_PTR style = GetWindowLongPtr(hChild, GWL_STYLE);
+    const bool isGroupBox =
+        _wcsicmp(className, L"Button") == 0 &&
+        (style & BS_TYPEMASK) == BS_GROUPBOX;
+    HFONT font = isGroupBox ? g_hThemeSectionFont : g_hThemeFont;
+    if (font)
+        SendMessage(hChild, WM_SETFONT, (WPARAM)font, TRUE);
+    InvalidateRect(hChild, NULL, TRUE);
+    return TRUE;
+}
+
+static void ApplyColorTheme(HWND hWnd)
+{
+    if (!hWnd)
+        return;
+    if (!g_hThemeWindowBrush)
+        RecreateThemeResources();
+    SetClassLongPtr(hWnd, GCLP_HBRBACKGROUND, (LONG_PTR)g_hThemeWindowBrush);
+    ApplyWindowChromeTheme(hWnd);
+    SetWindowTheme(hWnd, IsDarkColorTheme() ? L"DarkMode_Explorer" : L"Explorer", NULL);
+    SendMessage(hWnd, WM_THEMECHANGED, 0, 0);
+    EnumChildWindows(hWnd, ApplyThemeToChild, 0);
+    InvalidateRect(hWnd, NULL, TRUE);
+    DrawMenuBar(hWnd);
+}
+
+static void SaveColorTheme()
+{
+    HKEY hKey = NULL;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, NULL,
+                        REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL,
+                        &hKey, NULL) != ERROR_SUCCESS)
+        return;
+    const DWORD value = (DWORD)g_colorTheme;
+    RegSetValueExA(hKey, kAppThemeValue, 0, REG_DWORD,
+                   (const BYTE *)&value, sizeof(value));
+    RegCloseKey(hKey);
+}
+
+static void InitColorTheme()
+{
+    HKEY hKey = NULL;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
+    {
+        DWORD type = 0;
+        DWORD value = 0;
+        DWORD size = sizeof(value);
+        if (RegQueryValueExA(hKey, kAppThemeValue, NULL, &type,
+                             (LPBYTE)&value, &size) == ERROR_SUCCESS &&
+            type == REG_DWORD && value <= (DWORD)kDATuraTheme_Light)
+        {
+            g_colorTheme = (int)value;
+        }
+        RegCloseKey(hKey);
+    }
+    ApplyNativeMenuTheme();
+    RecreateThemeResources();
+}
+
+static void SetColorTheme(int theme)
+{
+    g_colorTheme = (theme == kDATuraTheme_Light)
+        ? kDATuraTheme_Light
+        : kDATuraTheme_Dark;
+    SaveColorTheme();
+    ApplyNativeMenuTheme();
+    RecreateThemeResources();
+    ApplyColorTheme(g_hWnd);
+    ApplyColorTheme(g_hConfigDialog);
+    RefreshMainMenuTheme();
 }
 
 // Probe the PlayOnline registry entries (native key first, then WOW6432Node).
@@ -624,6 +957,8 @@ static void PromptSetFFXIPath()
 
         strcpy_s(g_ffxiPath, chosen);
         SaveCustomPath(g_ffxiPath);
+        AudioPlayer_SetRootPath(g_ffxiPath);
+        TextureViewer_SetRootPath(g_ffxiPath);
 
         ShowFFXIPathInfoDialog("Path Saved", "FFXI path set to:", g_ffxiPath);
     }
@@ -636,6 +971,8 @@ static void ResetFFXIPathToDefault()
 {
     ClearCustomPath();
     strcpy_s(g_ffxiPath, kDefaultFFXIPath);
+    AudioPlayer_SetRootPath(g_ffxiPath);
+    TextureViewer_SetRootPath(g_ffxiPath);
 
     ShowFFXIPathInfoDialog("Path Reset", "Path reset to default:", g_ffxiPath);
 }
@@ -649,6 +986,8 @@ static void AutoDetectFFXIPath()
     {
         strcpy_s(g_ffxiPath, detected);
         SaveCustomPath(g_ffxiPath);
+        AudioPlayer_SetRootPath(g_ffxiPath);
+        TextureViewer_SetRootPath(g_ffxiPath);
 
         ShowFFXIPathInfoDialog("Auto-Detect", "Detected FFXI path:", g_ffxiPath);
     }
@@ -674,7 +1013,7 @@ static void SyncSettingsMenuChecks()
     CheckMenuItem(hMenu, IDM_SETTINGS_MIRROR_WORLD,
                   MF_BYCOMMAND | (g_mirrorWorldZones ? MF_CHECKED : MF_UNCHECKED));
     char envText[96] = {};
-    sprintf_s(envText, "Vegetation Movement: %s", EnvironmentalAnimationModeName());
+    sprintf_s(envText, "Vegetation Animation: %s", EnvironmentalAnimationModeName());
     ModifyMenuA(hMenu, IDM_SETTINGS_ENV_ANIM,
                 MF_BYCOMMAND | MF_STRING |
                 (g_environmentalAnimationMode != kDATuraEnvAnim_Off ? MF_CHECKED : MF_UNCHECKED),
@@ -689,8 +1028,8 @@ static const char *EnvironmentalAnimationModeName()
     {
     case kDATuraEnvAnim_Off:
         return "Off";
-    case kDATuraEnvAnim_Normal:
-        return "Normal";
+    case kDATuraEnvAnim_Simple:
+        return "Simple";
     case kDATuraEnvAnim_Smooth:
     default:
         return "Smooth";
@@ -715,6 +1054,34 @@ static int MaxSoundOptionIndexFromValue(int value)
             return i;
     }
     return kMaxSoundOptionCount - 1;
+}
+
+static void ApplyTextureCompressionSetting()
+{
+    noeRAPI_t *rapis[] =
+    {
+        g_pZoneRapi,
+        g_pPlayerRapi,
+        g_pTitleLogoRapi,
+        g_pTitleLogoMarkRapi,
+        g_pTitleUiRapi
+    };
+    for (int i = 0; i < (int)(sizeof(rapis) / sizeof(rapis[0])); ++i)
+    {
+        if (!rapis[i])
+            continue;
+        bool alreadyApplied = false;
+        for (int previous = 0; previous < i; ++previous)
+            alreadyApplied = alreadyApplied || rapis[previous] == rapis[i];
+        if (!alreadyApplied)
+            rapis[i]->SetTextureCompressionEnabled(g_enableTextureCompression);
+    }
+}
+
+static void ConfigureRapiTextureSettings(noeRAPI_t *pRapi)
+{
+    if (pRapi)
+        pRapi->SetTextureCompressionEnabled(g_enableTextureCompression);
 }
 
 static void SyncConfigDialogControls(HWND hWnd)
@@ -747,7 +1114,77 @@ static void SyncConfigDialogControls(HWND hWnd)
                         g_enableHardwareMouseCursor ? BST_CHECKED : BST_UNCHECKED, 0);
     SendDlgItemMessageA(hWnd, IDC_CONFIG_MIRROR_WORLD, BM_SETCHECK,
                         g_mirrorWorldZones ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendDlgItemMessageA(hWnd, IDC_CONFIG_DRAW_DISTANCE, CB_SETCURSEL,
+                        g_drawDistanceIndex, 0);
+    SendDlgItemMessageA(hWnd, IDC_CONFIG_TEXTURE_COMPRESSION, CB_SETCURSEL,
+                        g_enableTextureCompression ? 0 : 1, 0);
+    SendDlgItemMessageA(hWnd, IDC_CONFIG_COLOR_THEME, CB_SETCURSEL,
+                        g_colorTheme, 0);
+}
 
+static void DrawConfigPanel(HDC hdc, const RECT &panel, const char *title)
+{
+    HBRUSH fill = CreateSolidBrush(ThemeControlColor());
+    HPEN border = CreatePen(PS_SOLID, 1,
+        IsDarkColorTheme() ? RGB(57, 65, 73) : RGB(205, 211, 217));
+    HGDIOBJ oldBrush = SelectObject(hdc, fill);
+    HGDIOBJ oldPen = SelectObject(hdc, border);
+    RoundRect(hdc, panel.left, panel.top, panel.right, panel.bottom, 12, 12);
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBrush);
+    DeleteObject(border);
+    DeleteObject(fill);
+
+    RECT titleRect = { panel.left + 14, panel.top + 5, panel.right - 12, panel.top + 24 };
+    HFONT oldFont = (HFONT)SelectObject(hdc, g_hThemeSectionFont);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, ThemeTextColor());
+    DrawTextA(hdc, title, -1, &titleRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(hdc, oldFont);
+}
+
+static void DrawConfigButton(const DRAWITEMSTRUCT *draw)
+{
+    if (!draw)
+        return;
+
+    char text[96] = {};
+    GetWindowTextA(draw->hwndItem, text, sizeof(text));
+    RECT rc = draw->rcItem;
+    const bool accent = draw->CtlID == IDC_CONFIG_CLOSE;
+    COLORREF fillColor;
+    if (draw->itemState & ODS_DISABLED)
+        fillColor = IsDarkColorTheme() ? RGB(43, 48, 53) : RGB(224, 227, 230);
+    else if (draw->itemState & ODS_SELECTED)
+        fillColor = accent ? RGB(42, 126, 211) :
+            (IsDarkColorTheme() ? RGB(64, 73, 82) : RGB(215, 222, 228));
+    else
+        fillColor = accent ? RGB(62, 151, 245) :
+            (IsDarkColorTheme() ? RGB(48, 56, 64) : RGB(231, 235, 239));
+
+    HBRUSH fill = CreateSolidBrush(fillColor);
+    HPEN border = CreatePen(PS_SOLID, 1,
+        accent ? RGB(104, 180, 255) :
+        (IsDarkColorTheme() ? RGB(75, 84, 93) : RGB(190, 198, 205)));
+    HGDIOBJ oldBrush = SelectObject(draw->hDC, fill);
+    HGDIOBJ oldPen = SelectObject(draw->hDC, border);
+    RoundRect(draw->hDC, rc.left, rc.top, rc.right, rc.bottom, 8, 8);
+    SelectObject(draw->hDC, oldPen);
+    SelectObject(draw->hDC, oldBrush);
+    DeleteObject(border);
+    DeleteObject(fill);
+
+    HFONT oldFont = (HFONT)SelectObject(draw->hDC, g_hThemeFont);
+    SetBkMode(draw->hDC, TRANSPARENT);
+    SetTextColor(draw->hDC,
+        accent && !(draw->itemState & ODS_DISABLED)
+            ? RGB(255, 255, 255)
+            : ThemeTextColor());
+    if (draw->itemState & ODS_SELECTED)
+        OffsetRect(&rc, 0, 1);
+    DrawTextA(draw->hDC, text, -1, &rc,
+              DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(draw->hDC, oldFont);
 }
 
 static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -756,29 +1193,27 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
     {
     case WM_CREATE:
         {
-            HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-            CreateWindowExA(0, "STATIC", "FFXI Path", WS_CHILD | WS_VISIBLE,
-                14, 14, 90, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
+            HFONT hFont = g_hThemeFont;
+            HWND hPathGroup = NULL;
             HWND hPath = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "",
                 WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY,
-                14, 34, 520, 24, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_PATH_TEXT,
+                28, 31, 492, 24, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_PATH_TEXT,
                 GetModuleHandle(NULL), NULL);
 
-            CreateWindowExA(0, "BUTTON", "Set Path...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                14, 66, 116, 26, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_SET_PATH,
+            CreateWindowExA(0, "BUTTON", "Set Path...", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                28, 63, 110, 26, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_SET_PATH,
                 GetModuleHandle(NULL), NULL);
-            CreateWindowExA(0, "BUTTON", "Auto-Detect", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                138, 66, 116, 26, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_DETECT_PATH,
+            CreateWindowExA(0, "BUTTON", "Auto-Detect", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                146, 63, 110, 26, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_DETECT_PATH,
                 GetModuleHandle(NULL), NULL);
-            CreateWindowExA(0, "BUTTON", "Reset Default", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                262, 66, 116, 26, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_RESET_PATH,
+            CreateWindowExA(0, "BUTTON", "Reset Default", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                264, 63, 110, 26, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_RESET_PATH,
                 GetModuleHandle(NULL), NULL);
-            CreateWindowExA(0, "BUTTON", "Show Path", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                386, 66, 116, 26, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_SHOW_PATH,
+            CreateWindowExA(0, "BUTTON", "Show Path", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                382, 63, 110, 26, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_SHOW_PATH,
                 GetModuleHandle(NULL), NULL);
 
-            CreateWindowExA(0, "STATIC", "Screen Settings", WS_CHILD | WS_VISIBLE,
-                14, 108, 120, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
+            HWND hScreenGroup = NULL;
             CreateWindowExA(0, "STATIC", "Window Mode", WS_CHILD | WS_VISIBLE,
                 24, 132, 100, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
             HWND hWindowMode = CreateWindowExA(0, "COMBOBOX", "",
@@ -798,8 +1233,7 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
             for (int i = 0; i < kResolutionOptionCount; ++i)
                 SendMessageA(hResolution, CB_ADDSTRING, 0, (LPARAM)kResolutionOptions[i].label);
 
-            CreateWindowExA(0, "STATIC", "Rendering", WS_CHILD | WS_VISIBLE,
-                14, 202, 120, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
+            HWND hRenderingGroup = NULL;
             CreateWindowExA(0, "BUTTON", "Enable MIP Mapping",
                 WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                 24, 224, 220, 22, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_MIP_MAPPING,
@@ -808,22 +1242,38 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
                 WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                 24, 248, 220, 22, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_BUMP_MAPPING,
                 GetModuleHandle(NULL), NULL);
-            CreateWindowExA(0, "STATIC", "Vegetation Movement", WS_CHILD | WS_VISIBLE,
+            CreateWindowExA(0, "STATIC", "Vegetation Animation", WS_CHILD | WS_VISIBLE,
                 24, 278, 120, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
             HWND hEnvAnim = CreateWindowExA(0, "COMBOBOX", "",
                 WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
                 160, 274, 128, 120, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_ENV_ANIM,
                 GetModuleHandle(NULL), NULL);
             SendMessageA(hEnvAnim, CB_ADDSTRING, 0, (LPARAM)"Off");
-            SendMessageA(hEnvAnim, CB_ADDSTRING, 0, (LPARAM)"Normal");
+            SendMessageA(hEnvAnim, CB_ADDSTRING, 0, (LPARAM)"Simple");
             SendMessageA(hEnvAnim, CB_ADDSTRING, 0, (LPARAM)"Smooth");
             CreateWindowExA(0, "BUTTON", "Mirror world zones",
                 WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                 300, 224, 190, 22, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_MIRROR_WORLD,
                 GetModuleHandle(NULL), NULL);
+            CreateWindowExA(0, "STATIC", "Texture Storage", WS_CHILD | WS_VISIBLE,
+                300, 252, 100, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
+            HWND hTextureCompression = CreateWindowExA(0, "COMBOBOX", "",
+                WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+                406, 248, 128, 100, hWnd,
+                (HMENU)(INT_PTR)IDC_CONFIG_TEXTURE_COMPRESSION,
+                GetModuleHandle(NULL), NULL);
+            SendMessageA(hTextureCompression, CB_ADDSTRING, 0, (LPARAM)"Compressed");
+            SendMessageA(hTextureCompression, CB_ADDSTRING, 0, (LPARAM)"Uncompressed");
+            CreateWindowExA(0, "STATIC", "Draw Distance", WS_CHILD | WS_VISIBLE,
+                300, 278, 100, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
+            HWND hDrawDistance = CreateWindowExA(0, "COMBOBOX", "",
+                WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+                406, 274, 128, 160, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_DRAW_DISTANCE,
+                GetModuleHandle(NULL), NULL);
+            for (int i = 0; i < kDrawDistanceOptionCount; ++i)
+                SendMessageA(hDrawDistance, CB_ADDSTRING, 0, (LPARAM)kDrawDistanceOptionLabels[i]);
 
-            CreateWindowExA(0, "STATIC", "Audio / Input", WS_CHILD | WS_VISIBLE,
-                14, 320, 120, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
+            HWND hAudioGroup = NULL;
             CreateWindowExA(0, "BUTTON", "Enable Sounds",
                 WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                 24, 342, 150, 22, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_ENABLE_SOUNDS,
@@ -845,8 +1295,7 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
                 300, 366, 234, 22, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_HARDWARE_CURSOR,
                 GetModuleHandle(NULL), NULL);
 
-            CreateWindowExA(0, "STATIC", "Mode / Debug", WS_CHILD | WS_VISIBLE,
-                14, 416, 120, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
+            HWND hModeGroup = NULL;
             CreateWindowExA(0, "BUTTON", "Game Mode",
                 WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
                 24, 438, 160, 22, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_EDIT_GAME,
@@ -856,13 +1305,23 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
                 24, 462, 190, 22, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_COLLISION,
                 GetModuleHandle(NULL), NULL);
             CreateWindowExA(0, "BUTTON", "Zone Objects...",
-                WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+                WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
                 300, 434, 150, 28, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_ZONE_OBJECTS,
                 GetModuleHandle(NULL), NULL);
 
+            HWND hAppearanceGroup = NULL;
+            CreateWindowExA(0, "STATIC", "Color Theme", WS_CHILD | WS_VISIBLE,
+                28, 532, 100, 18, hWnd, NULL, GetModuleHandle(NULL), NULL);
+            HWND hColorTheme = CreateWindowExA(0, "COMBOBOX", "",
+                WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+                142, 527, 170, 96, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_COLOR_THEME,
+                GetModuleHandle(NULL), NULL);
+            SendMessageA(hColorTheme, CB_ADDSTRING, 0, (LPARAM)"Dark");
+            SendMessageA(hColorTheme, CB_ADDSTRING, 0, (LPARAM)"Light");
+
             CreateWindowExA(0, "BUTTON", "Close",
-                WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-                422, 508, 112, 28, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_CLOSE,
+                WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+                422, 574, 112, 30, hWnd, (HMENU)(INT_PTR)IDC_CONFIG_CLOSE,
                 GetModuleHandle(NULL), NULL);
 
             HWND children[] =
@@ -878,6 +1337,8 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
                 GetDlgItem(hWnd, IDC_CONFIG_BUMP_MAPPING),
                 GetDlgItem(hWnd, IDC_CONFIG_ENV_ANIM),
                 GetDlgItem(hWnd, IDC_CONFIG_MIRROR_WORLD),
+                GetDlgItem(hWnd, IDC_CONFIG_TEXTURE_COMPRESSION),
+                GetDlgItem(hWnd, IDC_CONFIG_DRAW_DISTANCE),
                 GetDlgItem(hWnd, IDC_CONFIG_ENABLE_SOUNDS),
                 GetDlgItem(hWnd, IDC_CONFIG_BACKGROUND_SOUNDS),
                 GetDlgItem(hWnd, IDC_CONFIG_MAX_SOUNDS),
@@ -885,6 +1346,7 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
                 GetDlgItem(hWnd, IDC_CONFIG_EDIT_GAME),
                 GetDlgItem(hWnd, IDC_CONFIG_COLLISION),
                 GetDlgItem(hWnd, IDC_CONFIG_ZONE_OBJECTS),
+                GetDlgItem(hWnd, IDC_CONFIG_COLOR_THEME),
                 GetDlgItem(hWnd, IDC_CONFIG_CLOSE)
             };
             for (int i = 0; i < (int)(sizeof(children) / sizeof(children[0])); ++i)
@@ -893,6 +1355,14 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
                     SendMessageA(children[i], WM_SETFONT, (WPARAM)hFont, TRUE);
             }
 
+            ApplyColorTheme(hWnd);
+            HWND groups[] =
+            {
+                hPathGroup, hScreenGroup, hRenderingGroup,
+                hAudioGroup, hModeGroup, hAppearanceGroup
+            };
+            for (int i = 0; i < (int)(sizeof(groups) / sizeof(groups[0])); ++i)
+                SendMessageA(groups[i], WM_SETFONT, (WPARAM)g_hThemeSectionFont, TRUE);
             SyncConfigDialogControls(hWnd);
         }
         return 0;
@@ -964,6 +1434,37 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
             SyncConfigDialogControls(hWnd);
             InvalidateRect(g_hWnd, NULL, FALSE);
             return 0;
+        case IDC_CONFIG_DRAW_DISTANCE:
+            if (HIWORD(wParam) == CBN_SELCHANGE)
+            {
+                g_drawDistanceIndex =
+                    (int)SendDlgItemMessageA(hWnd, IDC_CONFIG_DRAW_DISTANCE, CB_GETCURSEL, 0, 0);
+                if (g_drawDistanceIndex < 0 || g_drawDistanceIndex >= kDrawDistanceOptionCount)
+                    g_drawDistanceIndex = 2;
+                SyncConfigDialogControls(hWnd);
+                InvalidateRect(g_hWnd, NULL, FALSE);
+            }
+            return 0;
+        case IDC_CONFIG_TEXTURE_COMPRESSION:
+            if (HIWORD(wParam) == CBN_SELCHANGE)
+            {
+                const int selection = (int)SendDlgItemMessageA(
+                    hWnd, IDC_CONFIG_TEXTURE_COMPRESSION, CB_GETCURSEL, 0, 0);
+                g_enableTextureCompression = selection != 1;
+                ApplyTextureCompressionSetting();
+                SyncConfigDialogControls(hWnd);
+                InvalidateRect(g_hWnd, NULL, FALSE);
+            }
+            return 0;
+        case IDC_CONFIG_COLOR_THEME:
+            if (HIWORD(wParam) == CBN_SELCHANGE)
+            {
+                const int theme = (int)SendDlgItemMessageA(
+                    hWnd, IDC_CONFIG_COLOR_THEME, CB_GETCURSEL, 0, 0);
+                SetColorTheme(theme);
+                SyncConfigDialogControls(hWnd);
+            }
+            return 0;
         case IDC_CONFIG_COLLISION:
             g_showCollisionGeometry =
                 SendDlgItemMessageA(hWnd, IDC_CONFIG_COLLISION, BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -1016,6 +1517,64 @@ static LRESULT CALLBACK ConfigDialogProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
         DestroyWindow(hWnd);
         return 0;
 
+    case WM_DRAWITEM:
+        DrawConfigButton((const DRAWITEMSTRUCT *)lParam);
+        return TRUE;
+
+    case WM_PAINT:
+        {
+            PAINTSTRUCT ps = {};
+            HDC hdc = BeginPaint(hWnd, &ps);
+            RECT client = {};
+            GetClientRect(hWnd, &client);
+            FillRect(hdc, &client, g_hThemeWindowBrush);
+            const RECT panels[] =
+            {
+                { 14,   8, 534, 100 },
+                { 14, 106, 534, 194 },
+                { 14, 200, 534, 308 },
+                { 14, 316, 534, 404 },
+                { 14, 412, 534, 500 },
+                { 14, 506, 534, 564 }
+            };
+            const char *titles[] =
+            {
+                "FFXI Installation", "Display", "Rendering",
+                "Audio / Input", "Mode / Debug", "Appearance"
+            };
+            for (int i = 0; i < (int)(sizeof(panels) / sizeof(panels[0])); ++i)
+                DrawConfigPanel(hdc, panels[i], titles[i]);
+            EndPaint(hWnd, &ps);
+        }
+        return 0;
+
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN:
+        {
+            HDC hdc = (HDC)wParam;
+            SetTextColor(hdc, ThemeTextColor());
+            SetBkColor(hdc, ThemeControlColor());
+            SetBkMode(hdc, TRANSPARENT);
+            return (LRESULT)g_hThemeControlBrush;
+        }
+
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+        {
+            HDC hdc = (HDC)wParam;
+            SetTextColor(hdc, ThemeTextColor());
+            SetBkColor(hdc, ThemeEditColor());
+            return (LRESULT)g_hThemeEditBrush;
+        }
+
+    case WM_ERASEBKGND:
+        {
+            RECT rc = {};
+            GetClientRect(hWnd, &rc);
+            FillRect((HDC)wParam, &rc, g_hThemeWindowBrush);
+        }
+        return 1;
+
     case WM_DESTROY:
         if (g_hConfigDialog == hWnd)
             g_hConfigDialog = NULL;
@@ -1041,14 +1600,14 @@ static void ShowTitleConfigDialog()
     wc.lpfnWndProc = ConfigDialogProc;
     wc.hInstance = hInst;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
+    wc.hbrBackground = g_hThemeWindowBrush;
     wc.lpszClassName = kConfigDialogClassName;
     RegisterClassExA(&wc);
 
     RECT owner = {};
     GetWindowRect(g_hWnd, &owner);
     const int dlgW = 568;
-    const int dlgH = 590;
+    const int dlgH = 650;
     const int x = owner.left + ((owner.right - owner.left) - dlgW) / 2;
     const int y = owner.top + ((owner.bottom - owner.top) - dlgH) / 2;
 
@@ -1870,16 +2429,118 @@ static void LayoutResourceBrowser(const HWND hWnd)
     GetClientRect(hWnd, &client);
     const int margin = 10;
     const int labelHeight = 24;
+    const int toggleHeight = 26;
+    const int tabsHeight = g_resourceSeparateByType ? 30 : 0;
     const int statusHeight = 38;
     const int width = std::max(100, (int)client.right - margin * 2);
-    const int listHeight = std::max(80, (int)client.bottom - margin * 3 - labelHeight - statusHeight);
+    const int listTop = margin + labelHeight + toggleHeight + tabsHeight;
+    const int statusTop = std::max(listTop + 80, (int)client.bottom - margin - statusHeight);
+    const int listHeight = std::max(80, statusTop - margin - listTop);
     if (g_hResourcePathLabel)
         MoveWindow(g_hResourcePathLabel, margin, margin, width, labelHeight, TRUE);
+    if (g_hResourceSeparateTypes)
+        MoveWindow(g_hResourceSeparateTypes, margin, margin + labelHeight,
+                   190, toggleHeight, TRUE);
+    if (g_hResourceTypeTabs)
+    {
+        MoveWindow(g_hResourceTypeTabs, margin, margin + labelHeight + toggleHeight,
+                   width, 30, TRUE);
+        ShowWindow(g_hResourceTypeTabs,
+                   g_resourceSeparateByType ? SW_SHOW : SW_HIDE);
+    }
     if (g_hResourceList)
-        MoveWindow(g_hResourceList, margin, margin + labelHeight, width, listHeight, TRUE);
+        MoveWindow(g_hResourceList, margin, listTop, width, listHeight, TRUE);
     if (g_hResourceStatus)
-        MoveWindow(g_hResourceStatus, margin, margin + labelHeight + listHeight + margin,
+        MoveWindow(g_hResourceStatus, margin, statusTop,
                    width, statusHeight, TRUE);
+}
+
+static std::wstring SelectedResourceKind()
+{
+    if (!g_resourceSeparateByType || !g_hResourceTypeTabs)
+        return std::wstring();
+    const int selected = TabCtrl_GetCurSel(g_hResourceTypeTabs);
+    return selected >= 0 && selected < (int)g_resourceKinds.size()
+        ? g_resourceKinds[(size_t)selected]
+        : std::wstring();
+}
+
+static void PopulateResourceListForCurrentView()
+{
+    if (!g_hResourceList)
+        return;
+
+    const std::wstring selectedKind = SelectedResourceKind();
+    SendMessageW(g_hResourceList, WM_SETREDRAW, FALSE, 0);
+    ListView_DeleteAllItems(g_hResourceList);
+    int visibleCount = 0;
+    for (const FFXIResource::Row &row : g_resourceRows)
+    {
+        if (!selectedKind.empty() && row.kind != selectedKind)
+            continue;
+
+        LVITEMW item = {};
+        item.mask = LVIF_TEXT;
+        item.iItem = visibleCount;
+        item.pszText = const_cast<LPWSTR>(row.kind.c_str());
+        const int inserted = ListView_InsertItem(g_hResourceList, &item);
+        if (inserted < 0)
+            continue;
+        ListView_SetItemText(g_hResourceList, inserted, 1, const_cast<LPWSTR>(row.id.c_str()));
+        ListView_SetItemText(g_hResourceList, inserted, 2, const_cast<LPWSTR>(row.text.c_str()));
+        ListView_SetItemText(g_hResourceList, inserted, 3, const_cast<LPWSTR>(row.details.c_str()));
+        ++visibleCount;
+    }
+    SendMessageW(g_hResourceList, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(g_hResourceList, nullptr, TRUE);
+
+    if (g_hResourceStatus)
+    {
+        std::wstring status = g_resourceBaseStatus;
+        if (!selectedKind.empty())
+        {
+            status = selectedKind + L": " + std::to_wstring(visibleCount) +
+                     L" record(s) in this tab. " + g_resourceBaseStatus;
+        }
+        SetWindowTextW(g_hResourceStatus, status.c_str());
+    }
+}
+
+static void RebuildResourceTypeTabs()
+{
+    if (!g_hResourceTypeTabs)
+        return;
+
+    const std::wstring previousKind = SelectedResourceKind();
+    g_resourceKinds.clear();
+    for (const FFXIResource::Row &row : g_resourceRows)
+    {
+        if (std::find(g_resourceKinds.begin(), g_resourceKinds.end(), row.kind) ==
+            g_resourceKinds.end())
+        {
+            g_resourceKinds.push_back(row.kind);
+        }
+    }
+
+    TabCtrl_DeleteAllItems(g_hResourceTypeTabs);
+    int selectedIndex = 0;
+    for (int i = 0; i < (int)g_resourceKinds.size(); ++i)
+    {
+        int count = 0;
+        for (const FFXIResource::Row &row : g_resourceRows)
+            count += row.kind == g_resourceKinds[(size_t)i] ? 1 : 0;
+
+        std::wstring label = g_resourceKinds[(size_t)i] +
+                             L" (" + std::to_wstring(count) + L")";
+        TCITEMW item = {};
+        item.mask = TCIF_TEXT;
+        item.pszText = const_cast<LPWSTR>(label.c_str());
+        TabCtrl_InsertItem(g_hResourceTypeTabs, i, &item);
+        if (!previousKind.empty() && g_resourceKinds[(size_t)i] == previousKind)
+            selectedIndex = i;
+    }
+    if (!g_resourceKinds.empty())
+        TabCtrl_SetCurSel(g_hResourceTypeTabs, selectedIndex);
 }
 
 static LRESULT CALLBACK ResourceBrowserWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -1892,6 +2553,14 @@ static LRESULT CALLBACK ResourceBrowserWndProc(HWND hWnd, UINT message, WPARAM w
             WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP,
             0, 0, 0, 0, hWnd, (HMENU)(INT_PTR)IDC_RESOURCE_PATH_LABEL,
             GetModuleHandleW(nullptr), nullptr);
+        g_hResourceSeparateTypes = CreateWindowExW(0, L"BUTTON", L"Separate by type",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+            0, 0, 0, 0, hWnd, (HMENU)(INT_PTR)IDC_RESOURCE_SEPARATE_TYPES,
+            GetModuleHandleW(nullptr), nullptr);
+        g_hResourceTypeTabs = CreateWindowExW(0, WC_TABCONTROLW, L"",
+            WS_CHILD | WS_CLIPSIBLINGS | TCS_TABS | TCS_SINGLELINE,
+            0, 0, 0, 0, hWnd, (HMENU)(INT_PTR)IDC_RESOURCE_TYPE_TABS,
+            GetModuleHandleW(nullptr), nullptr);
         g_hResourceList = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
             WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS,
             0, 0, 0, 0, hWnd, (HMENU)(INT_PTR)IDC_RESOURCE_LIST,
@@ -1903,6 +2572,8 @@ static LRESULT CALLBACK ResourceBrowserWndProc(HWND hWnd, UINT message, WPARAM w
 
         const HFONT font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
         SendMessageW(g_hResourcePathLabel, WM_SETFONT, (WPARAM)font, TRUE);
+        SendMessageW(g_hResourceSeparateTypes, WM_SETFONT, (WPARAM)font, TRUE);
+        SendMessageW(g_hResourceTypeTabs, WM_SETFONT, (WPARAM)font, TRUE);
         SendMessageW(g_hResourceList, WM_SETFONT, (WPARAM)font, TRUE);
         SendMessageW(g_hResourceStatus, WM_SETFONT, (WPARAM)font, TRUE);
         ListView_SetExtendedListViewStyle(g_hResourceList,
@@ -1925,6 +2596,30 @@ static LRESULT CALLBACK ResourceBrowserWndProc(HWND hWnd, UINT message, WPARAM w
     case WM_SIZE:
         LayoutResourceBrowser(hWnd);
         return 0;
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDC_RESOURCE_SEPARATE_TYPES &&
+            HIWORD(wParam) == BN_CLICKED)
+        {
+            g_resourceSeparateByType =
+                SendMessageW(g_hResourceSeparateTypes, BM_GETCHECK, 0, 0) == BST_CHECKED;
+            if (g_resourceSeparateByType)
+                RebuildResourceTypeTabs();
+            LayoutResourceBrowser(hWnd);
+            PopulateResourceListForCurrentView();
+            return 0;
+        }
+        break;
+    case WM_NOTIFY:
+        {
+            const NMHDR *header = (const NMHDR *)lParam;
+            if (header && header->idFrom == IDC_RESOURCE_TYPE_TABS &&
+                header->code == TCN_SELCHANGE)
+            {
+                PopulateResourceListForCurrentView();
+                return 0;
+            }
+        }
+        break;
     case WM_CLOSE:
         DestroyWindow(hWnd);
         return 0;
@@ -1933,6 +2628,8 @@ static LRESULT CALLBACK ResourceBrowserWndProc(HWND hWnd, UINT message, WPARAM w
         {
             g_hResourceBrowser = NULL;
             g_hResourcePathLabel = NULL;
+            g_hResourceSeparateTypes = NULL;
+            g_hResourceTypeTabs = NULL;
             g_hResourceList = NULL;
             g_hResourceStatus = NULL;
         }
@@ -1982,25 +2679,14 @@ static void PopulateResourceBrowser(const std::wstring &title, const std::wstrin
 
     SetWindowTextW(g_hResourceBrowser, title.c_str());
     SetWindowTextW(g_hResourcePathLabel, source.c_str());
-    SetWindowTextW(g_hResourceStatus, status.c_str());
-    SendMessageW(g_hResourceList, WM_SETREDRAW, FALSE, 0);
-    ListView_DeleteAllItems(g_hResourceList);
-    for (int i = 0; i < (int)rows.size(); ++i)
-    {
-        const FFXIResource::Row &row = rows[i];
-        LVITEMW item = {};
-        item.mask = LVIF_TEXT;
-        item.iItem = i;
-        item.pszText = const_cast<LPWSTR>(row.kind.c_str());
-        const int inserted = ListView_InsertItem(g_hResourceList, &item);
-        if (inserted < 0)
-            continue;
-        ListView_SetItemText(g_hResourceList, inserted, 1, const_cast<LPWSTR>(row.id.c_str()));
-        ListView_SetItemText(g_hResourceList, inserted, 2, const_cast<LPWSTR>(row.text.c_str()));
-        ListView_SetItemText(g_hResourceList, inserted, 3, const_cast<LPWSTR>(row.details.c_str()));
-    }
-    SendMessageW(g_hResourceList, WM_SETREDRAW, TRUE, 0);
-    InvalidateRect(g_hResourceList, nullptr, TRUE);
+    g_resourceRows = rows;
+    g_resourceBaseStatus = status;
+    SendMessageW(g_hResourceSeparateTypes, BM_SETCHECK,
+                 g_resourceSeparateByType ? BST_CHECKED : BST_UNCHECKED, 0);
+    if (g_resourceSeparateByType)
+        RebuildResourceTypeTabs();
+    LayoutResourceBrowser(g_hResourceBrowser);
+    PopulateResourceListForCurrentView();
     ShowWindow(g_hResourceBrowser, SW_RESTORE);
     SetForegroundWindow(g_hResourceBrowser);
 }
@@ -2419,7 +3105,7 @@ static void BuildZoneCollisionFromDAT()
             for (int axis = 0; axis < 3; ++axis)
                 tri.p[v][axis] = src[v * 3 + axis];
         }
-        if (g_mirrorWorldZones)
+        if (!g_mirrorWorldZones)
         {
             for (int v = 0; v < 3; ++v)
                 tri.p[v][0] = -tri.p[v][0];
@@ -2494,6 +3180,44 @@ static void ResetZoneCameraFromCollision()
     // starts without changing fly speed or any mouse/keyboard camera behavior.
     const float initialCameraY = g_zoneCollisionMax[1] + 10.0f;
     g_camTarget[1] = initialCameraY - g_camDist * sinf(g_camPitch);
+}
+
+static void ResetCameraForStandaloneModel(const noesisModel_t *model)
+{
+    if (!model)
+        return;
+
+    bool haveVertex = false;
+    float minBounds[3] = {};
+    float maxBounds[3] = {};
+    for (const noesisModel_t::Submesh &submesh : model->submeshes)
+    {
+        for (const FFXIVertex &vertex : submesh.cpuVerts)
+        {
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                if (!haveVertex || vertex.pos[axis] < minBounds[axis])
+                    minBounds[axis] = vertex.pos[axis];
+                if (!haveVertex || vertex.pos[axis] > maxBounds[axis])
+                    maxBounds[axis] = vertex.pos[axis];
+            }
+            haveVertex = true;
+        }
+    }
+    if (!haveVertex)
+        return;
+
+    float radiusSquared = 0.0f;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        g_camTarget[axis] = (minBounds[axis] + maxBounds[axis]) * 0.5f;
+        const float halfExtent = (maxBounds[axis] - minBounds[axis]) * 0.5f;
+        radiusSquared += halfExtent * halfExtent;
+    }
+    const float radius = sqrtf(radiusSquared);
+    g_camYaw = 0.0f;
+    g_camPitch = 0.12f;
+    g_camDist = std::clamp(radius * 2.6f, 2.5f, 500.0f);
 }
 
 static void QueryCollisionTris(float x, float z, float radius, std::vector<int> &outIndices)
@@ -2709,14 +3433,22 @@ static bool CanPlaySoundsNow()
         return false;
     HWND hForeground = GetForegroundWindow();
     if (!g_playSoundsInBackground && g_hWnd &&
-        hForeground != g_hWnd && hForeground != g_hConfigDialog)
+        hForeground != g_hWnd && hForeground != g_hConfigDialog &&
+        !AudioPlayer_OwnsWindow(hForeground))
         return false;
     return true;
 }
 
 static void SyncAppMusic()
 {
-    if (!CanPlaySoundsNow())
+    const bool canPlay = CanPlaySoundsNow();
+    if (AudioPlayer_IsOpen())
+    {
+        AudioPlayer_SetPlaybackAllowed(canPlay);
+        return;
+    }
+
+    if (!canPlay)
     {
         BGM_Stop();
         return;
@@ -3163,7 +3895,9 @@ static void UploadSubmeshIndices(noesisModel_t::Submesh &sm)
 
 static void MirrorZoneModelOnX(noesisModel_t *pModel)
 {
-    if (!pModel || !g_mirrorWorldZones)
+    // The normal (unchecked) view corrects the DAT's mirrored X orientation.
+    // Checked exposes that mirrored orientation as requested by the UI option.
+    if (!pModel || g_mirrorWorldZones)
         return;
 
     for (noesisModel_t::Submesh &sm : pModel->submeshes)
@@ -3260,11 +3994,12 @@ static bool SqleReadTransformGroup(const CreationSqleMotionInfo &motion, int fra
     return true;
 }
 
-static int SqleFindNearestTransformGroup(const CreationSqleMotionInfo &motion, float sourcePos[3])
+static int SqleFindNearestTransformGroup(const CreationSqleMotionInfo &motion,
+                                         const float sourcePos[3])
 {
     const int groupCount = motion.channelCount / 7;
     int bestGroup = -1;
-    float bestDistSq = 3.402823466e+38F;
+    float bestDistSq = FLT_MAX;
     for (int groupIndex = 0; groupIndex < groupCount; ++groupIndex)
     {
         float trans[3] = {};
@@ -3346,6 +4081,113 @@ static void ApplySqleFrameChannelToSubmesh(noesisModel_t::Submesh &sm,
     UploadSubmeshVertices(sm);
 }
 
+static int SqleExpectedChannelCount(const noesisModel_t *pModel, int fileIndex)
+{
+    int count = 0;
+    if (!pModel)
+        return 0;
+    for (const FFXISqleBoneInfo &bone : pModel->sqleBones)
+    {
+        if (bone.fileIndex != fileIndex)
+            continue;
+        for (int group = 0; group < 5; ++group)
+            count += bone.channelCounts[group];
+    }
+    return count;
+}
+
+static RichMat43 SqleBuildLocalMatrix(const FFXISqleBoneInfo &bone,
+                                      const CreationSqleMotionInfo *pMotion,
+                                      int sourceFrame, int &channelCursor)
+{
+    float trans[3] = { bone.bindTranslation[0], bone.bindTranslation[1], bone.bindTranslation[2] };
+    float quat[4] = { bone.bindQuaternion[0], bone.bindQuaternion[1], bone.bindQuaternion[2], bone.bindQuaternion[3] };
+    float scale[3] = { bone.bindScale[0], bone.bindScale[1], bone.bindScale[2] };
+    float *groups[3] = { trans, quat, scale };
+    const int capacities[3] = { 3, 4, 3 };
+    for (int group = 0; group < 5; ++group)
+    {
+        const int componentCount = bone.channelCounts[group];
+        for (int component = 0; component < componentCount; ++component)
+        {
+            if (pMotion && group < 3 && component < capacities[group])
+                groups[group][component] = SqleMotionValue(*pMotion, sourceFrame, channelCursor);
+            ++channelCursor;
+        }
+    }
+    SqleNormalizeQuat(quat);
+
+    RichMat43 local = RichQuat(quat[0], quat[1], quat[2], quat[3]).ToMat43(false);
+    local[0] = local[0] * scale[0];
+    local[1] = local[1] * scale[1];
+    local[2] = local[2] * scale[2];
+    local[3] = RichVec3(trans);
+
+    static const float signs[3] = { 1.0f, -1.0f, 1.0f };
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 3; ++col)
+            local[row][col] *= signs[row] * signs[col];
+    for (int axis = 0; axis < 3; ++axis)
+        local[3][axis] *= signs[axis];
+    if (bone.parentIndex < 0)
+        for (int axis = 0; axis < 3; ++axis)
+            local[3][axis] += bone.rootOffset[axis];
+    return local;
+}
+
+static void BuildHighPolyCreationAnimation(noesisModel_t *pModel)
+{
+    if (!pModel || pModel->sqleBones.empty())
+        return;
+
+    const CreationSqleMotionInfo *motions[2] = { &g_creationBodyMotion, &g_creationHeadMotion };
+    bool compatible[2] = {};
+    for (int fileIndex = 0; fileIndex < 2; ++fileIndex)
+    {
+        const int expected = SqleExpectedChannelCount(pModel, fileIndex);
+        compatible[fileIndex] = expected > 0 && motions[fileIndex]->valid &&
+            motions[fileIndex]->frameChannel && expected == motions[fileIndex]->channelCount;
+    }
+    // A partial skeletal clip leaves most of the character motionless.  Let the
+    // preview updater use the legacy FrameChannel fallback unless both pieces
+    // can participate in the combined skeletal animation.
+    if (!compatible[0] || !compatible[1])
+        return;
+
+    const CreationSqleMotionInfo &timing = compatible[0] ? *motions[0] : *motions[1];
+    const int frameCount = std::max(1, timing.frameCount);
+    const float duration = timing.timeSeconds > 0.01f ? timing.timeSeconds : (float)frameCount / 60.0f;
+    noesisAnim_t *pAnim = new noesisAnim_t();
+    pAnim->frameCount = frameCount;
+    pAnim->fps = (float)frameCount / duration;
+    pAnim->boneCount = (int)pModel->sqleBones.size();
+    pAnim->frameWorldMats.resize((size_t)pAnim->frameCount * (size_t)pAnim->boneCount);
+
+    for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex)
+    {
+        int channelCursors[8] = {};
+        RichMat43 *pWorld = &pAnim->frameWorldMats[(size_t)frameIndex * (size_t)pAnim->boneCount];
+        for (int boneIndex = 0; boneIndex < pAnim->boneCount; ++boneIndex)
+        {
+            const FFXISqleBoneInfo &bone = pModel->sqleBones[(size_t)boneIndex];
+            const int fileIndex = bone.fileIndex;
+            const CreationSqleMotionInfo *pMotion = (fileIndex >= 0 && fileIndex < 2 && compatible[fileIndex]) ?
+                motions[fileIndex] : NULL;
+            int sourceFrame = 1;
+            if (pMotion)
+            {
+                const float phase = frameCount > 1 ? (float)frameIndex / (float)(frameCount - 1) : 0.0f;
+                sourceFrame = 1 + (int)(phase * (float)std::max(0, pMotion->frameCount - 1));
+            }
+            pWorld[boneIndex] = SqleBuildLocalMatrix(bone, pMotion, sourceFrame,
+                channelCursors[(fileIndex >= 0 && fileIndex < 8) ? fileIndex : 0]);
+            if (bone.parentIndex >= 0 && bone.parentIndex < boneIndex)
+                pWorld[boneIndex] = pWorld[boneIndex] * pWorld[bone.parentIndex];
+        }
+    }
+    pModel->pAnim = pAnim;
+}
+
 static void UpdateHighPolyCreationAnimation(float dt)
 {
     if (!g_highPolyCreationActive || !g_pZoneModel || !g_pDevice)
@@ -3359,28 +4201,31 @@ static void UpdateHighPolyCreationAnimation(float dt)
     }
 
     g_creationAnimTime += dt;
-    const CreationSqleMotionInfo &fallbackMotion =
-        (g_creationBodyMotion.valid && g_creationBodyMotion.frameChannel) ? g_creationBodyMotion : g_creationHeadMotion;
-    if (!fallbackMotion.valid || !fallbackMotion.frameChannel || fallbackMotion.frameValues.empty())
+    if (g_pZoneModel->pAnim)
+    {
+        g_pZoneModel->UpdateAnimation(g_creationAnimTime, g_pDevice);
+        return;
+    }
+
+    const CreationSqleMotionInfo &timing =
+        (g_creationBodyMotion.valid && g_creationBodyMotion.frameChannel) ?
+        g_creationBodyMotion : g_creationHeadMotion;
+    if (!timing.valid || !timing.frameChannel || timing.frameValues.empty())
     {
         g_pZoneModel->RestoreBindPose(g_pDevice);
         return;
     }
 
-    const float duration = (fallbackMotion.timeSeconds > 0.05f) ?
-        fallbackMotion.timeSeconds : 1.0f;
-    const int frameCount = (fallbackMotion.frameCount > 1) ?
-        fallbackMotion.frameCount : 1;
-    int frameIndex = 1 + (int)((fmodf(g_creationAnimTime, duration) / duration) * (float)(frameCount - 1));
-    if (frameIndex < 1)
-        frameIndex = 1;
-    if (frameIndex > frameCount)
-        frameIndex = frameCount;
+    const float duration = (timing.timeSeconds > 0.05f) ? timing.timeSeconds : 1.0f;
+    const int frameCount = (timing.frameCount > 1) ? timing.frameCount : 1;
+    int frameIndex = 1 + (int)((fmodf(g_creationAnimTime, duration) / duration) *
+                              (float)(frameCount - 1));
+    frameIndex = std::max(1, std::min(frameIndex, frameCount));
 
     g_pZoneModel->RestoreBindPose(g_pDevice);
     for (noesisModel_t::Submesh &sm : g_pZoneModel->submeshes)
     {
-        const bool isHead = (sm.materialName == "creation_mat_1");
+        const bool isHead = strncmp(sm.materialName.c_str(), "creation_mat_1", 14) == 0;
         const CreationSqleMotionInfo &motion = isHead ? g_creationHeadMotion : g_creationBodyMotion;
         ApplySqleFrameChannelToSubmesh(sm, motion, frameIndex);
     }
@@ -3504,10 +4349,11 @@ static DWORD D3DRenderStateFloat(float value)
     return bits;
 }
 
-// Native DXT textures are sampled by hardware. FFXI's authored alpha uses the
-// upper DXT3 nibble as a 0..8 range, so expand it before combining it with the
-// vertex alpha. RGB intentionally remains the original fixed-function 2x
-// texture * vertex-color equation.
+// Native DXT textures are sampled by hardware. FFXI's authored DXT3 alpha uses
+// the upper nibble as a 0..8 range, so expand that encoding before combining it
+// with vertex alpha. RGBA atlases (including high-poly DMB characters) already
+// carry full-range opacity and must pass through unchanged. RGB intentionally
+// remains the original fixed-function 2x texture * vertex-color equation.
 static bool EnsureFfxiTexturePixelShader()
 {
     if (g_pFfxiTexturePixelShader)
@@ -3522,7 +4368,7 @@ static bool EnsureFfxiTexturePixelShader()
         "float4 main(float4 diffuse : COLOR0, float2 uv : TEXCOORD0) : COLOR0\n"
         "{\n"
         "    float4 texel = tex2D(BaseTexture, uv);\n"
-        "    float textureAlpha = saturate(texel.a * 1.875);\n"
+		"    float textureAlpha = (AlphaParams.y > 0.5) ? saturate(texel.a * 1.875) : texel.a;\n"
         "    float vertexAlpha = saturate(diffuse.a * 2.0);\n"
         "    float alpha = (AlphaParams.x > 0.5) ? textureAlpha * vertexAlpha : 1.0;\n"
         "    return float4(saturate(2.0 * texel.rgb * diffuse.rgb), alpha);\n"
@@ -3556,7 +4402,7 @@ static bool EnsureFfxiTexturePixelShader()
     return true;
 }
 
-static bool SetFfxiTexturePixelShader(bool useAuthoredAlpha)
+static bool SetFfxiTexturePixelShader(bool useAuthoredAlpha, bool expandDxt3Alpha)
 {
     if (!EnsureFfxiTexturePixelShader())
     {
@@ -3564,7 +4410,13 @@ static bool SetFfxiTexturePixelShader(bool useAuthoredAlpha)
         return false;
     }
 
-    const float alphaParams[4] = { useAuthoredAlpha ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
+	const float alphaParams[4] =
+	{
+		useAuthoredAlpha ? 1.0f : 0.0f,
+		expandDxt3Alpha ? 1.0f : 0.0f,
+		0.0f,
+		0.0f
+	};
     g_pDevice->SetPixelShader(g_pFfxiTexturePixelShader);
     g_pDevice->SetPixelShaderConstantF(0, alphaParams, 1);
     return true;
@@ -3584,8 +4436,7 @@ static bool EnsureFfxiUiPixelShader()
         "float4 main(float4 diffuse : COLOR0, float2 uv : TEXCOORD0) : COLOR0\n"
         "{\n"
         "    float4 texel = tex2D(BaseTexture, uv);\n"
-        "    if (AlphaParams.x > 0.5)\n"
-        "        texel.a = saturate(texel.a * 1.875);\n"
+        "    texel.a = min(saturate(texel.a * AlphaParams.x), AlphaParams.y);\n"
         "    return texel * diffuse;\n"
         "}\n";
 
@@ -3617,7 +4468,8 @@ static bool EnsureFfxiUiPixelShader()
     return true;
 }
 
-static bool SetFfxiUiPixelShader(bool expandDxt3Alpha)
+static bool SetFfxiUiPixelShader(bool expandDxt3Alpha, float alphaScale = 1.0f,
+                                 float maxOpacity = 1.0f)
 {
     if (!EnsureFfxiUiPixelShader())
     {
@@ -3625,7 +4477,13 @@ static bool SetFfxiUiPixelShader(bool expandDxt3Alpha)
         return false;
     }
 
-    const float alphaParams[4] = { expandDxt3Alpha ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
+    const float alphaParams[4] =
+    {
+        alphaScale * (expandDxt3Alpha ? 1.875f : 1.0f),
+        maxOpacity,
+        0.0f,
+        0.0f
+    };
     g_pDevice->SetPixelShader(g_pFfxiUiPixelShader);
     g_pDevice->SetPixelShaderConstantF(0, alphaParams, 1);
     return true;
@@ -3685,6 +4543,7 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
         bool twoSided = true; // FFXI defaults to two-sided
         float alphaRef = 0.0f;
         bool softBlend = false;
+		bool expandDxt3Alpha = false;
         if (pMD && !sm.materialName.empty())
         {
             const noesisMaterial_t *pMat = pMD->FindMaterial(sm.materialName.c_str());
@@ -3693,7 +4552,11 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
                 if (pMat->texIdx >= 0 && pMat->texIdx < pMD->texCount)
                 {
                     const noesisTex_t *pTexObj = pMD->textures[pMat->texIdx];
-                    if (pTexObj) pTex = pTexObj->pD3DTex;
+					if (pTexObj)
+					{
+						pTex = pTexObj->pD3DTex;
+						expandDxt3Alpha = pTexObj->texType == NOESISTEX_DXT3;
+					}
                 }
                 twoSided = (pMat->flags & NMATFLAG_TWOSIDED) != 0;
                 alphaRef = pMat->alphaTest;
@@ -3730,7 +4593,8 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
             g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
         }
 
-		const bool shaderActive = pTex && SetFfxiTexturePixelShader(alphaRef > 0.0f);
+		const bool shaderActive = pTex && SetFfxiTexturePixelShader(
+			alphaRef > 0.0f, expandDxt3Alpha);
         SetTextureStageForOptionalTexture(pTex,
 			shaderActive ? D3DTOP_SELECTARG1 :
             (alphaRef > 0.0f ? D3DTOP_MODULATE4X : D3DTOP_MODULATE2X));
@@ -3807,6 +4671,7 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
         IDirect3DTexture9 *pTex = nullptr;
         bool twoSided = true;
         bool softBlend = false;
+		bool expandDxt3Alpha = false;
 		if (pMD && !sm.materialName.empty())
         {
             const noesisMaterial_t *pMat = pMD->FindMaterial(sm.materialName.c_str());
@@ -3815,7 +4680,11 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
                 if (pMat->texIdx >= 0 && pMat->texIdx < pMD->texCount)
                 {
                     const noesisTex_t *pTexObj = pMD->textures[pMat->texIdx];
-                    if (pTexObj) pTex = pTexObj->pD3DTex;
+					if (pTexObj)
+					{
+						pTex = pTexObj->pD3DTex;
+						expandDxt3Alpha = pTexObj->texType == NOESISTEX_DXT3;
+					}
                 }
                 twoSided = (pMat->flags & NMATFLAG_TWOSIDED) != 0;
                 softBlend = !pMat->noDefaultBlend;
@@ -3843,7 +4712,7 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
 		g_pDevice->SetRenderState(D3DRS_DEPTHBIAS, D3DRenderStateFloat(-0.000001f));
 		g_pDevice->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
 
-		const bool shaderActive = pTex && SetFfxiTexturePixelShader(true);
+		const bool shaderActive = pTex && SetFfxiTexturePixelShader(true, expandDxt3Alpha);
 		SetTextureStageForOptionalTexture(pTex, shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
         g_pDevice->SetStreamSource(0, sm.pVB, 0, (UINT)sizeof(FFXIVertex));
         g_pDevice->SetIndices(sm.pIB);
@@ -4152,6 +5021,7 @@ static noesisModel_t *LoadTextureDat(const char *relativePath, noeRAPI_t **ppRap
         return nullptr;
 
     noeRAPI_t *pRapi = new noeRAPI_t(g_pDevice);
+    ConfigureRapiTextureSettings(pRapi);
     pRapi->SetCurrentFilePath(fullPath);
 
     if (!Model_FF11_CheckDAT(pBuf, (int)fileSize, pRapi))
@@ -4242,6 +5112,7 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     }
 
     g_pZoneRapi = new noeRAPI_t(g_pDevice);
+    ConfigureRapiTextureSettings(g_pZoneRapi);
     g_pZoneRapi->SetCurrentFilePath(path);
 
     if (Model_FF11_CheckCreationDAT(pBuf, (int)fileSize, g_pZoneRapi))
@@ -4476,6 +5347,7 @@ static void LoadCreationEntry(const FFXICreationEntry *pEntry)
     }
 
     g_pZoneRapi = new noeRAPI_t(g_pDevice);
+    ConfigureRapiTextureSettings(g_pZoneRapi);
     g_pZoneRapi->SetCurrentFilePath(firstMeshPath[0] ? firstMeshPath : "DATura character creation model");
 
     if (bodyFileIndex >= 0 && headFileIndex >= 0)
@@ -4536,6 +5408,7 @@ static void LoadCreationEntry(const FFXICreationEntry *pEntry)
         ReadSqleMotionInfo(CreationPreviewWalkBodyDatForRace(g_creationRaceIndex), &g_creationBodyMotion);
         ReadSqleMotionInfo(CreationPreviewWalkHeadDatForRace(g_creationRaceIndex), &g_creationHeadMotion);
     }
+    BuildHighPolyCreationAnimation(g_pZoneModel);
     g_camDist = 25.0f;
     g_camYaw = 0.0f;
     g_camPitch = 0.15f;
@@ -4586,6 +5459,7 @@ static void LoadDatSetFile(const char *path)
     }
 
     g_pZoneRapi = new noeRAPI_t(g_pDevice);
+    ConfigureRapiTextureSettings(g_pZoneRapi);
     g_pZoneRapi->SetCurrentFilePath(path);
 
     if (!Model_FF11_CheckDATSet(pBuf, (int)fileSize, g_pZoneRapi))
@@ -4789,23 +5663,78 @@ struct CreationSqlePair
 
 static const CreationSqlePair kCreationSqlePairs[] =
 {
-    { "ROM/64/122.dat", "ROM/64/122.dat", "ROM/64/118.dat", "ROM/64/118.dat", "ROM/64/120.dat", "ROM/64/120.dat" }, // Hume Male, candidate
-    { "ROM/64/116.dat", "ROM/64/116.dat", "ROM/64/112.dat", "ROM/64/112.dat", "ROM/64/114.dat", "ROM/64/114.dat" }, // Hume Female, candidate
-    { "ROM/64/98.dat",  "ROM/64/104.dat", "ROM/64/94.dat",  "ROM/64/100.dat", "ROM/64/96.dat",  "ROM/64/102.dat" }, // Elvaan Male, candidate
-    { "ROM/64/40.dat",  "ROM/64/46.dat",  "ROM/64/36.dat",  "ROM/64/42.dat",  "ROM/64/38.dat",  "ROM/64/44.dat"  }, // Elvaan Female, base pair sample-confirmed
-    { "ROM/65/34.dat",  "ROM/65/40.dat",  "ROM/65/30.dat",  "ROM/65/36.dat",  "ROM/65/32.dat",  "ROM/65/38.dat"  }, // Tarutaru Male, candidate
-    { "ROM/65/86.dat",  "ROM/65/92.dat",  "ROM/65/82.dat",  "ROM/65/88.dat",  "ROM/65/84.dat",  "ROM/65/90.dat"  }, // Tarutaru Female, candidate
-    { "ROM/64/88.dat",  "ROM/64/88.dat",  "ROM/64/84.dat",  "ROM/64/84.dat",  "ROM/64/86.dat",  "ROM/64/86.dat"  }, // Mithra, candidate
-    { "ROM/64/110.dat", "ROM/64/110.dat", "ROM/64/106.dat", "ROM/64/106.dat", "ROM/64/108.dat", "ROM/64/108.dat" }, // Galka, candidate
+    { "ROM/66/16.dat", "ROM/66/22.dat", "ROM/66/14.dat", "ROM/66/20.dat", "ROM/66/12.dat", "ROM/66/18.dat" }, // Hume Male, face 1
+    { "ROM/65/86.dat", "ROM/65/92.dat", "ROM/65/84.dat", "ROM/65/90.dat", "ROM/65/82.dat", "ROM/65/88.dat" }, // Hume Female, face 1
+    { "ROM/64/98.dat", "ROM/64/104.dat", "ROM/64/96.dat", "ROM/64/102.dat", "ROM/64/94.dat", "ROM/64/100.dat" }, // Elvaan Male, face 1
+    { "ROM/64/40.dat", "ROM/64/46.dat", "ROM/64/38.dat", "ROM/64/44.dat", "ROM/64/36.dat", "ROM/64/42.dat" }, // Elvaan Female, face 1
+    { "ROM/67/4.dat",  "ROM/67/64.dat", "ROM/67/2.dat",  "ROM/67/62.dat", "ROM/67/0.dat",  "ROM/67/60.dat" }, // Tarutaru Male, face 1
+    { "ROM/67/4.dat",  "ROM/67/10.dat", "ROM/67/2.dat",  "ROM/67/8.dat",  "ROM/67/0.dat",  "ROM/67/6.dat"  }, // Tarutaru Female, face 1
+    { "ROM/66/74.dat", "ROM/66/80.dat", "ROM/66/72.dat", "ROM/66/78.dat", "ROM/66/70.dat", "ROM/66/76.dat" }, // Mithra, face 1
+    { "ROM/65/28.dat", "ROM/65/34.dat", "ROM/65/26.dat", "ROM/65/32.dat", "ROM/65/24.dat", "ROM/65/30.dat" }, // Galka, face 1
 };
 
 static const CreationSqlePair &CreationSqlePairForRace(int raceIndex)
 {
     static const CreationSqlePair fallback =
-        { "ROM/64/40.dat", "ROM/64/46.dat", "ROM/64/36.dat", "ROM/64/42.dat", "ROM/64/38.dat", "ROM/64/44.dat" };
+        { "ROM/64/40.dat", "ROM/64/46.dat", "ROM/64/38.dat", "ROM/64/44.dat", "ROM/64/36.dat", "ROM/64/42.dat" };
     if (raceIndex < 0 || raceIndex >= (int)(sizeof(kCreationSqlePairs) / sizeof(kCreationSqlePairs[0])))
         return fallback;
     return kCreationSqlePairs[raceIndex];
+}
+
+struct CreationSqleHeadSet
+{
+    const char *meshDat;
+    const char *baseDat;
+    const char *idleDat;
+    const char *walkDat;
+};
+
+static const CreationSqleHeadSet kCreationSqleHeadSets[] =
+{
+    { "ROM/63/5.dat",   "ROM/64/46.dat",  "ROM/64/44.dat",  "ROM/64/42.dat"  },
+    { "ROM/63/9.dat",   "ROM/64/58.dat",  "ROM/64/56.dat",  "ROM/64/54.dat"  },
+    { "ROM/63/13.dat",  "ROM/64/52.dat",  "ROM/64/50.dat",  "ROM/64/48.dat"  },
+    { "ROM/63/17.dat",  "ROM/64/82.dat",  "ROM/64/80.dat",  "ROM/64/78.dat"  },
+    { "ROM/63/25.dat",  "ROM/64/104.dat", "ROM/64/102.dat", "ROM/64/100.dat" },
+    { "ROM/63/29.dat",  "ROM/64/116.dat", "ROM/64/114.dat", "ROM/64/112.dat" },
+    { "ROM/63/33.dat",  "ROM/65/0.dat",   "ROM/64/126.dat", "ROM/64/124.dat" },
+    { "ROM/63/37.dat",  "ROM/65/12.dat",  "ROM/65/10.dat",  "ROM/65/8.dat"   },
+    { "ROM/63/45.dat",  "ROM/65/34.dat",  "ROM/65/32.dat",  "ROM/65/30.dat"  },
+    { "ROM/63/49.dat",  "ROM/65/40.dat",  "ROM/65/38.dat",  "ROM/65/36.dat"  },
+    { "ROM/63/53.dat",  "ROM/65/46.dat",  "ROM/65/44.dat",  "ROM/65/42.dat"  },
+    { "ROM/63/57.dat",  "ROM/65/52.dat",  "ROM/65/50.dat",  "ROM/65/48.dat"  },
+    { "ROM/63/65.dat",  "ROM/65/92.dat",  "ROM/65/90.dat",  "ROM/65/88.dat"  },
+    { "ROM/63/69.dat",  "ROM/65/104.dat", "ROM/65/102.dat", "ROM/65/100.dat" },
+    { "ROM/63/73.dat",  "ROM/65/116.dat", "ROM/65/114.dat", "ROM/65/112.dat" },
+    { "ROM/63/77.dat",  "ROM/66/0.dat",   "ROM/65/126.dat", "ROM/65/124.dat" },
+    { "ROM/63/85.dat",  "ROM/66/22.dat",  "ROM/66/20.dat",  "ROM/66/18.dat"  },
+    { "ROM/63/89.dat",  "ROM/66/34.dat",  "ROM/66/32.dat",  "ROM/66/30.dat"  },
+    { "ROM/63/93.dat",  "ROM/66/46.dat",  "ROM/66/44.dat",  "ROM/66/42.dat"  },
+    { "ROM/63/97.dat",  "ROM/66/58.dat",  "ROM/66/56.dat",  "ROM/66/54.dat"  },
+    { "ROM/63/105.dat", "ROM/66/80.dat",  "ROM/66/78.dat",  "ROM/66/76.dat"  },
+    { "ROM/63/109.dat", "ROM/66/92.dat",  "ROM/66/90.dat",  "ROM/66/88.dat"  },
+    { "ROM/63/113.dat", "ROM/66/104.dat", "ROM/66/102.dat", "ROM/66/100.dat" },
+    { "ROM/63/117.dat", "ROM/66/116.dat", "ROM/66/114.dat", "ROM/66/112.dat" },
+    { "ROM/63/125.dat", "ROM/67/10.dat",  "ROM/67/8.dat",   "ROM/67/6.dat"   },
+    { "ROM/64/1.dat",   "ROM/67/22.dat",  "ROM/67/20.dat",  "ROM/67/18.dat"  },
+    { "ROM/64/5.dat",   "ROM/67/34.dat",  "ROM/67/32.dat",  "ROM/67/30.dat"  },
+    { "ROM/64/9.dat",   "ROM/67/46.dat",  "ROM/67/44.dat",  "ROM/67/42.dat"  },
+    { "ROM/64/17.dat",  "ROM/67/64.dat",  "ROM/67/62.dat",  "ROM/67/60.dat"  },
+    { "ROM/64/21.dat",  "ROM/67/76.dat",  "ROM/67/74.dat",  "ROM/67/72.dat"  },
+    { "ROM/64/25.dat",  "ROM/67/88.dat",  "ROM/67/86.dat",  "ROM/67/84.dat"  },
+    { "ROM/64/29.dat",  "ROM/67/100.dat", "ROM/67/98.dat",  "ROM/67/96.dat"  },
+};
+
+static const CreationSqleHeadSet *CreationSqleHeadSetForCurrentEntry()
+{
+    const FFXICreationEntry *pEntry = CurrentHighPolyCreationEntry();
+    if (!pEntry || !pEntry->headMeshDat)
+        return NULL;
+    for (const CreationSqleHeadSet &set : kCreationSqleHeadSets)
+        if (strcmp(set.meshDat, pEntry->headMeshDat) == 0)
+            return &set;
+    return NULL;
 }
 
 static bool ReadSqleMotionInfo(const char *animDat, CreationSqleMotionInfo *outInfo)
@@ -4883,7 +5812,8 @@ static const char *CreationBodyAnimDatForRace(int raceIndex)
 
 static const char *CreationHeadAnimDatForRace(int raceIndex)
 {
-    return CreationSqlePairForRace(raceIndex).headBase;
+    const CreationSqleHeadSet *pSet = CreationSqleHeadSetForCurrentEntry();
+    return pSet ? pSet->baseDat : CreationSqlePairForRace(raceIndex).headBase;
 }
 
 static const char *CreationPreviewIdleBodyDatForRace(int raceIndex)
@@ -4893,7 +5823,8 @@ static const char *CreationPreviewIdleBodyDatForRace(int raceIndex)
 
 static const char *CreationPreviewIdleHeadDatForRace(int raceIndex)
 {
-    return CreationSqlePairForRace(raceIndex).headIdle;
+    const CreationSqleHeadSet *pSet = CreationSqleHeadSetForCurrentEntry();
+    return pSet ? pSet->idleDat : CreationSqlePairForRace(raceIndex).headIdle;
 }
 
 static const char *CreationPreviewWalkBodyDatForRace(int raceIndex)
@@ -4903,7 +5834,8 @@ static const char *CreationPreviewWalkBodyDatForRace(int raceIndex)
 
 static const char *CreationPreviewWalkHeadDatForRace(int raceIndex)
 {
-    return CreationSqlePairForRace(raceIndex).headWalk;
+    const CreationSqleHeadSet *pSet = CreationSqleHeadSetForCurrentEntry();
+    return pSet ? pSet->walkDat : CreationSqlePairForRace(raceIndex).headWalk;
 }
 
 static void BuildHighPolyNoesisScene(char *out, size_t outSize)
@@ -5123,7 +6055,6 @@ static void BuildLowPolyDatSet(char *out, size_t outSize)
         "\n");
 
     AppendDatSetLine(out, outSize, "__skeleton", race.entries[0].dat);
-    AppendDatSetLine(out, outSize, "__animation", race.entries[0].dat);
     if (race.count > 8)
         AppendDatSetLine(out, outSize, "__animation", race.entries[8].dat);
 
@@ -5213,6 +6144,7 @@ static void ReturnToTitleScreen()
     if (g_hZoneObjectPanel)
         ShowWindow(g_hZoneObjectPanel, SW_HIDE);
 
+    UnloadPlayerModel();
     g_highPolyCreationActive = false;
     g_nationSelectActive = false;
     LoadTitleScreen();
@@ -5232,7 +6164,7 @@ static void ApplyCreationStateToLowPolyPlayer()
     g_playerEquip.subItem = 0;
     g_playerEquip.rangedType = 0;
     g_playerEquip.rangedItem = 0;
-    g_playerEquip.headItem = g_creationFaceIndex + 1;
+    g_playerEquip.headItem = 0;
     g_playerEquip.bodyItem = equipmentVariant;
     g_playerEquip.handsItem = equipmentVariant;
     g_playerEquip.legsItem = equipmentVariant;
@@ -5240,6 +6172,7 @@ static void ApplyCreationStateToLowPolyPlayer()
     g_playerEquip.animationBank = 0;
     g_playerEquip.animationMode = 0;
     g_playerEquip.animationPlaying = false;
+    ClampLowPolyState();
 }
 
 static void ConfirmExitFromTitleScreen()
@@ -5302,6 +6235,33 @@ static int ComboGetSelectedData(HWND hCombo)
     return (data == CB_ERR) ? index : (int)data;
 }
 
+static int LowPolyFaceVariantCountForRace(int raceIndex)
+{
+    (void)raceIndex;
+    return kFaceVariantCount;
+}
+
+static void ClampLowPolyState()
+{
+    if (g_playerEquip.raceIndex < 0)
+        g_playerEquip.raceIndex = 0;
+    if (g_playerEquip.raceIndex >= kFFXICharRaceCount)
+        g_playerEquip.raceIndex = kFFXICharRaceCount - 1;
+
+    const int faceCount = LowPolyFaceVariantCountForRace(g_playerEquip.raceIndex);
+    if (g_playerFaceVariant < 0)
+        g_playerFaceVariant = 0;
+    if (g_playerFaceVariant >= faceCount)
+        g_playerFaceVariant = faceCount - 1;
+
+    if (g_playerEquip.animationMode < 0)
+        g_playerEquip.animationMode = 0;
+    if (g_playerEquip.animationMode >= kAnimationModeCount)
+        g_playerEquip.animationMode = kAnimationModeCount - 1;
+    if (g_playerEquip.animationBank < 0)
+        g_playerEquip.animationBank = 0;
+}
+
 static HWND LowPolyPanelControl(int id)
 {
     return g_hLowPolyPanel ? GetDlgItem(g_hLowPolyPanel, id) : NULL;
@@ -5339,7 +6299,7 @@ static void FillCatalogVariantCombo(HWND hCombo, const char *noneLabel, const ch
 {
     char label[128] = {};
     SendMessageA(hCombo, CB_RESETCONTENT, 0, 0);
-    ComboAddString(hCombo, noneLabel);
+    ComboAddStringWithData(hCombo, noneLabel, 0);
     for (int i = 1; i <= itemCount; ++i)
     {
         const char *catalogLabel = FFXIInternal_FindPCLabel(raceIndex, slot, i);
@@ -5347,9 +6307,9 @@ static void FillCatalogVariantCombo(HWND hCombo, const char *noneLabel, const ch
             sprintf_s(label, "%03d - %s", i, catalogLabel);
         else
             sprintf_s(label, "%s %03d", itemPrefix, i);
-        ComboAddString(hCombo, label);
+        ComboAddStringWithData(hCombo, label, i);
     }
-    ComboSetIndex(hCombo, selected);
+    ComboSetIndexByData(hCombo, selected);
 }
 
 static void FillCatalogSparseCombo(HWND hCombo, const char *noneLabel,
@@ -5397,18 +6357,84 @@ static void FillCatalogBaseVariantCombo(HWND hCombo, const char *itemPrefix,
             sprintf_s(label, "%03d - %s", i, catalogLabel);
         else
             sprintf_s(label, "%s %03d", itemPrefix, i);
-        ComboAddString(hCombo, label);
+        ComboAddStringWithData(hCombo, label, i);
     }
+    ComboSetIndexByData(hCombo, selected);
+}
+
+static bool LowPolyAnimationCategoryMatches(const char *label, const char *prefix)
+{
+    if (!label || !label[0])
+        return false;
+    if (!prefix || !prefix[0])
+        return true;
+
+    const size_t prefixLen = strlen(prefix);
+    if (strncmp(label, prefix, prefixLen) != 0)
+        return false;
+    return label[prefixLen] == '\0' || label[prefixLen] == ':';
+}
+
+static const LowPolyAnimationCategory &LowPolyAnimationCategoryForIndex(int categoryIndex)
+{
+    if (categoryIndex < 0 || categoryIndex >= kAnimationModeCount)
+        categoryIndex = 0;
+    return kLowPolyAnimationCategories[categoryIndex];
+}
+
+static void FillLowPolyAnimationCategoryCombo(HWND hCombo, int selected)
+{
+    SendMessageA(hCombo, CB_RESETCONTENT, 0, 0);
+    for (int i = 0; i < kAnimationModeCount; ++i)
+        ComboAddString(hCombo, kLowPolyAnimationCategories[i].label);
     ComboSetIndex(hCombo, selected);
 }
 
-static void FillFaceVariantCombo(HWND hCombo, int selected)
+static void FillLowPolyAnimationCombo(HWND hCombo, int selected, int raceIndex, int categoryIndex)
+{
+    char label[192] = {};
+    SendMessageA(hCombo, CB_RESETCONTENT, 0, 0);
+
+    const LowPolyAnimationCategory &category = LowPolyAnimationCategoryForIndex(categoryIndex);
+    bool foundSelected = false;
+    if (raceIndex >= 0 && raceIndex < (int)(sizeof(kFFXIInternalPCLists) / sizeof(kFFXIInternalPCLists[0])) &&
+        category.slot >= 0 && category.slot < 11)
+    {
+        const FFXIInternalList &list = kFFXIInternalPCLists[raceIndex][category.slot];
+        for (int i = 0; i < list.count; ++i)
+        {
+            const int animIndex = list.entries[i].index;
+            const char *animLabel = list.entries[i].label;
+            if (!LowPolyAnimationCategoryMatches(animLabel, category.prefix))
+                continue;
+
+            sprintf_s(label, "%05d - %s", animIndex, animLabel ? animLabel : "Animation");
+            ComboAddStringWithData(hCombo, label, animIndex);
+            if (animIndex == selected)
+                foundSelected = true;
+        }
+    }
+
+    if (!foundSelected && selected >= 0)
+    {
+        sprintf_s(label, "%05d - Custom animation DAT offset", selected);
+        ComboAddStringWithData(hCombo, label, selected);
+    }
+
+    if (SendMessageA(hCombo, CB_GETCOUNT, 0, 0) <= 0)
+        ComboAddStringWithData(hCombo, "00000 - Animation set 0", 0);
+
+    ComboSetIndexByData(hCombo, selected);
+}
+
+static void FillFaceVariantCombo(HWND hCombo, int selected, int raceIndex)
 {
     char label[64] = {};
     SendMessageA(hCombo, CB_RESETCONTENT, 0, 0);
-    for (int i = 0; i < kFaceVariantCount; ++i)
+    const int faceCount = LowPolyFaceVariantCountForRace(raceIndex);
+    for (int i = 0; i < faceCount; ++i)
     {
-        sprintf_s(label, "Face %02d", i);
+        sprintf_s(label, "Face %d%c", (i / 2) + 1, (i & 1) ? 'B' : 'A');
         ComboAddString(hCombo, label);
     }
     ComboSetIndex(hCombo, selected);
@@ -5486,9 +6512,10 @@ static void RandomizeLowPolyCharacterSection()
         PullLowPolyStateFromControls();
 
     g_playerEquip.raceIndex = RandomIntExclusive(kFFXICharRaceCount);
-    g_playerFaceVariant = RandomIntExclusive(kFaceVariantCount);
+    g_playerFaceVariant = RandomIntExclusive(LowPolyFaceVariantCountForRace(g_playerEquip.raceIndex));
     g_playerEquip.animationPlaying = false;
     g_playerAnimTime = 0.0f;
+    ClampLowPolyState();
     FinishLowPolyRandomize();
 }
 
@@ -5532,9 +6559,24 @@ static void RandomizeLowPolyActionSection()
         PullLowPolyStateFromControls();
 
     g_playerEquip.animationMode = RandomIntExclusive(kAnimationModeCount);
-    g_playerEquip.animationBank = RandomIntExclusive(2);
+    const LowPolyAnimationCategory &category = LowPolyAnimationCategoryForIndex(g_playerEquip.animationMode);
+    std::vector<int> candidates;
+    const int raceIndex = (g_playerEquip.raceIndex >= 0 && g_playerEquip.raceIndex < kFFXICharRaceCount)
+        ? g_playerEquip.raceIndex
+        : 0;
+    if (category.slot >= 0 && category.slot < 11)
+    {
+        const FFXIInternalList &list = kFFXIInternalPCLists[raceIndex][category.slot];
+        for (int i = 0; i < list.count; ++i)
+        {
+            if (LowPolyAnimationCategoryMatches(list.entries[i].label, category.prefix))
+                candidates.push_back(list.entries[i].index);
+        }
+    }
+    g_playerEquip.animationBank = candidates.empty() ? 0 : candidates[RandomIntExclusive((int)candidates.size())];
     g_playerEquip.animationPlaying = false;
     g_playerAnimTime = 0.0f;
+    ClampLowPolyState();
     FinishLowPolyRandomize();
 }
 
@@ -5544,7 +6586,7 @@ static void RandomizeLowPolyAll()
         PullLowPolyStateFromControls();
 
     g_playerEquip.raceIndex = RandomIntExclusive(kFFXICharRaceCount);
-    g_playerFaceVariant = RandomIntExclusive(kFaceVariantCount);
+    g_playerFaceVariant = RandomIntExclusive(LowPolyFaceVariantCountForRace(g_playerEquip.raceIndex));
     const int raceIndex = g_playerEquip.raceIndex;
     g_playerEquip.mainItem = RandomSparseCatalogIndex(raceIndex, kFFXIInternalPCSlot_Main, 0);
     g_playerEquip.subItem = RandomSparseCatalogIndex(raceIndex, kFFXIInternalPCSlot_Sub, 4);
@@ -5555,9 +6597,23 @@ static void RandomizeLowPolyAll()
     g_playerEquip.legsItem = RandomCatalogIndex(raceIndex, kFFXIInternalPCSlot_Legs, 0, kArmorVariantCount - 1, true, kArmorVariantCount - 1);
     g_playerEquip.feetItem = RandomCatalogIndex(raceIndex, kFFXIInternalPCSlot_Feet, 0, kArmorVariantCount - 1, true, kArmorVariantCount - 1);
     g_playerEquip.animationMode = RandomIntExclusive(kAnimationModeCount);
-    g_playerEquip.animationBank = RandomIntExclusive(2);
+    {
+        const LowPolyAnimationCategory &category = LowPolyAnimationCategoryForIndex(g_playerEquip.animationMode);
+        std::vector<int> candidates;
+        if (category.slot >= 0 && category.slot < 11)
+        {
+            const FFXIInternalList &list = kFFXIInternalPCLists[raceIndex][category.slot];
+            for (int i = 0; i < list.count; ++i)
+            {
+                if (LowPolyAnimationCategoryMatches(list.entries[i].label, category.prefix))
+                    candidates.push_back(list.entries[i].index);
+            }
+        }
+        g_playerEquip.animationBank = candidates.empty() ? 0 : candidates[RandomIntExclusive((int)candidates.size())];
+    }
     g_playerEquip.animationPlaying = false;
     g_playerAnimTime = 0.0f;
+    ClampLowPolyState();
     FinishLowPolyRandomize();
 }
 
@@ -5566,17 +6622,18 @@ static void SyncLowPolyControlsFromState()
     if (!g_hLowPolyPanel)
         return;
 
+    ClampLowPolyState();
     HWND hRace = LowPolyPanelControl(IDC_LP_RACE);
     SendMessageA(hRace, CB_RESETCONTENT, 0, 0);
     for (int r = 0; r < kFFXICharRaceCount; ++r)
         ComboAddString(hRace, kFFXICharRaces[r].name);
     ComboSetIndex(hRace, g_playerEquip.raceIndex);
-    FillFaceVariantCombo(LowPolyPanelControl(IDC_LP_FACE), g_playerFaceVariant);
+    FillFaceVariantCombo(LowPolyPanelControl(IDC_LP_FACE), g_playerFaceVariant, g_playerEquip.raceIndex);
 
     FillComboFromLabels(LowPolyPanelControl(IDC_LP_MAIN_TYPE), kWeaponTypeLabels, kWeaponTypeCount, g_playerEquip.mainType);
     FillComboFromLabels(LowPolyPanelControl(IDC_LP_SUB_TYPE), kWeaponTypeLabels, kWeaponTypeCount, g_playerEquip.subType);
     FillComboFromLabels(LowPolyPanelControl(IDC_LP_RANGE_TYPE), kWeaponTypeLabels, kWeaponTypeCount, g_playerEquip.rangedType);
-    FillComboFromLabels(LowPolyPanelControl(IDC_LP_ANIM_MODE), kAnimationModeLabels, kAnimationModeCount, g_playerEquip.animationMode);
+    FillLowPolyAnimationCategoryCombo(LowPolyPanelControl(IDC_LP_ANIM_MODE), g_playerEquip.animationMode);
 
     const int raceIndex = g_playerEquip.raceIndex;
     FillCatalogSparseCombo(LowPolyPanelControl(IDC_LP_MAIN_ITEM), "None",
@@ -5597,15 +6654,7 @@ static void SyncLowPolyControlsFromState()
         kArmorVariantCount, g_playerEquip.feetItem, raceIndex, kFFXIInternalPCSlot_Feet);
 
     HWND hAnimBank = LowPolyPanelControl(IDC_LP_ANIM_BANK);
-    SendMessageA(hAnimBank, CB_RESETCONTENT, 0, 0);
-    const char *anim0 = FFXIInternal_FindPCLabel(raceIndex, kFFXIInternalPCSlot_Action, 0);
-    const char *anim1 = FFXIInternal_FindPCLabel(raceIndex, kFFXIInternalPCSlot_Action, 27);
-    char animLabel[128] = {};
-    sprintf_s(animLabel, "Animation set 0%s%s", anim0 ? " - " : "", anim0 ? anim0 : "");
-    ComboAddString(hAnimBank, animLabel);
-    sprintf_s(animLabel, "Animation set 1%s%s", anim1 ? " - " : "", anim1 ? anim1 : "");
-    ComboAddString(hAnimBank, animLabel);
-    ComboSetIndex(hAnimBank, g_playerEquip.animationBank);
+    FillLowPolyAnimationCombo(hAnimBank, g_playerEquip.animationBank, raceIndex, g_playerEquip.animationMode);
 }
 
 static const FFXICreationEntry *CurrentHighPolyCreationEntry()
@@ -5624,6 +6673,27 @@ static const FFXICreationEntry *CurrentHighPolyCreationEntry()
 
     const int entryIndex = g_creationFaceIndex * 2 + g_creationEquipmentIndex;
     return (entryIndex >= 0 && entryIndex < race.count) ? &race.entries[entryIndex] : nullptr;
+}
+
+static bool SetHighPolyCreationSelectionFromFlatIndex(int flatIndex)
+{
+    if (flatIndex < 0)
+        return false;
+
+    for (int raceIndex = 0; raceIndex < kFFXICreationRaceCount; ++raceIndex)
+    {
+        const FFXICreationRace &race = kFFXICreationRaces[raceIndex];
+        if (flatIndex < race.count)
+        {
+            g_creationRaceIndex = raceIndex;
+            g_creationFaceIndex = flatIndex / 2;
+            g_creationEquipmentIndex = flatIndex % 2;
+            return true;
+        }
+        flatIndex -= race.count;
+    }
+
+    return false;
 }
 
 static void SyncHighPolyCreationControlsFromState()
@@ -5700,13 +6770,14 @@ static void PullLowPolyStateFromControls()
     g_playerEquip.subItem = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_SUB_ITEM));
     g_playerEquip.rangedType = ComboGetIndex(LowPolyPanelControl(IDC_LP_RANGE_TYPE));
     g_playerEquip.rangedItem = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_RANGE_ITEM));
-    g_playerEquip.headItem = ComboGetIndex(LowPolyPanelControl(IDC_LP_HEAD));
-    g_playerEquip.bodyItem = ComboGetIndex(LowPolyPanelControl(IDC_LP_BODY));
-    g_playerEquip.handsItem = ComboGetIndex(LowPolyPanelControl(IDC_LP_HANDS));
-    g_playerEquip.legsItem = ComboGetIndex(LowPolyPanelControl(IDC_LP_LEGS));
-    g_playerEquip.feetItem = ComboGetIndex(LowPolyPanelControl(IDC_LP_FEET));
-    g_playerEquip.animationBank = ComboGetIndex(LowPolyPanelControl(IDC_LP_ANIM_BANK));
+    g_playerEquip.headItem = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_HEAD));
+    g_playerEquip.bodyItem = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_BODY));
+    g_playerEquip.handsItem = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_HANDS));
+    g_playerEquip.legsItem = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_LEGS));
+    g_playerEquip.feetItem = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_FEET));
     g_playerEquip.animationMode = ComboGetIndex(LowPolyPanelControl(IDC_LP_ANIM_MODE));
+    g_playerEquip.animationBank = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_ANIM_BANK));
+    ClampLowPolyState();
 }
 
 static void SaveLowPolyPreset()
@@ -5798,6 +6869,7 @@ static void LoadLowPolyPreset()
         ReadPresetInt(text, "feet", &g_playerEquip.feetItem);
         ReadPresetInt(text, "animBank", &g_playerEquip.animationBank);
         ReadPresetInt(text, "animMode", &g_playerEquip.animationMode);
+        ClampLowPolyState();
         SyncLowPolyControlsFromState();
         ReloadPlayerModelFromControls();
     }
@@ -5827,48 +6899,50 @@ static LRESULT CALLBACK LowPolyPanelProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
     case WM_CREATE:
         AddPanelControl(hWnd, "BUTTON", "Character", BS_GROUPBOX, -1, 8, 8, 448, 94);
         AddPanelControl(hWnd, "STATIC", "Race:", 0, -1, 18, 36, 66, 18);
-        AddPanelCombo(hWnd, IDC_LP_RACE, 90, 32, 254);
-        AddPanelControl(hWnd, "BUTTON", "Randomize", BS_PUSHBUTTON, IDC_LP_RANDOM_CHARACTER, 356, 32, 92, 24);
+        AddPanelCombo(hWnd, IDC_LP_RACE, 98, 32, 350);
         AddPanelControl(hWnd, "STATIC", "Face:", 0, -1, 18, 68, 66, 18);
-        AddPanelCombo(hWnd, IDC_LP_FACE, 90, 64, 254);
+        AddPanelCombo(hWnd, IDC_LP_FACE, 98, 64, 350);
 
         AddPanelControl(hWnd, "BUTTON", "Weapons", BS_GROUPBOX, -1, 8, 110, 448, 158);
-        AddPanelControl(hWnd, "BUTTON", "Randomize", BS_PUSHBUTTON, IDC_LP_RANDOM_WEAPONS, 356, 116, 92, 24);
         AddPanelControl(hWnd, "STATIC", "Main:", 0, -1, 18, 138, 66, 18);
         AddPanelCombo(hWnd, IDC_LP_MAIN_TYPE, 18, 156, 68);
-        AddPanelCombo(hWnd, IDC_LP_MAIN_ITEM, 90, 156, 358);
+        AddPanelCombo(hWnd, IDC_LP_MAIN_ITEM, 98, 156, 350);
         AddPanelControl(hWnd, "STATIC", "Sub:", 0, -1, 18, 184, 66, 18);
         AddPanelCombo(hWnd, IDC_LP_SUB_TYPE, 18, 202, 68);
-        AddPanelCombo(hWnd, IDC_LP_SUB_ITEM, 90, 202, 358);
+        AddPanelCombo(hWnd, IDC_LP_SUB_ITEM, 98, 202, 350);
         AddPanelControl(hWnd, "STATIC", "Ranged:", 0, -1, 18, 230, 66, 18);
         AddPanelCombo(hWnd, IDC_LP_RANGE_TYPE, 18, 248, 68);
-        AddPanelCombo(hWnd, IDC_LP_RANGE_ITEM, 90, 248, 358);
+        AddPanelCombo(hWnd, IDC_LP_RANGE_ITEM, 98, 248, 350);
 
         AddPanelControl(hWnd, "BUTTON", "Armor", BS_GROUPBOX, -1, 8, 276, 448, 176);
-        AddPanelControl(hWnd, "BUTTON", "Randomize", BS_PUSHBUTTON, IDC_LP_RANDOM_ARMOR, 356, 282, 92, 24);
         AddPanelControl(hWnd, "STATIC", "Head:", 0, -1, 18, 304, 66, 18);
-        AddPanelCombo(hWnd, IDC_LP_HEAD, 90, 300, 358);
+        AddPanelCombo(hWnd, IDC_LP_HEAD, 98, 300, 350);
         AddPanelControl(hWnd, "STATIC", "Body:", 0, -1, 18, 332, 66, 18);
-        AddPanelCombo(hWnd, IDC_LP_BODY, 90, 328, 358);
+        AddPanelCombo(hWnd, IDC_LP_BODY, 98, 328, 350);
         AddPanelControl(hWnd, "STATIC", "Hands:", 0, -1, 18, 360, 66, 18);
-        AddPanelCombo(hWnd, IDC_LP_HANDS, 90, 356, 358);
+        AddPanelCombo(hWnd, IDC_LP_HANDS, 98, 356, 350);
         AddPanelControl(hWnd, "STATIC", "Legs:", 0, -1, 18, 388, 66, 18);
-        AddPanelCombo(hWnd, IDC_LP_LEGS, 90, 384, 358);
+        AddPanelCombo(hWnd, IDC_LP_LEGS, 98, 384, 350);
         AddPanelControl(hWnd, "STATIC", "Feet:", 0, -1, 18, 416, 66, 18);
-        AddPanelCombo(hWnd, IDC_LP_FEET, 90, 412, 358);
+        AddPanelCombo(hWnd, IDC_LP_FEET, 98, 412, 350);
 
         AddPanelControl(hWnd, "BUTTON", "Action", BS_GROUPBOX, -1, 8, 460, 448, 82);
-        AddPanelControl(hWnd, "BUTTON", "Randomize", BS_PUSHBUTTON, IDC_LP_RANDOM_ACTION, 356, 466, 92, 24);
         AddPanelCombo(hWnd, IDC_LP_ANIM_MODE, 18, 488, 100);
-        AddPanelCombo(hWnd, IDC_LP_ANIM_BANK, 122, 488, 238);
-        AddPanelControl(hWnd, "BUTTON", "Play", BS_PUSHBUTTON, IDC_LP_PLAY, 396, 488, 52, 24);
-        AddPanelControl(hWnd, "BUTTON", "Stop", BS_PUSHBUTTON, IDC_LP_STOP, 332, 516, 52, 24);
-        AddPanelControl(hWnd, "BUTTON", "Reset", BS_PUSHBUTTON, IDC_LP_RESET, 396, 516, 52, 24);
+        AddPanelCombo(hWnd, IDC_LP_ANIM_BANK, 126, 488, 222);
+        AddPanelControl(hWnd, "BUTTON", "Play", BS_PUSHBUTTON, IDC_LP_PLAY, 356, 488, 92, 24);
+        AddPanelControl(hWnd, "BUTTON", "Stop", BS_PUSHBUTTON, IDC_LP_STOP, 356, 516, 44, 24);
+        AddPanelControl(hWnd, "BUTTON", "Reset", BS_PUSHBUTTON, IDC_LP_RESET, 404, 516, 44, 24);
 
-        AddPanelControl(hWnd, "BUTTON", "Preset", BS_GROUPBOX, -1, 8, 550, 448, 54);
-        AddPanelControl(hWnd, "BUTTON", "Randomize All", BS_PUSHBUTTON, IDC_LP_RANDOM_ALL, 18, 572, 112, 24);
-        AddPanelControl(hWnd, "BUTTON", "Load", BS_PUSHBUTTON, IDC_LP_LOAD, 332, 572, 52, 24);
-        AddPanelControl(hWnd, "BUTTON", "Save", BS_PUSHBUTTON, IDC_LP_SAVE, 396, 572, 52, 24);
+        AddPanelControl(hWnd, "BUTTON", "Randomize", BS_GROUPBOX, -1, 8, 550, 448, 54);
+        AddPanelControl(hWnd, "BUTTON", "Character", BS_PUSHBUTTON, IDC_LP_RANDOM_CHARACTER, 18, 574, 82, 24);
+        AddPanelControl(hWnd, "BUTTON", "Weapons", BS_PUSHBUTTON, IDC_LP_RANDOM_WEAPONS, 104, 574, 82, 24);
+        AddPanelControl(hWnd, "BUTTON", "Armor", BS_PUSHBUTTON, IDC_LP_RANDOM_ARMOR, 190, 574, 82, 24);
+        AddPanelControl(hWnd, "BUTTON", "Action", BS_PUSHBUTTON, IDC_LP_RANDOM_ACTION, 276, 574, 82, 24);
+        AddPanelControl(hWnd, "BUTTON", "All", BS_PUSHBUTTON, IDC_LP_RANDOM_ALL, 362, 574, 86, 24);
+
+        AddPanelControl(hWnd, "BUTTON", "Preset", BS_GROUPBOX, -1, 8, 612, 448, 54);
+        AddPanelControl(hWnd, "BUTTON", "Load", BS_PUSHBUTTON, IDC_LP_LOAD, 304, 634, 68, 24);
+        AddPanelControl(hWnd, "BUTTON", "Save", BS_PUSHBUTTON, IDC_LP_SAVE, 380, 634, 68, 24);
 
         SyncLowPolyControlsFromState();
         return 0;
@@ -5932,6 +7006,15 @@ static LRESULT CALLBACK LowPolyPanelProc(HWND hWnd, UINT msg, WPARAM wParam, LPA
                 g_playerAnimTime = 0.0f;
                 if (g_pPlayerModel)
                     g_pPlayerModel->RestoreBindPose(g_pDevice);
+                return 0;
+            }
+            if (id == IDC_LP_ANIM_MODE && code == CBN_SELCHANGE)
+            {
+                PullLowPolyStateFromControls();
+                FillLowPolyAnimationCombo(LowPolyPanelControl(IDC_LP_ANIM_BANK),
+                    -1, g_playerEquip.raceIndex, g_playerEquip.animationMode);
+                g_playerEquip.animationBank = ComboGetSelectedData(LowPolyPanelControl(IDC_LP_ANIM_BANK));
+                ReloadPlayerModelFromControls();
                 return 0;
             }
             if (code == CBN_SELCHANGE)
@@ -6038,7 +7121,7 @@ static void ShowLowPolyControlPanel()
 
     g_hLowPolyPanel = CreateWindowExA(WS_EX_TOOLWINDOW, wc.lpszClassName,
         "Low Poly Character", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-        CW_USEDEFAULT, CW_USEDEFAULT, 482, 660, g_hWnd, NULL, wc.hInstance, NULL);
+        CW_USEDEFAULT, CW_USEDEFAULT, 482, 704, g_hWnd, NULL, wc.hInstance, NULL);
     if (g_hLowPolyPanel)
     {
         SyncLowPolyControlsFromState();
@@ -6391,11 +7474,14 @@ static void InsertDrawBatchRow(HWND hList, int batchIndex)
     sprintf_s(buf, "%d", batch->vertexStride);
     SetZoneObjectSubItem(hList, row, 5, buf);
     SetZoneObjectSubItem(hList, row, 6, batch->daturaRenderMode);
-    sprintf_s(buf, "blend:%04X flags2:%04X super:%d sub:%d obj:%08X,%08X gr:%s mult:%d ofs:%08X",
+    sprintf_s(buf, "flags:%04X flags2:%04X super:%d sub:%d obj:%08X,%08X alpha:%d cullOff:%d u4:%d u1:%d ofs:%08X",
               batch->blendFlags, batch->flags2, batch->superFlag, batch->subFlag,
               batch->objectFlags[0], batch->objectFlags[1],
-              batch->galkaReeveWouldAlphaBlend ? "alphaHeuristic" : "opaque",
-              batch->galkaReeveBlendMultiplier, batch->drawOffset);
+              batch->galkaReeveWouldAlphaBlend ? 1 : 0,
+              (batch->blendFlags & 0x2000u) ? 1 : 0,
+              batch->runtimeFlag4000 ? 1 : 0,
+              batch->runtimeFlag1000 ? 1 : 0,
+              batch->drawOffset);
     SetZoneObjectSubItem(hList, row, 7, buf);
     sprintf_s(buf, "%.2f, %.2f, %.2f / %.2f, %.2f, %.2f",
               batch->superBounds[0], batch->superBounds[1], batch->superBounds[2],
@@ -6604,17 +7690,23 @@ static void PopulateZoneTreeDrawBatchFields(HWND hTree, HTREEITEM item, int inde
     AddZoneTreeIntField(hTree, item, "Vertex count", batch->vertexCount);
     AddZoneTreeIntField(hTree, item, "Index count", batch->indexCount);
     AddZoneTreeIntField(hTree, item, "Vertex stride", batch->vertexStride);
-    AddZoneTreeHex16Field(hTree, item, "Blend flags", batch->blendFlags);
+    AddZoneTreeHex16Field(hTree, item, "Runtime mesh flags", batch->blendFlags);
+    AddZoneTreeHex16Field(hTree, item, "Uninterpreted runtime flag bits",
+                         batch->blendFlags & ~(0x1000u | 0x2000u | 0x4000u | 0x8000u));
     AddZoneTreeHex16Field(hTree, item, "Flags 2", batch->flags2);
     AddZoneTreeField(hTree, item, "DATura render mode", batch->daturaRenderMode);
     AddZoneTreeField(hTree, item, "DATura render reason", batch->daturaRenderReason);
     AddZoneTreeField(hTree, item, "DATura hard alpha", batch->daturaHardAlpha ? "1" : "0");
     AddZoneTreeField(hTree, item, "DATura soft blend", batch->daturaSoftBlend ? "1" : "0");
-    AddZoneTreeIntField(hTree, item, "Derived draw flag nibble ((blendFlags & 0xF000) >> 12, zero becomes one)",
-                        batch->galkaReeveBlendMultiplier);
-    AddZoneTreeField(hTree, item, "Alpha candidate (_ name or blendFlags 0x8000)",
+    AddZoneTreeField(hTree, item, "Transparent (runtime flag 0x8000)",
                      batch->galkaReeveUseAlpha ? "1" : "0");
-    AddZoneTreeField(hTree, item, "Heuristic alpha blend (alpha candidate && draw flag bit 0x08)",
+    AddZoneTreeField(hTree, item, "Disable culling (runtime flag 0x2000)",
+                     (batch->blendFlags & 0x2000u) ? "1" : "0");
+    AddZoneTreeField(hTree, item, "Unknown runtime flag 0x4000",
+                     batch->runtimeFlag4000 ? "1" : "0");
+    AddZoneTreeField(hTree, item, "Unknown runtime flag 0x1000",
+                     batch->runtimeFlag1000 ? "1" : "0");
+    AddZoneTreeField(hTree, item, "DATura applies alpha blending",
                      batch->galkaReeveWouldAlphaBlend ? "1" : "0");
     AddZoneTreeIntField(hTree, item, "Super flag", batch->superFlag);
     AddZoneTreeIntField(hTree, item, "Sub flag", batch->subFlag);
@@ -6668,6 +7760,8 @@ static void PopulateZoneTreeCollisionFields(HWND hTree, HTREEITEM item, int inde
     AddZoneTreeField(hTree, item, "Grid cell", text);
     AddZoneTreeHexField(hTree, item, "Transform offset", (unsigned int)mesh->transformOfs);
     AddZoneTreeHexField(hTree, item, "Geometry offset", (unsigned int)mesh->geometryOfs);
+    AddZoneTreeHexField(hTree, item, "Collision bucket flags", mesh->bucketFlags);
+    AddZoneTreeHexField(hTree, item, "Observed 2-bit index-flag values", mesh->indexFlagValueMask);
     AddZoneTreeIntField(hTree, item, "Triangle start", mesh->triStart);
     AddZoneTreeIntField(hTree, item, "Triangle count", mesh->triCount);
     AddZoneTreeVec3Field(hTree, item, "Bounds min", mesh->boundsMin);
@@ -6760,6 +7854,11 @@ static void PopulateZoneDataTree()
         HTREEITEM chunkItem = AddZoneTreeItem(hRawTree, chunkRoot, text);
         AddZoneTreeField(hRawTree, chunkItem, "Chunk name/tag", chunk.name);
         AddZoneTreeHexField(hRawTree, chunkItem, "Chunk type", (unsigned int)chunk.type);
+        HTREEITEM chunkFlagsRoot = AddZoneTreeItem(hRawTree, chunkItem, "Common resource-header flags");
+        AddZoneTreeField(hRawTree, chunkFlagsRoot, "Shadow resource", chunk.isShadow ? "1" : "0");
+        AddZoneTreeField(hRawTree, chunkFlagsRoot, "Extracted resource", chunk.isExtracted ? "1" : "0");
+        AddZoneTreeIntField(hRawTree, chunkFlagsRoot, "Resource version", chunk.version);
+        AddZoneTreeField(hRawTree, chunkFlagsRoot, "Virtual resource", chunk.isVirtual ? "1" : "0");
         if (chunk.directoryPath[0])
             AddZoneTreeField(hRawTree, chunkItem, "Directory path", chunk.directoryPath);
         if (chunk.isDirectoryOpen)
@@ -6787,7 +7886,10 @@ static void PopulateZoneDataTree()
         }
         if (chunk.hasEffectMetadata)
         {
-            AddZoneTreeField(hRawTree, chunkItem, "Effect/environment material tag", chunk.effectMaterialName);
+            const char *effectKind = chunk.type == 0x1F ? "Effect model 0x1F" :
+                                     (chunk.type == 0x21 ? "Animated effect model 0x21" : "Morph effect model 0x25");
+            HTREEITEM effectRoot = AddZoneTreeItem(hRawTree, chunkItem, effectKind);
+            AddZoneTreeField(hRawTree, effectRoot, "Material/image tag", chunk.effectMaterialName);
             AddZoneTreeHex16Field(hRawTree, chunkItem, "Effect header word 0", chunk.effectHeaderWords[0]);
             AddZoneTreeHex16Field(hRawTree, chunkItem, "Effect header word 1", chunk.effectHeaderWords[1]);
             AddZoneTreeHex16Field(hRawTree, chunkItem, "Effect header word 2", chunk.effectHeaderWords[2]);
@@ -6798,12 +7900,34 @@ static void PopulateZoneDataTree()
             AddZoneTreeHex16Field(hRawTree, chunkItem, "Effect header word 7", chunk.effectHeaderWords[7]);
             if (chunk.type == 0x25)
             {
-                AddZoneTreeIntField(hRawTree, chunkItem, "Effect mesh vertex count candidate", chunk.effectHeaderWords[3]);
-                AddZoneTreeHexField(hRawTree, chunkItem, "Effect mesh position offset candidate", chunk.effectHeaderWords[5]);
-                AddZoneTreeHexField(hRawTree, chunkItem, "Effect mesh unknown block offset candidate", chunk.effectHeaderWords[6]);
-                AddZoneTreeHexField(hRawTree, chunkItem, "Effect mesh UV offset candidate", chunk.effectHeaderWords[7]);
-                AddZoneTreeHexField(hRawTree, chunkItem, "Effect mesh index offset candidate", chunk.effectHeaderWords[4]);
+                AddZoneTreeIntField(hRawTree, effectRoot, "Image count", chunk.effectHeaderWords[0]);
+                AddZoneTreeIntField(hRawTree, effectRoot, "Morph count", chunk.effectHeaderWords[1]);
+                AddZoneTreeIntField(hRawTree, effectRoot, "Base position count", chunk.effectHeaderWords[2]);
+                AddZoneTreeIntField(hRawTree, effectRoot, "Secondary position count", chunk.effectHeaderWords[3]);
+                AddZoneTreeHexField(hRawTree, effectRoot, "Index block offset", chunk.effectHeaderWords[4]);
+                AddZoneTreeIntField(hRawTree, effectRoot, "Triangle count", chunk.effectHeaderWords[5]);
+                AddZoneTreeHexField(hRawTree, effectRoot, "Per-corner color offset", chunk.effectHeaderWords[6]);
+                AddZoneTreeHexField(hRawTree, effectRoot, "Per-corner UV offset", chunk.effectHeaderWords[7]);
             }
+        }
+        if (chunk.hasGeneratorMetadata)
+        {
+            HTREEITEM generatorRoot = AddZoneTreeItem(hRawTree, chunkItem, "Generator command stream 0x05");
+            unsigned int sectionStart = 0x80;
+            for (int sectionIndex = 0; sectionIndex < 4; ++sectionIndex)
+            {
+                char label[64] = {};
+                sprintf_s(label, "Section %d range", sectionIndex + 1);
+                char rangeText[64] = {};
+                sprintf_s(rangeText, "0x%X..0x%X", sectionStart, chunk.generatorSectionOffsets[sectionIndex]);
+                AddZoneTreeField(hRawTree, generatorRoot, label, rangeText);
+                sectionStart = chunk.generatorSectionOffsets[sectionIndex];
+            }
+        }
+        if (chunk.hasKeyframeMetadata)
+        {
+            HTREEITEM keyframeRoot = AddZoneTreeItem(hRawTree, chunkItem, "Keyframe pairs 0x19");
+            AddZoneTreeIntField(hRawTree, keyframeRoot, "Float-pair count", chunk.keyframePairCount);
         }
     }
 
@@ -7965,6 +9089,7 @@ static void LoadPlayerRaceModel(int raceIndex)
         return;
 
     g_playerEquip.raceIndex = raceIndex;
+    ClampLowPolyState();
     const FFXICharRace &race = kFFXICharRaces[raceIndex];
     if (race.count < 8)
     {
@@ -7980,10 +9105,7 @@ static void LoadPlayerRaceModel(int raceIndex)
     strcat_s(datSet, g_ffxiPath);
     strcat_s(datSet, "\"\n");
     AppendDatSetLine(datSet, sizeof(datSet), "__skeleton", race.entries[0].dat);
-    AppendDatSetLine(datSet, sizeof(datSet), "__animation", race.entries[0].dat);
-    const int animEntry = 8 + g_playerEquip.animationBank;
-    if (race.count > animEntry)
-        AppendDatSetLine(datSet, sizeof(datSet), "__animation", race.entries[animEntry].dat);
+    AppendVariantDatLine(datSet, sizeof(datSet), "__animation", race, 8, g_playerEquip.animationBank);
     if (g_playerFaceVariant <= 0)
         AppendDatSetLine(datSet, sizeof(datSet), "face", race.entries[1].dat);
     else
@@ -8004,6 +9126,7 @@ static void LoadPlayerRaceModel(int raceIndex)
         AppendVariantDatLine(datSet, sizeof(datSet), "ranged", race, 7, g_playerEquip.rangedItem - 1);
 
     g_pPlayerRapi = new noeRAPI_t(g_pDevice);
+    ConfigureRapiTextureSettings(g_pPlayerRapi);
     g_pPlayerRapi->SetCurrentFilePath("DATura generated player.ff11datset");
 
     int numMdl = 0;
@@ -8143,7 +9266,8 @@ static bool UsesFfxiDxt3Alpha(const noesisTex_t *pTex)
 
 static void DrawTexturedQuadUV(IDirect3DTexture9 *pTex, float x, float y, float w, float h,
                                float u0, float v0, float u1, float v1, DWORD color,
-                               bool expandDxt3Alpha)
+                               bool expandDxt3Alpha, float alphaScale = 1.0f,
+                               float maxOpacity = 1.0f)
 {
     if (!g_pDevice || !pTex || w <= 0.0f || h <= 0.0f)
         return;
@@ -8158,7 +9282,7 @@ static void DrawTexturedQuadUV(IDirect3DTexture9 *pTex, float x, float y, float 
 
     PrepareScreenSpaceUiRenderState();
     g_pDevice->SetTexture(0, pTex);
-    SetFfxiUiPixelShader(expandDxt3Alpha);
+    SetFfxiUiPixelShader(expandDxt3Alpha, alphaScale, maxOpacity);
     g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     g_pDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
     g_pDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
@@ -8178,6 +9302,7 @@ static void DrawTexturedQuadUV(IDirect3DTexture9 *pTex, float x, float y, float 
 
     g_pDevice->SetTexture(0, nullptr);
     g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    g_pDevice->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
     g_pDevice->SetRenderState(D3DRS_ZENABLE, TRUE);
     g_pDevice->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
 }
@@ -8611,8 +9736,12 @@ static void DrawTitleScreenTextures()
         const float logoH = logoW * (srcH / srcW);
         const float logoX = (float)(w / 9);
         const float logoY = (float)(h / 3) - logoH * 0.60f;
-        DrawTextureRegion(pTitleAtlasTex, logoX, logoY, logoW, logoH,
-                          srcX, srcY, srcW, srcH, 0xFFFFFFFF);
+        DrawTexturedQuadUV(pTitleAtlasTex->pD3DTex, logoX, logoY, logoW, logoH,
+                           srcX / (float)pTitleAtlasTex->w,
+                           srcY / (float)pTitleAtlasTex->h,
+                           (srcX + srcW) / (float)pTitleAtlasTex->w,
+                           (srcY + srcH) / (float)pTitleAtlasTex->h,
+                           0xFFFFFFFF, UsesFfxiDxt3Alpha(pTitleAtlasTex), 1.5f, 0.90f);
     }
     else if (pLogoGraphicTex && pLogoGraphicTex->pD3DTex)
     {
@@ -8914,7 +10043,7 @@ static void Render()
     // Clear back buffer and depth/stencil
     g_pDevice->Clear(0, NULL,
         D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
-        D3DCOLOR_XRGB(28, 28, 38),  // dark blue-grey background
+        D3DCOLOR_XRGB(25, 32, 38),
         1.0f, 0);
 
     if (SUCCEEDED(g_pDevice->BeginScene()))
@@ -8934,7 +10063,11 @@ static void Render()
         const float h2 = (float)(rc.bottom - rc.top);
         const float aspect = (h2 > 0.0f) ? (w / h2) : (16.0f / 9.0f);
 
-        D3DMATRIX proj  = BuildPerspectiveFovLH(3.14159265f * 0.25f, aspect, 0.01f, 2000.0f);
+        const float drawDistance =
+            (g_drawDistanceIndex >= 0 && g_drawDistanceIndex < kDrawDistanceOptionCount)
+                ? kDrawDistanceOptions[g_drawDistanceIndex]
+                : 2000.0f;
+        D3DMATRIX proj  = BuildPerspectiveFovLH(3.14159265f * 0.25f, aspect, 0.01f, drawDistance);
         g_pDevice->SetTransform(D3DTS_VIEW,       &view);
         g_pDevice->SetTransform(D3DTS_PROJECTION, &proj);
 
@@ -9012,6 +10145,429 @@ static bool BrowseForDatSetFile(char *outPath, int outPathSize)
 // Menu
 //========================================================================================
 
+static HMENU BuildStandaloneModelMenu(const FFXIStandaloneModelGroup *groups,
+                                      int groupCount, UINT commandBase)
+{
+    HMENU catalogMenu = CreatePopupMenu();
+    int flatIndex = 0;
+    for (int groupIndex = 0; groupIndex < groupCount; ++groupIndex)
+    {
+        const FFXIStandaloneModelGroup &group = groups[groupIndex];
+        HMENU groupMenu = CreatePopupMenu();
+        for (int entryIndex = 0; entryIndex < group.count; ++entryIndex, ++flatIndex)
+        {
+            const FFXIStandaloneModelEntry &entry = group.entries[entryIndex];
+            char fullPath[MAX_PATH] = {};
+            BuildFFXIFullPath(entry.dat, fullPath, sizeof(fullPath));
+            const UINT flags = FileExistsAPath(fullPath) ? MF_STRING : (MF_STRING | MF_GRAYED);
+            AppendMenuA(groupMenu, flags, commandBase + flatIndex, entry.label);
+        }
+        AppendMenuA(catalogMenu, MF_POPUP, (UINT_PTR)groupMenu, group.name);
+    }
+    return catalogMenu;
+}
+
+static void LoadStandaloneModelEntry(const FFXIStandaloneModelEntry *entry, const char *kind)
+{
+    if (!entry)
+        return;
+
+    char fullPath[MAX_PATH] = {};
+    BuildFFXIFullPath(entry->dat, fullPath, sizeof(fullPath));
+    if (!FileExistsAPath(fullPath))
+    {
+        char message[256] = {};
+        sprintf_s(message, "The selected %s DAT was not found under the configured FFXI path.",
+                  kind ? kind : "model");
+        MessageBoxA(g_hWnd, message, "Model Missing", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    UnloadPlayerModel();
+    LoadDatFile(fullPath);
+    if (!g_pZoneModel)
+        return;
+
+    SetLoadedZoneLabelFromNameAndPath(entry->label, fullPath);
+    RememberLoadedZoneContext(fullPath, entry->label, true, false, false);
+    SetGameModeMusic(0);
+    ResetCameraForStandaloneModel(g_pZoneModel);
+    InvalidateRect(g_hWnd, NULL, FALSE);
+}
+
+static int CompanionBrowserSelectedGroup(HWND hWnd)
+{
+    const LRESULT selection = SendDlgItemMessageA(
+        hWnd, IDC_COMPANION_CATEGORY, CB_GETCURSEL, 0, 0);
+    return selection >= 0 && selection < kFFXICompanionGroupCount ? (int)selection : -1;
+}
+
+static const FFXIStandaloneModelEntry *CompanionBrowserSelectedEntry(HWND hWnd)
+{
+    const int groupIndex = CompanionBrowserSelectedGroup(hWnd);
+    if (groupIndex < 0)
+        return nullptr;
+
+    const FFXIStandaloneModelGroup &group = kFFXICompanionGroups[groupIndex];
+    const LRESULT selection = SendDlgItemMessageA(
+        hWnd, IDC_COMPANION_LIST, LB_GETCURSEL, 0, 0);
+    if (selection < 0 || selection >= group.count)
+        return nullptr;
+    return &group.entries[selection];
+}
+
+static void UpdateCompanionBrowserSelection(HWND hWnd)
+{
+    const FFXIStandaloneModelEntry *entry = CompanionBrowserSelectedEntry(hWnd);
+    char text[384] = "Select a companion to view its model.";
+    bool available = false;
+    if (entry)
+    {
+        char fullPath[MAX_PATH] = {};
+        BuildFFXIFullPath(entry->dat, fullPath, sizeof(fullPath));
+        available = FileExistsAPath(fullPath);
+        sprintf_s(text, "%s\r\nDAT: %s%s", entry->label, entry->dat,
+                  available ? "" : "  (not installed)");
+    }
+    SetDlgItemTextA(hWnd, IDC_COMPANION_PATH, text);
+    EnableWindow(GetDlgItem(hWnd, IDC_COMPANION_LOAD), available ? TRUE : FALSE);
+}
+
+static void PopulateCompanionBrowserList(HWND hWnd)
+{
+    HWND hList = GetDlgItem(hWnd, IDC_COMPANION_LIST);
+    if (!hList)
+        return;
+
+    SendMessageA(hList, LB_RESETCONTENT, 0, 0);
+    const int groupIndex = CompanionBrowserSelectedGroup(hWnd);
+    if (groupIndex >= 0)
+    {
+        const FFXIStandaloneModelGroup &group = kFFXICompanionGroups[groupIndex];
+        for (int i = 0; i < group.count; ++i)
+            SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)group.entries[i].label);
+        if (group.count > 0)
+            SendMessageA(hList, LB_SETCURSEL, 0, 0);
+    }
+    UpdateCompanionBrowserSelection(hWnd);
+}
+
+static void LoadSelectedCompanion(HWND hWnd)
+{
+    const FFXIStandaloneModelEntry *entry = CompanionBrowserSelectedEntry(hWnd);
+    if (!entry)
+        return;
+    LoadStandaloneModelEntry(entry, "companion model");
+}
+
+static LRESULT CALLBACK CompanionBrowserProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg)
+    {
+    case WM_CREATE:
+        {
+            HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+            HWND hTitle = AddPanelControl(hWnd, "STATIC",
+                "Browse pets, mounts, and summoned companions.", 0, -1,
+                14, 14, 390, 20);
+            HWND hCategoryLabel = AddPanelControl(hWnd, "STATIC", "Category:", 0, -1,
+                14, 44, 72, 18);
+            HWND hCategory = AddPanelCombo(hWnd, IDC_COMPANION_CATEGORY, 88, 40, 316);
+            HWND hList = CreateWindowExA(WS_EX_CLIENTEDGE, "LISTBOX", "",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY,
+                14, 76, 390, 292, hWnd, (HMENU)(INT_PTR)IDC_COMPANION_LIST,
+                GetModuleHandle(NULL), NULL);
+            HWND hPath = AddPanelControl(hWnd, "STATIC", "", SS_LEFT, IDC_COMPANION_PATH,
+                14, 378, 390, 42);
+            HWND hLoad = AddPanelControl(hWnd, "BUTTON", "Load in Viewer",
+                BS_DEFPUSHBUTTON | WS_TABSTOP, IDC_COMPANION_LOAD, 178, 430, 128, 28);
+            HWND hClose = AddPanelControl(hWnd, "BUTTON", "Close",
+                BS_PUSHBUTTON | WS_TABSTOP, IDC_COMPANION_CLOSE, 314, 430, 90, 28);
+
+            HWND controls[] = { hTitle, hCategoryLabel, hCategory, hList, hPath, hLoad, hClose };
+            for (HWND control : controls)
+            {
+                if (control)
+                    SendMessageA(control, WM_SETFONT, (WPARAM)hFont, TRUE);
+            }
+
+            for (int i = 0; i < kFFXICompanionGroupCount; ++i)
+                SendMessageA(hCategory, CB_ADDSTRING, 0, (LPARAM)kFFXICompanionGroups[i].name);
+            SendMessageA(hCategory, CB_SETCURSEL, 0, 0);
+            PopulateCompanionBrowserList(hWnd);
+        }
+        return 0;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDC_COMPANION_CATEGORY && HIWORD(wParam) == CBN_SELCHANGE)
+        {
+            PopulateCompanionBrowserList(hWnd);
+            return 0;
+        }
+        if (LOWORD(wParam) == IDC_COMPANION_LIST && HIWORD(wParam) == LBN_SELCHANGE)
+        {
+            UpdateCompanionBrowserSelection(hWnd);
+            return 0;
+        }
+        if ((LOWORD(wParam) == IDC_COMPANION_LIST && HIWORD(wParam) == LBN_DBLCLK) ||
+            (LOWORD(wParam) == IDC_COMPANION_LOAD && HIWORD(wParam) == BN_CLICKED))
+        {
+            LoadSelectedCompanion(hWnd);
+            return 0;
+        }
+        if (LOWORD(wParam) == IDC_COMPANION_CLOSE && HIWORD(wParam) == BN_CLICKED)
+        {
+            ShowWindow(hWnd, SW_HIDE);
+            return 0;
+        }
+        break;
+
+    case WM_CLOSE:
+        ShowWindow(hWnd, SW_HIDE);
+        return 0;
+
+    case WM_DESTROY:
+        if (g_hCompanionBrowser == hWnd)
+            g_hCompanionBrowser = NULL;
+        return 0;
+    }
+
+    return DefWindowProcA(hWnd, msg, wParam, lParam);
+}
+
+static void ShowCompanionBrowser()
+{
+    if (g_hCompanionBrowser && IsWindow(g_hCompanionBrowser))
+    {
+        ShowWindow(g_hCompanionBrowser, SW_SHOW);
+        SetForegroundWindow(g_hCompanionBrowser);
+        return;
+    }
+
+    WNDCLASSEXA wc = {};
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = CompanionBrowserProc;
+    wc.hInstance = GetModuleHandle(NULL);
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszClassName = "DATuraCompanionBrowserClass";
+    RegisterClassExA(&wc);
+
+    RECT owner = {};
+    GetWindowRect(g_hWnd, &owner);
+    const int width = 438;
+    const int height = 512;
+    const int x = owner.left + 32;
+    const int y = owner.top + 64;
+    g_hCompanionBrowser = CreateWindowExA(WS_EX_TOOLWINDOW, wc.lpszClassName,
+        "Companion Browser", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+        x, y, width, height, g_hWnd, NULL, wc.hInstance, NULL);
+    if (g_hCompanionBrowser)
+        ShowWindow(g_hCompanionBrowser, SW_SHOW);
+}
+
+static void ApplyMenuBackgroundRecursive(HMENU hMenu)
+{
+    if (!hMenu)
+        return;
+
+    MENUINFO menuInfo = {};
+    menuInfo.cbSize = sizeof(menuInfo);
+    menuInfo.fMask = MIM_BACKGROUND;
+    menuInfo.hbrBack = g_hThemeControlBrush;
+    SetMenuInfo(hMenu, &menuInfo);
+
+    const int count = GetMenuItemCount(hMenu);
+    for (int i = 0; i < count; ++i)
+        ApplyMenuBackgroundRecursive(GetSubMenu(hMenu, i));
+}
+
+static void RefreshMainMenuTheme()
+{
+    if (!g_hMainMenu)
+        return;
+    ApplyMenuBackgroundRecursive(g_hMainMenu);
+    if (g_hWnd)
+    {
+        DrawMenuBar(g_hWnd);
+        RedrawWindow(g_hWnd, NULL, NULL,
+                     RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW);
+    }
+}
+
+static void StyleOwnerDrawMenuRecursive(HMENU hMenu, bool menuBar)
+{
+    if (!hMenu)
+        return;
+
+    const int count = GetMenuItemCount(hMenu);
+    for (int i = 0; i < count; ++i)
+    {
+        HMENU hSubMenu = GetSubMenu(hMenu, i);
+        if (hSubMenu)
+            StyleOwnerDrawMenuRecursive(hSubMenu, false);
+
+        MENUITEMINFOA current = {};
+        current.cbSize = sizeof(current);
+        current.fMask = MIIM_FTYPE;
+        if (!GetMenuItemInfoA(hMenu, i, TRUE, &current))
+            continue;
+
+        const int textLength = GetMenuStringA(hMenu, i, NULL, 0, MF_BYPOSITION);
+        std::vector<char> text((size_t)(textLength > 0 ? textLength : 0) + 1, '\0');
+        if (textLength > 0)
+            GetMenuStringA(hMenu, i, text.data(), (int)text.size(), MF_BYPOSITION);
+
+        std::unique_ptr<MenuVisualEntry> entry(new MenuVisualEntry());
+        entry->text = text.data();
+        entry->separator = (current.fType & MFT_SEPARATOR) != 0;
+        entry->hasSubmenu = hSubMenu != NULL;
+        entry->menuBarItem = menuBar;
+        MenuVisualEntry *entryPtr = entry.get();
+        g_menuVisualEntries.push_back(std::move(entry));
+
+        MENUITEMINFOA themed = {};
+        themed.cbSize = sizeof(themed);
+        themed.fMask = MIIM_FTYPE | MIIM_DATA | MIIM_STRING;
+        themed.fType = current.fType | MFT_OWNERDRAW;
+        themed.dwItemData = (ULONG_PTR)entryPtr;
+        themed.dwTypeData = (LPSTR)entryPtr->text.c_str();
+        themed.cch = (UINT)entryPtr->text.size();
+        SetMenuItemInfoA(hMenu, i, TRUE, &themed);
+    }
+}
+
+static void MeasureOwnerDrawMenuItem(MEASUREITEMSTRUCT *measure)
+{
+    MenuVisualEntry *entry = measure
+        ? (MenuVisualEntry *)measure->itemData
+        : NULL;
+    if (!entry)
+        return;
+    if (entry->separator)
+    {
+        measure->itemWidth = 24;
+        measure->itemHeight = 9;
+        return;
+    }
+
+    HDC hdc = GetDC(g_hWnd);
+    HFONT oldFont = (HFONT)SelectObject(hdc, g_hThemeFont);
+    const char *tab = strchr(entry->text.c_str(), '\t');
+    const int leftLength = tab
+        ? (int)(tab - entry->text.c_str())
+        : (int)entry->text.size();
+    SIZE left = {};
+    SIZE right = {};
+    GetTextExtentPoint32A(hdc, entry->text.c_str(), leftLength, &left);
+    if (tab && tab[1])
+        GetTextExtentPoint32A(hdc, tab + 1, (int)strlen(tab + 1), &right);
+    SelectObject(hdc, oldFont);
+    ReleaseDC(g_hWnd, hdc);
+
+    if (entry->menuBarItem)
+    {
+        measure->itemWidth = left.cx + 22;
+        measure->itemHeight = 24;
+    }
+    else
+    {
+        measure->itemWidth = left.cx + right.cx + (right.cx ? 44 : 0) + 56;
+        measure->itemHeight = 28;
+    }
+}
+
+static void DrawOwnerDrawMenuItem(const DRAWITEMSTRUCT *draw)
+{
+    MenuVisualEntry *entry = draw
+        ? (MenuVisualEntry *)draw->itemData
+        : NULL;
+    if (!entry)
+        return;
+
+    const bool dark = IsDarkColorTheme();
+    const bool selected = (draw->itemState & (ODS_SELECTED | ODS_HOTLIGHT)) != 0;
+    const bool disabled = (draw->itemState & (ODS_DISABLED | ODS_GRAYED)) != 0;
+    const COLORREF background = entry->menuBarItem
+        ? (dark ? RGB(24, 29, 34) : RGB(244, 246, 248))
+        : ThemeControlColor();
+    HBRUSH backgroundBrush = CreateSolidBrush(background);
+    FillRect(draw->hDC, &draw->rcItem, backgroundBrush);
+    DeleteObject(backgroundBrush);
+
+    RECT content = draw->rcItem;
+    if (selected && !entry->separator)
+    {
+        InflateRect(&content, -3, -2);
+        HBRUSH selectedBrush = CreateSolidBrush(
+            dark ? RGB(52, 116, 181) : RGB(218, 234, 250));
+        HPEN selectedPen = CreatePen(PS_SOLID, 1,
+            dark ? RGB(67, 139, 211) : RGB(190, 216, 241));
+        HGDIOBJ oldBrush = SelectObject(draw->hDC, selectedBrush);
+        HGDIOBJ oldPen = SelectObject(draw->hDC, selectedPen);
+        RoundRect(draw->hDC, content.left, content.top,
+                  content.right, content.bottom, 7, 7);
+        SelectObject(draw->hDC, oldPen);
+        SelectObject(draw->hDC, oldBrush);
+        DeleteObject(selectedPen);
+        DeleteObject(selectedBrush);
+    }
+
+    if (entry->separator)
+    {
+        const int y = (draw->rcItem.top + draw->rcItem.bottom) / 2;
+        HPEN separatorPen = CreatePen(PS_SOLID, 1,
+            dark ? RGB(62, 70, 78) : RGB(214, 219, 224));
+        HPEN oldPen = (HPEN)SelectObject(draw->hDC, separatorPen);
+        MoveToEx(draw->hDC, draw->rcItem.left + 30, y, NULL);
+        LineTo(draw->hDC, draw->rcItem.right - 10, y);
+        SelectObject(draw->hDC, oldPen);
+        DeleteObject(separatorPen);
+        return;
+    }
+
+    const COLORREF textColor = disabled
+        ? ThemeMutedTextColor()
+        : (selected && dark ? RGB(255, 255, 255) : ThemeTextColor());
+    SetTextColor(draw->hDC, textColor);
+    SetBkMode(draw->hDC, TRANSPARENT);
+    HFONT oldFont = (HFONT)SelectObject(draw->hDC, g_hThemeFont);
+
+    const char *tab = strchr(entry->text.c_str(), '\t');
+    RECT textRect = draw->rcItem;
+    if (entry->menuBarItem)
+    {
+        DrawTextA(draw->hDC, entry->text.c_str(),
+                  tab ? (int)(tab - entry->text.c_str()) : -1,
+                  &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    }
+    else
+    {
+        textRect.left += 30;
+        textRect.right -= 22;
+        DrawTextA(draw->hDC, entry->text.c_str(),
+                  tab ? (int)(tab - entry->text.c_str()) : -1,
+                  &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        if (tab && tab[1])
+            DrawTextA(draw->hDC, tab + 1, -1, &textRect,
+                      DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    }
+    SelectObject(draw->hDC, oldFont);
+
+    if (!entry->menuBarItem && (draw->itemState & ODS_CHECKED))
+    {
+        HPEN checkPen = CreatePen(PS_SOLID, 2, textColor);
+        HPEN oldPen = (HPEN)SelectObject(draw->hDC, checkPen);
+        const int midY = (draw->rcItem.top + draw->rcItem.bottom) / 2;
+        MoveToEx(draw->hDC, draw->rcItem.left + 9, midY, NULL);
+        LineTo(draw->hDC, draw->rcItem.left + 13, midY + 4);
+        LineTo(draw->hDC, draw->rcItem.left + 20, midY - 5);
+        SelectObject(draw->hDC, oldPen);
+        DeleteObject(checkPen);
+    }
+
+}
+
 static HMENU BuildMenuBar()
 {
     HMENU hMenuBar      = CreateMenu();
@@ -9019,9 +10575,14 @@ static HMENU BuildMenuBar()
     HMENU hSettingsMenu = CreatePopupMenu();
     HMENU hViewMenu     = CreatePopupMenu();
     HMENU hResourceMenu = CreatePopupMenu();
+    HMENU hImageMenu    = CreatePopupMenu();
+    HMENU hAudioMenu    = CreatePopupMenu();
+    HMENU hCompanionMenu = CreatePopupMenu();
 
     AppendMenuA(hFileMenu, MF_STRING,    IDM_FILE_OPEN_DAT,    "Open DAT...\tCtrl+O");
     AppendMenuA(hFileMenu, MF_STRING,    IDM_FILE_OPEN_DATSET, "Open DAT Set...");
+    AppendMenuA(hFileMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(hFileMenu, MF_STRING,    IDM_FILE_RETURN_TITLE, "Return to Title Screen");
     AppendMenuA(hFileMenu, MF_SEPARATOR, 0, NULL);
     AppendMenuA(hFileMenu, MF_STRING,    IDM_FILE_EXIT,        "Exit\tAlt+F4");
 
@@ -9048,7 +10609,7 @@ static HMENU BuildMenuBar()
     AppendMenuA(hSettingsMenu,
                 MF_STRING | (g_environmentalAnimationMode != kDATuraEnvAnim_Off ? MF_CHECKED : MF_UNCHECKED),
                 IDM_SETTINGS_ENV_ANIM,
-                "Vegetation Movement: Smooth");
+                "Vegetation Animation: Smooth");
 
     AppendMenuA(hViewMenu,
                 MF_STRING | (IsGameMode() ? MF_CHECKED : MF_UNCHECKED),
@@ -9058,6 +10619,14 @@ static HMENU BuildMenuBar()
 
     AppendMenuA(hResourceMenu, MF_STRING, IDM_RESOURCE_CURRENT_ZONE, "Current Zone Dialog / NPCs...");
     AppendMenuA(hResourceMenu, MF_STRING, IDM_RESOURCE_OPEN_DAT, "Open Resource DAT...");
+
+    AppendMenuA(hImageMenu, MF_STRING, IDM_TEXTURE_VIEWER, "Image / Texture Viewer...");
+
+    AppendMenuA(hAudioMenu, MF_STRING, IDM_AUDIO_PLAYER, "Music / SFX Player...");
+    AppendMenuA(hAudioMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(hAudioMenu, MF_STRING, IDM_AUDIO_STOP, "Stop Playback");
+
+    AppendMenuA(hCompanionMenu, MF_STRING, IDM_COMPANION_BROWSER, "Companion Browser...");
 
     // ---- Zones menu ----
     HMENU hZonesMenu = CreatePopupMenu();
@@ -9111,6 +10680,35 @@ static HMENU BuildMenuBar()
         AppendMenuA(hCategory, MF_POPUP, (UINT_PTR)hSub, regionName.c_str());
     }
 
+    // Prototype maps have no stable retail zone IDs, so expose them through
+    // direct DAT paths rather than forcing them into kFFXIZoneTable.
+    HMENU hInternalCategory = NULL;
+    for (size_t c = 0; c < zoneCategories.size(); ++c)
+    {
+        if (zoneCategories[c].name == "Internal")
+        {
+            hInternalCategory = zoneCategories[c].menu;
+            break;
+        }
+    }
+    if (!hInternalCategory)
+    {
+        hInternalCategory = CreatePopupMenu();
+        zoneCategories.push_back({ "Internal", hInternalCategory });
+        AppendMenuA(hZonesMenu, MF_POPUP, (UINT_PTR)hInternalCategory, "Internal");
+    }
+
+    HMENU hPrototypeAreas = CreatePopupMenu();
+    for (int i = 0; i < kFFXIPrototypeAreaCount; ++i)
+    {
+        const FFXIPrototypeAreaEntry& area = kFFXIPrototypeAreas[i];
+        // Keep direct-path entries selectable. The command handler validates
+        // the DAT and reports its precise failure instead of silently greying
+        // an entry while the menu bar is being constructed.
+        AppendMenuA(hPrototypeAreas, MF_STRING, IDM_PROTOTYPE_AREA_BASE + i, area.name);
+    }
+    AppendMenuA(hInternalCategory, MF_POPUP, (UINT_PTR)hPrototypeAreas, "Prototype Areas");
+
     // ---- PC creation models menu (high-poly character creation DATs) ----
     HMENU hCreationMenu = CreatePopupMenu();
     int flatIdx = 0;
@@ -9151,13 +10749,38 @@ static HMENU BuildMenuBar()
         AppendMenuA(hPlayerMenu, MF_STRING, IDM_PLAYER_BASE + r, kFFXICharRaces[r].name);
     }
 
+    HMENU hNpcMenu = BuildStandaloneModelMenu(
+        kFFXINpcModelGroups, kFFXINpcModelGroupCount, IDM_NPC_MODEL_BASE);
+    HMENU hMonsterMenu = BuildStandaloneModelMenu(
+        kFFXIMonsterModelGroups, kFFXIMonsterModelGroupCount, IDM_MONSTER_MODEL_BASE);
+
+    HMENU hAssetsMenu = CreatePopupMenu();
+    HMENU hPlayerModelsMenu = CreatePopupMenu();
+    HMENU hToolsMenu = CreatePopupMenu();
+
+    AppendMenuA(hPlayerModelsMenu, MF_POPUP, (UINT_PTR)hCreationMenu, "High Poly");
+    AppendMenuA(hPlayerModelsMenu, MF_POPUP, (UINT_PTR)hPlayerMenu,   "Low Poly");
+
+    AppendMenuA(hAssetsMenu, MF_POPUP, (UINT_PTR)hZonesMenu,        "Zones");
+    AppendMenuA(hAssetsMenu, MF_POPUP, (UINT_PTR)hPlayerModelsMenu, "Player Models");
+    AppendMenuA(hAssetsMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenuA(hAssetsMenu, MF_POPUP, (UINT_PTR)hNpcMenu,          "NPCs");
+    AppendMenuA(hAssetsMenu, MF_POPUP, (UINT_PTR)hMonsterMenu,      "Monsters");
+    AppendMenuA(hAssetsMenu, MF_POPUP, (UINT_PTR)hCompanionMenu,    "Companions");
+
+    AppendMenuA(hToolsMenu, MF_POPUP, (UINT_PTR)hResourceMenu, "Resources");
+    AppendMenuA(hToolsMenu, MF_POPUP, (UINT_PTR)hImageMenu,    "Images / Textures");
+    AppendMenuA(hToolsMenu, MF_POPUP, (UINT_PTR)hAudioMenu,    "Audio");
+
     AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hFileMenu,     "File");
-    AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hZonesMenu,    "Zones");
-    AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hResourceMenu, "Resources");
-    AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hCreationMenu, "Player Models (High Poly)");
-    AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hPlayerMenu,   "Player Models (Low Poly)");
+    AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hAssetsMenu,   "Assets");
+    AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hToolsMenu,    "Tools");
     AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hViewMenu,     "View");
     AppendMenuA(hMenuBar, MF_POPUP, (UINT_PTR)hSettingsMenu, "Settings");
+    g_menuVisualEntries.clear();
+    StyleOwnerDrawMenuRecursive(hMenuBar, true);
+    g_hMainMenu = hMenuBar;
+    ApplyMenuBackgroundRecursive(g_hMainMenu);
     return hMenuBar;
 }
 
@@ -9169,7 +10792,33 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 {
     switch (msg)
     {
+    case WM_MEASUREITEM:
+        {
+            MEASUREITEMSTRUCT *measure = (MEASUREITEMSTRUCT *)lParam;
+            if (measure && measure->CtlType == ODT_MENU)
+            {
+                MeasureOwnerDrawMenuItem(measure);
+                return TRUE;
+            }
+        }
+        break;
+
+    case WM_DRAWITEM:
+        {
+            const DRAWITEMSTRUCT *draw = (const DRAWITEMSTRUCT *)lParam;
+            if (draw && draw->CtlType == ODT_MENU)
+            {
+                DrawOwnerDrawMenuItem(draw);
+                return TRUE;
+            }
+        }
+        break;
+
     case WM_ACTIVATEAPP:
+        SyncAppMusic();
+        return 0;
+
+    case WM_DATURA_AUDIO_PLAYER_CLOSED:
         SyncAppMusic();
         return 0;
 
@@ -9190,6 +10839,51 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_COMMAND:
         {
             const WORD cmd = LOWORD(wParam);
+
+            const int npcModelCount = FFXIStandaloneModel_TotalEntries(
+                kFFXINpcModelGroups, kFFXINpcModelGroupCount);
+            if (cmd >= IDM_NPC_MODEL_BASE && cmd < IDM_NPC_MODEL_BASE + npcModelCount)
+            {
+                const FFXIStandaloneModelEntry *entry = FFXIStandaloneModel_GetEntry(
+                    kFFXINpcModelGroups, kFFXINpcModelGroupCount, cmd - IDM_NPC_MODEL_BASE);
+                LoadStandaloneModelEntry(entry, "NPC model");
+                return 0;
+            }
+
+            const int monsterModelCount = FFXIStandaloneModel_TotalEntries(
+                kFFXIMonsterModelGroups, kFFXIMonsterModelGroupCount);
+            if (cmd >= IDM_MONSTER_MODEL_BASE &&
+                cmd < IDM_MONSTER_MODEL_BASE + monsterModelCount)
+            {
+                const FFXIStandaloneModelEntry *entry = FFXIStandaloneModel_GetEntry(
+                    kFFXIMonsterModelGroups, kFFXIMonsterModelGroupCount,
+                    cmd - IDM_MONSTER_MODEL_BASE);
+                LoadStandaloneModelEntry(entry, "monster model");
+                return 0;
+            }
+
+            // ---- Direct-path prototype area menu ----
+            if (cmd >= IDM_PROTOTYPE_AREA_BASE &&
+                cmd < IDM_PROTOTYPE_AREA_BASE + kFFXIPrototypeAreaCount)
+            {
+                const FFXIPrototypeAreaEntry& area =
+                    kFFXIPrototypeAreas[cmd - IDM_PROTOTYPE_AREA_BASE];
+                char fullPath[MAX_PATH] = {};
+                BuildFFXIFullPath(area.modelDat, fullPath, sizeof(fullPath));
+                if (FileExistsAPath(fullPath))
+                {
+                    LoadDatFile(fullPath);
+                    SetLoadedZoneLabelFromNameAndPath(area.name, fullPath);
+                    RememberLoadedZoneContext(fullPath, area.name, true, false, false);
+                    SetGameModeMusic(0);
+                }
+                else
+                {
+                    MessageBoxA(g_hWnd, "This prototype DAT was not found under the configured FFXI path.",
+                                "Prototype Area Missing", MB_OK | MB_ICONWARNING);
+                }
+                return 0;
+            }
 
             // ---- Zone menu ----
             if (cmd >= IDM_ZONE_BASE && cmd < IDM_ZONE_BASE + kFFXIZoneCount)
@@ -9233,10 +10927,15 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             if (cmd >= IDM_CREATION_CHAR_BASE && cmd < IDM_CREATION_CHAR_BASE + FFXICreation_TotalEntries())
             {
                 const int charIdx = cmd - IDM_CREATION_CHAR_BASE;
-                const FFXICreationEntry* pEntry = FFXICreation_GetEntry(charIdx);
-                if (pEntry)
+                if (SetHighPolyCreationSelectionFromFlatIndex(charIdx))
                 {
-                    LoadCreationEntry(pEntry);
+                    if (g_hLowPolyPanel)
+                        ShowWindow(g_hLowPolyPanel, SW_HIDE);
+
+                    const FFXICreationEntry *pEntry = CurrentHighPolyCreationEntry();
+                    if (pEntry)
+                        LoadCreationEntry(pEntry);
+                    ShowHighPolyCreationPanel();
                 }
                 return 0;
             }
@@ -9257,6 +10956,10 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (BrowseForDatSetFile(path, sizeof(path)))
                     LoadDatSetFile(path);
             }
+            return 0;
+
+        case IDM_FILE_RETURN_TITLE:
+            ReturnToTitleScreen();
             return 0;
 
         case IDM_FILE_EXIT:
@@ -9330,6 +11033,23 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         case IDM_RESOURCE_OPEN_DAT:
             ShowResourceDatBrowser();
+            return 0;
+
+        case IDM_TEXTURE_VIEWER:
+            TextureViewer_Show(g_hWnd, g_ffxiPath);
+            return 0;
+
+        case IDM_COMPANION_BROWSER:
+            ShowCompanionBrowser();
+            return 0;
+
+        case IDM_AUDIO_PLAYER:
+            AudioPlayer_Show(g_hWnd, g_ffxiPath);
+            SyncAppMusic();
+            return 0;
+
+        case IDM_AUDIO_STOP:
+            AudioPlayer_StopPlayback();
             return 0;
 
         case IDM_PLAYER_CUSTOMIZE:
@@ -9510,9 +11230,11 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*/,
                    _In_ LPSTR /*lpCmdLine*/, _In_ int nCmdShow)
 {
+    InitColorTheme();
+
     INITCOMMONCONTROLSEX icc = {};
     icc.dwSize = sizeof(icc);
-    icc.dwICC = ICC_LISTVIEW_CLASSES | ICC_TREEVIEW_CLASSES;
+    icc.dwICC = ICC_LISTVIEW_CLASSES | ICC_TREEVIEW_CLASSES | ICC_TAB_CLASSES;
     InitCommonControlsEx(&icc);
 
     // Register window class
@@ -9553,6 +11275,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*
         MessageBoxA(NULL, "CreateWindowEx failed.", "Error", MB_OK | MB_ICONERROR);
         return 1;
     }
+
+    ApplyColorTheme(g_hWnd);
 
     // Attach menu bar
     SetMenu(g_hWnd, BuildMenuBar());
@@ -9607,6 +11331,16 @@ cleanup:
     UnloadPlayerModel();
     UnloadZoneModel();
     ShutdownD3D();
+    if (g_hThemeWindowBrush)
+        DeleteObject(g_hThemeWindowBrush);
+    if (g_hThemeControlBrush)
+        DeleteObject(g_hThemeControlBrush);
+    if (g_hThemeEditBrush)
+        DeleteObject(g_hThemeEditBrush);
+    if (g_hThemeFont)
+        DeleteObject(g_hThemeFont);
+    if (g_hThemeSectionFont)
+        DeleteObject(g_hThemeSectionFont);
     UnregisterClassW(kWindowClassName, hInstance);
     return static_cast<int>(msg.wParam);
 }

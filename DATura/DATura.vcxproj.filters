@@ -15,6 +15,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="audio_player.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="texture_viewer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="bgw_player.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -47,7 +53,16 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="audio_player.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="texture_viewer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="bgw_player.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="companion_dat_table.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="character_creation_dat_table.h">
@@ -83,7 +98,13 @@
     <ClInclude Include="model_ff11_texture.inl">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="npc_monster_dat_table.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="noesis_rapi.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="prototype_area_table.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="stdafx.h">

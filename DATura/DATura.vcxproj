@@ -139,6 +139,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="audio_player.cpp" />
     <ClCompile Include="bgw_player.cpp" />
     <ClCompile Include="CNoeR3000A.cpp">
       <ExcludedFromBuild>true</ExcludedFromBuild>
@@ -153,11 +154,14 @@
     <ClCompile Include="model_ff11_fixed.cpp" />
     <ClCompile Include="noesis_rapi.cpp" />
     <ClCompile Include="stdafx.cpp" />
+    <ClCompile Include="texture_viewer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="audio_player.h" />
     <ClInclude Include="bgw_player.h" />
     <ClInclude Include="character_creation_dat_table.h" />
     <ClInclude Include="character_dat_table.h" />
+    <ClInclude Include="companion_dat_table.h" />
     <ClInclude Include="CNoeR3000A.h" />
     <ClInclude Include="ffxi_lore_zone_dat_crossref.h" />
     <ClInclude Include="ffxi_resource.h" />
@@ -172,10 +176,13 @@
     <ClInclude Include="model_ff11_map.inl" />
     <ClInclude Include="model_ff11_skeleton_animation.inl" />
     <ClInclude Include="model_ff11_texture.inl" />
+    <ClInclude Include="npc_monster_dat_table.h" />
     <ClInclude Include="noesis_rapi.h" />
+    <ClInclude Include="prototype_area_table.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="texture_viewer.h" />
     <ClInclude Include="zone_dat_table.h" />
     <ClInclude Include="zone_music_table.h" />
   </ItemGroup>
@@ -187,6 +194,7 @@
     <Image Include="DATura-icon-source.png" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\FFXI_GEOMETRY_AND_TEXTURE_RENDERING.md" />
     <None Include="..\LICENSE" />
     <None Include="..\THIRD_PARTY_NOTICES.md" />
     <None Include="Vulture_DAT_Extractor.cs" />

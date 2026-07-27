@@ -56,7 +56,7 @@ struct ff11Opts_t
     bool forceCull;               // enable backface culling on all meshes
     bool renderUnreferenced;      // also render map geometry not referenced by any map object
     bool renderEnvironment;       // also render unplaced sky / weather / celestial map geometry
-    bool renderEffectMeshes;       // render unparsed/experimental environmental effect mesh chunks
+    bool renderEffectMeshes;       // render decoded 0x1F/0x21 geometry and the base pose of 0x25 morph meshes
     bool collectCollision;         // collect map triangles for runtime collision
     bool collectCollisionUnreferenced; // include unreferenced collision/helper map geometry
     bool keepNames;               // retain chunk / object names on materials etc.
@@ -92,11 +92,19 @@ struct ff11DatChunkDebug_t
     int dataOffset;
     int size;
     bool supported;
+    bool isShadow;
+    bool isExtracted;
+    unsigned char version;
+    bool isVirtual;
     bool isDirectoryOpen;
     bool isDirectoryClose;
     bool hasEffectMetadata;
     char effectMaterialName[17];
     unsigned short effectHeaderWords[8];
+    bool hasGeneratorMetadata;
+    unsigned int generatorSectionOffsets[4];
+    bool hasKeyframeMetadata;
+    int keyframePairCount;
     bool hasEnvironmentMetadata;
     unsigned short environmentHeaderWords[8];
     bool hasSoundPointer;
@@ -144,7 +152,8 @@ struct ff11MapGeoDrawBatchDebug_t
     unsigned short flags2;
     int superFlag;
     int subFlag;
-    int galkaReeveBlendMultiplier;
+    bool runtimeFlag4000;
+    bool runtimeFlag1000;
     bool galkaReeveUseAlpha;
     bool galkaReeveWouldAlphaBlend;
     bool daturaHardAlpha;
@@ -160,6 +169,7 @@ extern std::vector<ff11MapGeoDrawBatchDebug_t> gFF11LastMapGeoDrawBatches;
 struct ff11CollisionTriangle_t
 {
     float p[3][3];
+    unsigned char indexFlags[3];
 };
 
 extern std::vector<ff11CollisionTriangle_t> gFF11LastCollisionTriangles;
@@ -173,6 +183,8 @@ struct ff11CollisionMeshDebug_t
     int geometryOfs;
     int triStart;
     int triCount;
+    unsigned int bucketFlags;
+    unsigned int indexFlagValueMask;
     float boundsMin[3];
     float boundsMax[3];
 };
@@ -203,8 +215,14 @@ public:
 	static const int skChunkType_Map = 0x1C;
 	static const int skChunkType_DirectoryClose = 0x00;
 	static const int skChunkType_DirectoryOpen = 0x01;
-	static const int skChunkType_EffectSmall = 0x21;
-	static const int skChunkType_EffectMesh = 0x25;
+	static const int skChunkType_Generator = 0x05;
+	static const int skChunkType_Keyframe = 0x19;
+	static const int skChunkType_EffectModel = 0x1F;
+	static const int skChunkType_EffectAnimated = 0x21;
+	static const int skChunkType_EffectMorph = 0x25;
+	// Compatibility aliases for older DATura call sites and external users.
+	static const int skChunkType_EffectSmall = skChunkType_EffectAnimated;
+	static const int skChunkType_EffectMesh = skChunkType_EffectMorph;
 	static const int skChunkType_Environment = 0x2F;
 	static const int skChunkType_SoundPointer = 0x3D;
 	static const int skChunkType_MapGeo = 0x2E;
@@ -227,6 +245,10 @@ public:
 			const unsigned int info = *(const unsigned int *)(pData + 4);
 			mType = (info & 0x7F);
 			mSize = ((info >> 3) & 0x7FFFF0);
+			mIsShadow = ((info >> 26) & 1) != 0;
+			mIsExtracted = ((info >> 27) & 1) != 0;
+			mVersion = (unsigned char)((info >> 28) & 7);
+			mIsVirtual = ((info >> 31) & 1) != 0;
 			//are low 4 bits ever set?
 			mDataOffset = chunkOffset + skBinaryChunkSize;
 		}
@@ -235,6 +257,10 @@ public:
 		int mType;
 		int mDataOffset;
 		int mSize;
+		bool mIsShadow;
+		bool mIsExtracted;
+		unsigned char mVersion;
+		bool mIsVirtual;
 	};
 	typedef std::vector<SChunk> TChunkList;
 
@@ -315,7 +341,10 @@ public:
 	CFFXIGeoHandler *GeoHandler() { return mpGeoHandler; }
 	CFFXIMapHandler *MapHandler() { return mpMapHandler; }
 	CFFXIMapGeoHandler *MapGeoHandler() { return mpMapGeoHandler; }
-	CFFXIEffectHandler *EffectMeshHandler() { return mpEffectMeshHandler; }
+	CFFXIEffectHandler *EffectModelHandler() { return mpEffectModelHandler; }
+	CFFXIEffectHandler *EffectAnimatedHandler() { return mpEffectAnimatedHandler; }
+	CFFXIEffectHandler *EffectMorphHandler() { return mpEffectMorphHandler; }
+	CFFXIEffectHandler *EffectMeshHandler() { return mpEffectMorphHandler; }
 protected:
 	CRefCountedPtr<CFFXITextureHandler> mpTextureHandler;
 	CRefCountedPtr<CFFXISkelHandler> mpSkelHandler;
@@ -323,8 +352,9 @@ protected:
 	CRefCountedPtr<CFFXIGeoHandler> mpGeoHandler;
 	CRefCountedPtr<CFFXIMapHandler> mpMapHandler;
 	CRefCountedPtr<CFFXIMapGeoHandler> mpMapGeoHandler;
-	CRefCountedPtr<CFFXIEffectHandler> mpEffectSmallHandler;
-	CRefCountedPtr<CFFXIEffectHandler> mpEffectMeshHandler;
+	CRefCountedPtr<CFFXIEffectHandler> mpEffectModelHandler;
+	CRefCountedPtr<CFFXIEffectHandler> mpEffectAnimatedHandler;
+	CRefCountedPtr<CFFXIEffectHandler> mpEffectMorphHandler;
 };
 
 //========================================================================================
@@ -356,6 +386,9 @@ bool Model_FF11_OptimizeGeoHandler       (const char *arg, unsigned char *store,
 // Binary DAT format:
 bool            Model_FF11_CheckDAT    (BYTE *fileBuffer, int bufferLen, noeRAPI_t *rapi);
 noesisModel_t  *Model_FF11_LoadDAT     (BYTE *fileBuffer, int bufferLen, int &numMdl, noeRAPI_t *rapi);
+// Decode only embedded texture chunks. This avoids constructing geometry or
+// replacing the global map/debug inspection state used by the main viewer.
+noesisModel_t  *Model_FF11_LoadTextureDAT(BYTE *fileBuffer, int bufferLen, int &numMdl, noeRAPI_t *rapi);
 
 // High-poly character creation mesh DATs ("RT..." / "SHAPE: TriStrip" records):
 enum FFXICreationAlphaMode

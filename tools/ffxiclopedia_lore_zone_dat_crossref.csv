@@ -297,7 +297,7 @@ wiki_order,continent,lore_region,ffxiclopedia_zone_name,datura_zone_id,datura_zo
 296,Other Areas,Dynamis-Divergence,Dynamis - Jeuno [D],297,Dynamis - Jeuno [D],ROM/355,ROM/355/47.DAT,ROM/355/51.DAT,ROM/355/54.DAT,ROM/355/49.DAT,Supplemental FFXIclopedia endgame page,
 297,The Ulbuka Continent,Ra'Kaznar,Yorcia Weald (U),264,Yorcia Weald [U],ROM9/0,ROM9/0/11.DAT,ROM9/5/109.DAT,ROM9/6/53.DAT,ROM9/5/61.DAT,DATura supplement,
 298,The Ulbuka Continent,Ra'Kaznar,Outer Ra'Kaznar [U2],133,Outer Ra'Kaznar [U2],ROM/1,ROM/1/5.DAT,ROM/24/70.DAT,ROM/26/70.DAT,ROM/20/70.DAT,DATura supplement,
-299,The Ulbuka Continent,Ra'Kaznar,Outer Ra'Kaznar [U3],189,Outer Ra'Kaznar [U3],ROM5/0,ROM5/0/30.DAT,ROM/24/126.DAT,ROM/26/126.DAT,ROM/20/126.DAT,DATura supplement,
+299,The Shadowreign Era,Residential Area,San d'Oria [S] Mog House,189,San d'Oria [S] Mog House,ROM5/0,ROM5/0/30.DAT,ROM/24/126.DAT,ROM/26/126.DAT,ROM/20/126.DAT,Model texture-name verification,"ROM5/0/30.DAT contains m_san_* and san_* assets and precedes the Bastok and Windurst [S] Mog House DATs. Zone ID 189 was later reused for Outer Ra'Kaznar [U3], so this is a model-facing label."
 300,The Ulbuka Continent,Ra'Kaznar,Ra'Kaznar Turris,277,Ra'Kaznar Turris,ROM9/0,ROM9/0/24.DAT,ROM9/5/122.DAT,ROM9/6/66.DAT,ROM9/5/74.DAT,DATura supplement,
 301,The Ulbuka Continent,Ra'Kaznar,Mount Kamihr,282,Mount Kamihr,ROM/315,ROM/315/102.DAT,ROM/315/109.DAT,ROM/315/115.DAT,ROM/315/105.DAT,DATura supplement,
 302,The Ulbuka Continent,Ra'Kaznar,Gwora - Corridor,278,Gwora - Corridor,ROM9/0,ROM9/0/25.DAT,ROM9/5/123.DAT,ROM9/6/67.DAT,ROM9/5/75.DAT,DATura supplement,
@@ -308,9 +308,9 @@ wiki_order,continent,lore_region,ffxiclopedia_zone_name,datura_zone_id,datura_zo
 307,The Middle Lands,The Grand Duchy of Jeuno,Jeuno Mog House,0,Jeuno Mog House,ROM/1,ROM/1/20.DAT,,,,User visual verification; Mog House page,"DATura model DAT ROM/1/20.DAT renders as a Jeuno Mog House interior. LandSandBoat names zone ID 0 as a pre-release monorail slot, so this label is model-facing."
 308,Internal / Unused,Internal / Unused,None / GM grid test zone,49,none,ROM/0,ROM/0/40.DAT,,,,DATura supplement,
 309,Internal / Unused,Internal / GM,GM Home,210,,ROM/0,ROM/0/40.DAT,ROM/25/19.DAT,ROM/27/19.DAT,ROM/21/19.DAT,DATura supplement,
-310,Internal / Unused,Residential Area,Residential Area,219,,ROM5/0,ROM5/0/32.DAT,ROM/25/28.DAT,ROM/27/28.DAT,ROM/21/28.DAT,DATura supplement,
-311,Internal / Unused,Internal / Unused,Zone 199,199,,ROM5/0,ROM5/0/31.DAT,ROM/25/8.DAT,ROM/27/8.DAT,ROM/21/8.DAT,DATura supplement,
-312,Internal / Unused,Internal / Unused,Zone 214,214,,ROM4/0,ROM4/0/33.DAT,ROM/25/23.DAT,ROM/27/23.DAT,ROM/21/23.DAT,DATura supplement,
+310,The Shadowreign Era,Residential Area,Windurst [S] Mog House,219,Windurst [S] Mog House,ROM5/0,ROM5/0/32.DAT,ROM/25/28.DAT,ROM/27/28.DAT,ROM/21/28.DAT,User visual and model texture-name verification,ROM5/0/32.DAT contains win_* and mr_w_* assets.
+311,The Shadowreign Era,Residential Area,Bastok [S] Mog House,199,Bastok [S] Mog House,ROM5/0,ROM5/0/31.DAT,ROM/25/8.DAT,ROM/27/8.DAT,ROM/21/8.DAT,User visual and model texture-name verification,ROM5/0/31.DAT contains bas_* assets.
+312,The Aradjiah Continent,Residential Area,Aht Urhgan Mog House,214,Aht Urhgan Mog House,ROM4/0,ROM4/0/33.DAT,ROM/25/23.DAT,ROM/27/23.DAT,ROM/21/23.DAT,User visual verification; ROM-folder provenance,Mog House interior assigned to Treasures of Aht Urhgan from its ROM4 model DAT.
 313,Internal / Unused,Internal / Unused,Zone 286,286,,,,,,,DATura supplement,Zone ID exists in DATura zone_dat_table.h as unnamed/blank-path entry; DAT paths are not currently known.
 314,The Middle Lands,Valdeaunia,Throne Room [V],229,Throne Room [V],ROM/0,ROM/0/119.DAT,ROM/25/38.DAT,ROM/27/38.DAT,ROM/21/38.DAT,DATura supplement,Client variant tied to Castle Zvahl/Throne Room lore.
 315,Other Areas,Ferries,Silver Knife,283,Silver Knife,,,,,,DATura supplement,Client transport zone name present in DATura table; DAT paths are not currently known.

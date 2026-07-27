@@ -44,9 +44,9 @@ public:
 	virtual CFFXIDat::EValidateChunkResult ValidateChunk(const CFFXIDat &dat, const CFFXIDat::SChunk &chunk,
 															const unsigned char *pChunkData, const int dataSize) const
 	{
-		// Content validation is skipped here because chunk data is encrypted at this point.
-		// Decryption happens inside HandleChunk, so we only do a minimal size check.
-		if (dataSize < 0)
+		// Detailed validation happens in HandleChunk, but no texture handler can safely
+		// inspect a chunk that does not contain the complete packed header.
+		if (!pChunkData || dataSize < (int)sizeof(STexHeader))
 		{
 			return CFFXIDat::kVCR_Invalid;
 		}
@@ -96,15 +96,31 @@ public:
 	virtual bool HandleChunk(const CFFXIDat &dat, const CFFXIDat::SChunk &chunk,
 								const unsigned char *pChunkData, const int dataSize)
 	{
-		// FFXI's client-facing texture path appears to use the DXT/DDS payload when a
+		// FFXI's client-facing texture path appears to use the embedded DXT block payload when a
 		// combo texture contains both palette and compressed versions. Keep the palette
 		// path available for source-data inspection, but default to the client-like path.
 		const bool preferDxtToPalette = !(gpFF11Opts && gpFF11Opts->preferPaletteOverDxt);
 		const int texColorShift = (gpFF11Opts && gpFF11Opts->explicitColorShift) ? gpFF11Opts->fixColorShift : skDefaultColorFixShift;
 		const int texAlphaShift = (gpFF11Opts && gpFF11Opts->explicitAlphaShift) ? gpFF11Opts->fixAlphaShift : skDefaultAlphaFixShift;
 		const bool fixAlphaOrColor = (texColorShift || texAlphaShift);
+		noeRAPI_t *pRapi = dat.GetRAPI();
+
+		if (!pChunkData || dataSize < (int)sizeof(STexHeader))
+		{
+			if (pRapi)
+				pRapi->LogOutput("WARNING: Texture chunk is smaller than its header. Skipping.\n");
+			return true;
+		}
 
 		const STexHeader *pTexHdr = (const STexHeader *)pChunkData;
+		if (pTexHdr->mWidth <= 0 || pTexHdr->mWidth > 4096 ||
+			pTexHdr->mHeight <= 0 || pTexHdr->mHeight > 4096)
+		{
+			if (pRapi)
+				pRapi->LogOutput("WARNING: Texture has invalid dimensions %d x %d. Skipping.\n",
+					pTexHdr->mWidth, pTexHdr->mHeight);
+			return true;
+		}
 
 		bool copyFromSource = false;
 		unsigned char *pSrcData = (unsigned char *)(pTexHdr + 1);
@@ -112,7 +128,8 @@ public:
 		unsigned char *pTexData = NULL;
 		int texDataSize = 0;
 		noesisTexType_e texType = NOESISTEX_UNKNOWN;
-		noeRAPI_t *pRapi = dat.GetRAPI();
+		if (!pRapi)
+			return false;
 
 		// Validate and sanitise palette color depth.
 		// mBitsPerPalClr is labelled "unverified" in the original code, so guard against
@@ -122,64 +139,99 @@ public:
 		const unsigned int safeBpc = (rawBpc == 16 || rawBpc == 32) ? rawBpc : 32u;
 		const int palSize = 256 * ((int)safeBpc / 8);  // 512 or 1024 bytes
 
-		// Bail out early if the chunk data is not large enough to hold the header + palette.
-		if (srcDataSize < palSize)
-		{
-			pRapi->LogOutput("WARNING: Texture chunk too small for palette (need %d, have %d). Skipping.\n", palSize, srcDataSize);
-			return true; // don't abort the whole load
-		}
-
 		switch (pTexHdr->mType)
 		{
 		case skTextureType_PalCombo:
-			if (!preferDxtToPalette)
 			{
-				goto PickPalOverDXT;
-			}
-			else
-			{
-				//push is up and prefer to take the dxt version
-				const int palTextureSize = palSize + pTexHdr->mWidth * pTexHdr->mHeight;
-				if (palTextureSize > srcDataSize)
-					break; // guard against out-of-bounds skip
-				pSrcData += palTextureSize;
-				srcDataSize -= palTextureSize;
+				const size_t pixelCount = (size_t)pTexHdr->mWidth * (size_t)pTexHdr->mHeight;
+				const size_t palTextureSize = (size_t)palSize + pixelCount;
+				if (palTextureSize > (size_t)srcDataSize)
+				{
+					pRapi->LogOutput("WARNING: Combination texture is too small for its palette copy. Skipping.\n");
+					return true;
+				}
+
+				if (!preferDxtToPalette)
+				{
+					goto PickPalOverDXT;
+				}
+				else
+				{
+					// Skip the palette/index copy and use the client-like compressed copy.
+					pSrcData += palTextureSize;
+					srcDataSize -= (int)palTextureSize;
+				}
 			}
 			//fall through intentionally in the else case
 		case skTextureType_DXT:
 			{
-				const int dxtType = *(const int *)pSrcData;
+				static const int kDxtMiniHeaderSize = 12;
+				if (srcDataSize < kDxtMiniHeaderSize)
+				{
+					pRapi->LogOutput("WARNING: DXT texture is missing its 12-byte mini-header. Skipping.\n");
+					return true;
+				}
+
+				// The tag is stored in FFXI's byte order (for example, bytes "3TXD"
+				// compare equal to MSVC's 'DXT3' multi-character constant). Use memcpy
+				// because the packed mini-header is not guaranteed to be int-aligned.
+				int dxtType = 0;
+				memcpy(&dxtType, pSrcData, sizeof(dxtType));
+				int blockSize = 0;
 				switch (dxtType)
 				{
 				case 'DXT1':
 					texType = NOESISTEX_DXT1;
+					blockSize = 8;
 					break;
 				case 'DXT3':
 					texType = NOESISTEX_DXT3;
+					blockSize = 16;
 					break;
 				case 'DXT5':
 					texType = NOESISTEX_DXT5;
+					blockSize = 16;
 					break;
 				default:
 					break;
 				}
 				if (texType != NOESISTEX_UNKNOWN)
 				{
+					const size_t blockColumns = ((size_t)pTexHdr->mWidth + 3) / 4;
+					const size_t blockRows = ((size_t)pTexHdr->mHeight + 3) / 4;
+					const size_t expectedDxtSize = blockColumns * blockRows * (size_t)blockSize;
+					const size_t availableDxtSize = (size_t)(srcDataSize - kDxtMiniHeaderSize);
+					if (expectedDxtSize > availableDxtSize || expectedDxtSize > (size_t)INT_MAX)
+					{
+						pRapi->LogOutput("WARNING: Truncated DXT texture (need %zu block bytes, have %zu). Skipping.\n",
+							expectedDxtSize, availableDxtSize);
+						return true;
+					}
+
 					const bool convertDxtForFix =
 						(texColorShift != 0) ||
 						((gpFF11Opts && gpFF11Opts->explicitAlphaShift) && texAlphaShift != 0);
 					if (convertDxtForFix)
 					{
 						//it wouldn't be too much work to just shift the 4-bit alphas in the dxt3 blocks, but, fuck it.
-						pTexData = pRapi->Noesis_ConvertDXT(pTexHdr->mWidth, pTexHdr->mHeight, const_cast<unsigned char *>(pSrcData) + 12, texType);
+						pTexData = pRapi->Noesis_ConvertDXT(pTexHdr->mWidth, pTexHdr->mHeight,
+							const_cast<unsigned char *>(pSrcData) + kDxtMiniHeaderSize, texType);
+						if (!pTexData)
+						{
+							pRapi->LogOutput("WARNING: Unable to decode DXT texture. Skipping.\n");
+							return true;
+						}
 						ShiftRgbaData(pTexData, pTexHdr->mWidth, pTexHdr->mHeight, texColorShift, texAlphaShift);
+						texDataSize = pTexHdr->mWidth * pTexHdr->mHeight * 4;
 						texType = NOESISTEX_RGBA32;
 					}
 					else
 					{
 						copyFromSource = true;
-						pTexData = const_cast<unsigned char *>(pSrcData) + 12;
-						texDataSize = srcDataSize - 12;
+						pTexData = const_cast<unsigned char *>(pSrcData) + kDxtMiniHeaderSize;
+						// DAT chunks are aligned and may contain trailing padding. Retain exactly
+						// the source top level; the D3D9 uploader generates lower levels separately.
+						texDataSize = (int)expectedDxtSize;
 					}
 				}
 				else
@@ -191,6 +243,11 @@ public:
 
 		case skTextureType_PalLeadingInt:
 			//not sure what this is used for
+			if (srcDataSize < (int)sizeof(int))
+			{
+				pRapi->LogOutput("WARNING: Palette texture is missing its leading value. Skipping.\n");
+				return true;
+			}
 			pSrcData += sizeof(int);
 			srcDataSize -= sizeof(int);
 			//intentionally fall through
@@ -198,7 +255,7 @@ public:
 		case skTextureType_Pal2:
 		PickPalOverDXT:
 			// Guard: pixel data must fit within the remaining chunk
-			if (palSize + pTexHdr->mWidth * pTexHdr->mHeight > srcDataSize)
+			if ((size_t)palSize + (size_t)pTexHdr->mWidth * (size_t)pTexHdr->mHeight > (size_t)srcDataSize)
 			{
 				pRapi->LogOutput("WARNING: Texture chunk too small for palette+pixels. Skipping.\n");
 				return true;
