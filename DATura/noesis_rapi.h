@@ -1,6 +1,6 @@
 /*========================================================================================
  Noesis SDK shim — standalone D3D9 replacement for pluginshare.h
- Declares every type and function that model_ff11_fixed.cpp pulls from the Noesis API.
+ Declares every type and function used by the model_ff11 parser modules.
 ========================================================================================*/
 
 #pragma once
@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 
 //========================================================================================
 // Utility
@@ -516,10 +517,17 @@ struct noesisAnim_t
     int    frameCount;
     float  fps;
     int    boneCount;
+    bool   allowExtendedPoseBounds;
     std::vector<RichMat43> frameWorldMats;
+    // Optional model-space trajectory extracted from a skeletal root. Keeping
+    // it separate lets scene code move the whole actor through the world while
+    // CPU skinning evaluates a stable, root-relative pose.
+    std::vector<RichVec3> frameRootMotion;
+    RichVec3 rootMotionOrigin;
 
     noesisAnim_t()
         : filename(nullptr), flags(0), frameCount(0), fps(30.0f), boneCount(0)
+        , allowExtendedPoseBounds(false)
     {}
 };
 
@@ -583,6 +591,44 @@ struct FFXISqleBoneInfo
 
 struct noesisModel_t
 {
+    struct StaticBufferGroup
+    {
+        IDirect3DVertexBuffer9 *pVB;
+        IDirect3DIndexBuffer9  *pIB;
+        IDirect3DIndexBuffer9  *pOpaqueBatchIB;
+        int                     vertCount;
+        int                     indexCount;
+
+        StaticBufferGroup()
+            : pVB(nullptr), pIB(nullptr), pOpaqueBatchIB(nullptr)
+            , vertCount(0), indexCount(0)
+        {}
+    };
+
+    struct OpaqueBatch
+    {
+        noesisMaterial_t *pMaterial;
+        noesisTex_t      *pTexture;
+        int               bufferGroupIndex;
+        int               startIndex;
+        int               triCount;
+        int               minVertexIndex;
+        int               vertexCount;
+        float             boundsMin[3];
+        float             boundsMax[3];
+        bool              animatedWater;
+        bool              hasBounds;
+
+        OpaqueBatch()
+            : pMaterial(nullptr), pTexture(nullptr), bufferGroupIndex(-1)
+            , startIndex(0), triCount(0), minVertexIndex(0), vertexCount(0)
+            , animatedWater(false), hasBounds(false)
+        {
+            memset(boundsMin, 0, sizeof(boundsMin));
+            memset(boundsMax, 0, sizeof(boundsMax));
+        }
+    };
+
     struct Submesh
     {
         std::vector<FFXIVertex> cpuVerts;
@@ -596,23 +642,55 @@ struct noesisModel_t
         IDirect3DIndexBuffer9  *pIB;
         int                     vertCount;
         int                     triCount;
+        int                     staticBufferGroupIndex;
+        int                     staticVertexOffset;
+        int                     staticStartIndex;
 
-        Submesh() : pVB(nullptr), pIB(nullptr), vertCount(0), triCount(0) {}
+        // Immutable render metadata. DATura resolves this once after loading;
+        // rendering never has to rescan material or object-name strings.
+        noesisMaterial_t       *pResolvedMaterial;
+        noesisTex_t            *pResolvedTexture;
+        float                   boundsMin[3];
+        float                   boundsMax[3];
+        float                   boundsCenter[3];
+        bool                    hasBounds;
+        bool                    environmentObject;
+        bool                    animatedWater;
+        bool                    softBlend;
+
+        Submesh()
+            : pVB(nullptr), pIB(nullptr), vertCount(0), triCount(0)
+            , staticBufferGroupIndex(-1), staticVertexOffset(0), staticStartIndex(0)
+            , pResolvedMaterial(nullptr), pResolvedTexture(nullptr)
+            , hasBounds(false), environmentObject(false), animatedWater(false)
+            , softBlend(false)
+        {
+            memset(boundsMin, 0, sizeof(boundsMin));
+            memset(boundsMax, 0, sizeof(boundsMax));
+            memset(boundsCenter, 0, sizeof(boundsCenter));
+        }
     };
 
     std::vector<Submesh>  submeshes;
+    std::vector<StaticBufferGroup> staticBufferGroups;
+    std::vector<OpaqueBatch> opaqueBatches;
+    std::vector<size_t> opaqueSubmeshOrder;
+    std::vector<size_t> softBlendSubmeshOrder;
     noesisMatData_t      *pMatData;
     noesisAnim_t         *pAnim;
     modelBone_t          *pBones;
     int                   boneCount;
     std::vector<FFXISqleBoneInfo> sqleBones;
+    bool                  renderMetadataPrepared;
 
     noesisModel_t()
         : pMatData(nullptr), pAnim(nullptr), pBones(nullptr), boneCount(0)
+        , renderMetadataPrepared(false)
     {}
 
     // Upload all submesh CPU data to D3D9 vertex/index buffers.
     void BuildD3DBuffers(IDirect3DDevice9 *pDevice);
+    void UpdateSubmeshBounds();
     void RestoreBindPose(IDirect3DDevice9 *pDevice);
     void UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice);
 
@@ -841,17 +919,33 @@ private:
         std::vector<FFXIVertex>  verts;
         std::vector<FFXISkinVertex> skinVerts;
         std::vector<DWORD>       indices;
+        bool                     hasSkinning;
         // Maps a vertex fingerprint → index for de-duplication (optional future work)
+
+        ActiveSubmesh() : hasSkinning(false) {}
 
         void AddTriangle(const PendingVertex &v0, const PendingVertex &v1, const PendingVertex &v2)
         {
+            const size_t previousVertCount = verts.size();
+            const bool triangleHasSkinning =
+                v0.hasBones || v1.hasBones || v2.hasBones ||
+                v0.skin.skinned || v1.skin.skinned || v2.skin.skinned;
+            if (triangleHasSkinning && !hasSkinning)
+            {
+                skinVerts.resize(previousVertCount);
+                hasSkinning = true;
+            }
+
             DWORD base = (DWORD)verts.size();
             verts.push_back(v0.ToFFXIVertex());
             verts.push_back(v1.ToFFXIVertex());
             verts.push_back(v2.ToFFXIVertex());
-            skinVerts.push_back(v0.skin);
-            skinVerts.push_back(v1.skin);
-            skinVerts.push_back(v2.skin);
+            if (hasSkinning)
+            {
+                skinVerts.push_back(v0.skin);
+                skinVerts.push_back(v1.skin);
+                skinVerts.push_back(v2.skin);
+            }
             indices.push_back(base);
             indices.push_back(base+1);
             indices.push_back(base+2);
@@ -870,6 +964,7 @@ private:
     bool                        mInPrimitive;
     std::vector<PendingVertex>  mPrimVerts;  // vertices accumulated inside Begin/End
     std::vector<ActiveSubmesh>  mSubmeshes;
+    std::unordered_map<std::string, size_t> mSubmeshLookup;
     std::string                 mCurrentMaterial;
     std::string                 mCurrentName;
     bool                        mForceNewSubmesh;

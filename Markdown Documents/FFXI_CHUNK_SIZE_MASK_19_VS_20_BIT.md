@@ -262,9 +262,9 @@ chunkSize = (info >> 3) & 0x7FFFF0;
 The decision should be described as:
 
 > **Selected working interpretation: 19-bit size.**
-
+ww
 It should not be described as:
-
+WWWW
 > **Retail-confirmed**, **proven**, or **the 20-bit mask is wrong**.
 
 The 20-bit interpretation remains plausible.

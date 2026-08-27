@@ -15,13 +15,145 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="application_menu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="application_settings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="audio_player.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="texture_viewer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="config_dialog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="win32_combo_box.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="win32_drawing.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="win32_panel_controls.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="win32_application.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="win32_tool_window.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="win32_owner_draw_menu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="win32_theme.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_collision_geometry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_model_transform.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_model_render_metadata.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_environment_identity.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_environment_state.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_environment_fog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_environment_animation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_environment_render_state.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_render_frustum.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_weather_particles.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_sky_dome.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_list_view.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_list_columns.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_list_rows.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_list_selection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_visibility.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_tree_view.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_tree_population.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_tree_builder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_transform_editor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_panel_layout.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_panel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_panel_splitter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_panel_loading.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_panel_arrangement.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_panel_edit_controls.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_panel_style.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_transform.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_object_highlight_renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="bgw_player.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d9_device.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d_math.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d_model_buffers.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d_model_render_state.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="d3d_ui_renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="main.cpp">
@@ -33,7 +165,7 @@
     <ClCompile Include="model_ff11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="model_ff11_fixed.cpp">
+    <ClCompile Include="model_ff11_creation.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="noesis_rapi.cpp">
@@ -48,18 +180,201 @@
     <ClCompile Include="ffxi_stat_system.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ffxi_resource.cpp">
+    <ClCompile Include="ffxi_title_assets.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_title_ui_primitives.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_title_screen_renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_nation_selection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_nation_selection_renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+      <ClCompile Include="ffxi_resource.cpp">
+        <Filter>Source Files</Filter>
+      </ClCompile>
+      <ClCompile Include="ffxi_resource_browser.cpp">
+        <Filter>Source Files</Filter>
+      </ClCompile>
+    <ClCompile Include="ffxi_dat_set_builder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_player_preset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_player_preset_dialog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_player_customization_catalog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_player_customization_state.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_player_customization_panel_state.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_player_randomizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="low_poly_character_panel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="high_poly_creation_panel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_file_io.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_model_lifetime.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_parser_diagnostics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_sqle_motion.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_sqle_model_animation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_creation_selection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_creation_panel_state.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_creation_animation_paths.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+      <ClCompile Include="ffxi_creation_grounding.cpp">
+        <Filter>Source Files</Filter>
+      </ClCompile>
+      <ClCompile Include="ffxi_companion_browser.cpp">
+        <Filter>Source Files</Filter>
+      </ClCompile>
+    <ClCompile Include="ffxi_creation_export.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_creation_scene_builder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_save_result_dialog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_path_info_dialog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_paths.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_zone_resources.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ffxi_install_path.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="game_ui_config.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="input_controller.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="interaction_controller.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="npc_placement.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="npc_render_geometry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="npc_nameplate_renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="orbit_camera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="player_controller.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="scene_load_context.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="scene_model_loader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="scene_request_resolver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="title_scene_assets.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="creation_model_loader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="player_model_loader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="application_menu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="application_settings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="audio_player.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="texture_viewer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="config_dialog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="win32_combo_box.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="win32_drawing.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="win32_panel_controls.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="win32_application.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="win32_tool_window.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="win32_owner_draw_menu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="win32_theme.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="bgw_player.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d9_device.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d_math.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d_model_buffers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d_model_render_state.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d_ui_renderer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="companion_dat_table.h">
@@ -74,28 +389,25 @@
     <ClInclude Include="model_ff11.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="model_ff11_common.inl">
+    <ClInclude Include="model_ff11_animation_handlers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="model_ff11_creation.inl">
+    <ClInclude Include="model_ff11_effect_handler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="model_ff11_decrypt.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="model_ff11_geo.inl">
+    <ClInclude Include="model_ff11_geometry_handler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="model_ff11_loader.inl">
+    <ClInclude Include="model_ff11_internal.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="model_ff11_map.inl">
+    <ClInclude Include="model_ff11_map_handlers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="model_ff11_skeleton_animation.inl">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="model_ff11_texture.inl">
+    <ClInclude Include="model_ff11_texture_handler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="npc_monster_dat_table.h">
@@ -119,6 +431,93 @@
     <ClInclude Include="zone_music_table.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="zone_collision_geometry.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_model_transform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_model_render_metadata.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_environment_identity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_environment_state.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_environment_fog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_environment_animation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_environment_render_state.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_render_frustum.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_weather_particles.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_sky_dome.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_transform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_highlight_renderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_list_view.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_list_columns.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_list_rows.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_list_selection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_visibility.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_tree_view.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_tree_population.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_tree_builder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_transform_editor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_panel_layout.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_panel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_panel_splitter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_panel_loading.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_panel_arrangement.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_panel_edit_controls.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_object_panel_style.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -134,7 +533,145 @@
     <ClInclude Include="ffxi_stat_system.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ffxi_resource.h">
+    <ClInclude Include="ffxi_title_assets.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_title_ui_primitives.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_title_screen_renderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_nation_selection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_nation_selection_renderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+      <ClInclude Include="ffxi_resource.h">
+        <Filter>Header Files</Filter>
+      </ClInclude>
+      <ClInclude Include="ffxi_resource_browser.h">
+        <Filter>Header Files</Filter>
+      </ClInclude>
+    <ClInclude Include="ffxi_dat_set_builder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_player_preset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_player_preset_dialog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_player_customization_catalog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_player_customization_state.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_player_customization_panel_state.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_player_randomizer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="low_poly_character_panel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="high_poly_creation_panel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_file_io.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_model_lifetime.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_parser_diagnostics.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_sqle_motion.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_sqle_model_animation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_creation_selection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_creation_panel_state.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_creation_animation_paths.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_creation_grounding.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_companion_browser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_creation_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_creation_scene_builder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_save_result_dialog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_path_info_dialog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_paths.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_zone_resources.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ffxi_install_path.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="game_ui_config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="input_controller.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="interaction_controller.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="npc_placement.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="npc_render_geometry.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="npc_nameplate_renderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="orbit_camera.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="player_controller.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="scene_load_context.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="scene_model_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="scene_request_resolver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="title_scene_assets.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="creation_model_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="player_model_loader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -154,6 +691,8 @@
   <ItemGroup>
     <None Include="..\LICENSE" />
     <None Include="..\THIRD_PARTY_NOTICES.md" />
+    <None Include="DATura.game-ui.config" />
+    <None Include="npc_placements.csv" />
     <None Include="Vulture_DAT_Extractor.cs">
       <Filter>Source Files</Filter>
     </None>

@@ -2,6 +2,8 @@
 #include "audio_player.h"
 #include "bgw_player.h"
 #include "resource.h"
+#include "win32_panel_controls.h"
+#include "win32_tool_window.h"
 
 #include <commctrl.h>
 #include <algorithm>
@@ -612,28 +614,29 @@ namespace
         case WM_CREATE:
         {
             g_window = window;
-            const HINSTANCE instance = GetModuleHandleA(nullptr);
-            CreateWindowExA(0, "STATIC", "Filter:", WS_CHILD | WS_VISIBLE,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)-1, instance, nullptr);
-            g_search = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_SEARCH, instance, nullptr);
+            Win32PanelControls::AddPanelControl(
+                window, "STATIC", "Filter:", 0, -1, 0, 0, 0, 0);
+            g_search = Win32PanelControls::AddPanelControl(
+                window, "EDIT", "", WS_TABSTOP | ES_AUTOHSCROLL,
+                IDC_AUDIO_SEARCH, 0, 0, 0, 0, WS_EX_CLIENTEDGE);
             SendMessageA(g_search, EM_SETCUEBANNER, TRUE,
                          (LPARAM)L"Name, ID, bank, format, or path");
-            g_kind = CreateWindowExA(0, "COMBOBOX", "",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_KIND, instance, nullptr);
+            g_kind = Win32PanelControls::AddPanelControl(
+                window, "COMBOBOX", "",
+                WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+                IDC_AUDIO_KIND, 0, 0, 0, 0);
             SendMessageA(g_kind, CB_ADDSTRING, 0, (LPARAM)"All audio");
             SendMessageA(g_kind, CB_ADDSTRING, 0, (LPARAM)"Music");
             SendMessageA(g_kind, CB_ADDSTRING, 0, (LPARAM)"Sound effects");
             SendMessageA(g_kind, CB_SETCURSEL, 0, 0);
-            CreateWindowExA(0, "BUTTON", "Refresh", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_REFRESH, instance, nullptr);
+            Win32PanelControls::AddPanelControl(
+                window, "BUTTON", "Refresh", WS_TABSTOP,
+                IDC_AUDIO_REFRESH, 0, 0, 0, 0);
 
-            g_list = CreateWindowExA(WS_EX_CLIENTEDGE, WC_LISTVIEWA, "",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SHOWSELALWAYS |
-                LVS_SINGLESEL | LVS_OWNERDATA,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_LIST, instance, nullptr);
+            g_list = Win32PanelControls::AddPanelControl(
+                window, WC_LISTVIEWA, "",
+                WS_TABSTOP | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL | LVS_OWNERDATA,
+                IDC_AUDIO_LIST, 0, 0, 0, 0, WS_EX_CLIENTEDGE);
             ListView_SetExtendedListViewStyle(g_list,
                 LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER | LVS_EX_LABELTIP);
             const char* headings[] = { "Type", "ID", "Name", "Bank", "Format", "Length", "Path" };
@@ -648,22 +651,24 @@ namespace
                 SendMessageA(g_list, LVM_INSERTCOLUMNA, columnIndex, (LPARAM)&column);
             }
 
-            g_details = CreateWindowExA(0, "STATIC",
+            g_details = Win32PanelControls::AddPanelControl(window, "STATIC",
                 "Select an installed music or sound-effect file to preview it.",
-                WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_DETAILS, instance, nullptr);
-            CreateWindowExA(0, "BUTTON", "Play", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_PLAY, instance, nullptr);
-            CreateWindowExA(0, "BUTTON", "Stop", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_STOP, instance, nullptr);
-            g_loop = CreateWindowExA(0, "BUTTON", "Loop",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_LOOP, instance, nullptr);
-            CreateWindowExA(0, "BUTTON", "Open File...", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_OPEN, instance, nullptr);
-            g_status = CreateWindowExA(0, "STATIC", "Scanning installed audio...",
-                WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_AUDIO_STATUS, instance, nullptr);
+                SS_LEFTNOWORDWRAP, IDC_AUDIO_DETAILS, 0, 0, 0, 0);
+            Win32PanelControls::AddPanelControl(
+                window, "BUTTON", "Play", WS_TABSTOP,
+                IDC_AUDIO_PLAY, 0, 0, 0, 0);
+            Win32PanelControls::AddPanelControl(
+                window, "BUTTON", "Stop", WS_TABSTOP,
+                IDC_AUDIO_STOP, 0, 0, 0, 0);
+            g_loop = Win32PanelControls::AddPanelControl(
+                window, "BUTTON", "Loop", WS_TABSTOP | BS_AUTOCHECKBOX,
+                IDC_AUDIO_LOOP, 0, 0, 0, 0);
+            Win32PanelControls::AddPanelControl(
+                window, "BUTTON", "Open File...", WS_TABSTOP,
+                IDC_AUDIO_OPEN, 0, 0, 0, 0);
+            g_status = Win32PanelControls::AddPanelControl(
+                window, "STATIC", "Scanning installed audio...",
+                SS_LEFTNOWORDWRAP, IDC_AUDIO_STATUS, 0, 0, 0, 0);
 
             const HFONT font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
             EnumChildWindows(window, [](HWND child, LPARAM fontParam) -> BOOL
@@ -863,35 +868,24 @@ void AudioPlayer_Show(HWND owner, const char* ffxiRootPath)
     SetRootPath(ffxiRootPath);
     if (g_window && IsWindow(g_window))
     {
-        ShowWindow(g_window, SW_RESTORE);
-        SetForegroundWindow(g_window);
+        Win32ToolWindow::Show(g_window, true, SW_RESTORE);
         return;
     }
 
-    const HINSTANCE instance = GetModuleHandleA(nullptr);
-    WNDCLASSEXA windowClass = {};
-    windowClass.cbSize = sizeof(windowClass);
-    if (!GetClassInfoExA(instance, kAudioPlayerClassName, &windowClass))
-    {
-        windowClass.cbSize = sizeof(windowClass);
-        windowClass.style = CS_HREDRAW | CS_VREDRAW;
-        windowClass.lpfnWndProc = AudioPlayerWndProc;
-        windowClass.hInstance = instance;
-        windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        windowClass.hIcon = LoadIcon(instance, MAKEINTRESOURCE(IDI_DATURA));
-        windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-        windowClass.lpszClassName = kAudioPlayerClassName;
-        if (!RegisterClassExA(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-            return;
-    }
-
     BGM_Stop();
-    g_window = CreateWindowExA(WS_EX_APPWINDOW, kAudioPlayerClassName,
-        "DATura Music / SFX Player", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1180, 720, owner, nullptr, instance, nullptr);
+    Win32ToolWindow::Spec spec =
+    {
+        AudioPlayerWndProc, kAudioPlayerClassName, "DATura Music / SFX Player", 1180, 720,
+        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+        (HBRUSH)(COLOR_WINDOW + 1)
+    };
+    spec.extendedStyle = WS_EX_APPWINDOW;
+    spec.icon = LoadIcon(GetModuleHandleA(nullptr), MAKEINTRESOURCE(IDI_DATURA));
+    spec.classStyle = CS_HREDRAW | CS_VREDRAW;
+    g_window = Win32ToolWindow::Create(owner, spec);
     if (g_window)
     {
-        ShowWindow(g_window, SW_SHOW);
+        Win32ToolWindow::Show(g_window, false);
         UpdateWindow(g_window);
         SetForegroundWindow(g_window);
     }

@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{A7531213-34CD-4836-B61C-DA09CD9BA3DF}</ProjectGuid>
+    <RootNamespace>DATuraLogicTests</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <VcpkgEnabled>false</VcpkgEnabled>
+    <OutDir>$(ProjectDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>DATuraLogicTests</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="application_settings_tests.cpp" />
+    <ClCompile Include="..\DATura\application_settings.cpp">
+      <Link>application_settings.cpp</Link>
+    </ClCompile>
+    <ClCompile Include="..\DATura\player_controller.cpp">
+      <Link>player_controller.cpp</Link>
+    </ClCompile>
+    <ClCompile Include="..\DATura\input_controller.cpp">
+      <Link>input_controller.cpp</Link>
+    </ClCompile>
+    <ClCompile Include="..\DATura\interaction_controller.cpp">
+      <Link>interaction_controller.cpp</Link>
+    </ClCompile>
+    <ClCompile Include="..\DATura\orbit_camera.cpp">
+      <Link>orbit_camera.cpp</Link>
+    </ClCompile>
+    <ClCompile Include="..\DATura\zone_collision_geometry.cpp">
+      <Link>zone_collision_geometry.cpp</Link>
+    </ClCompile>
+    <ClCompile Include="..\DATura\scene_load_context.cpp">
+      <Link>scene_load_context.cpp</Link>
+    </ClCompile>
+    <ClCompile Include="..\DATura\ffxi_dat_set_builder.cpp">
+      <Link>ffxi_dat_set_builder.cpp</Link>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\DATura\application_settings.h">
+      <Link>application_settings.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\ffxi_model_lifetime.h">
+      <Link>ffxi_model_lifetime.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\player_controller.h">
+      <Link>player_controller.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\input_controller.h">
+      <Link>input_controller.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\interaction_controller.h">
+      <Link>interaction_controller.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\orbit_camera.h">
+      <Link>orbit_camera.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\scene_model_loader.h">
+      <Link>scene_model_loader.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\scene_load_context.h">
+      <Link>scene_load_context.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\scene_request_resolver.h">
+      <Link>scene_request_resolver.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\title_scene_assets.h">
+      <Link>title_scene_assets.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\creation_model_loader.h">
+      <Link>creation_model_loader.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\ffxi_dat_set_builder.h">
+      <Link>ffxi_dat_set_builder.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\player_model_loader.h">
+      <Link>player_model_loader.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\low_poly_character_panel.h">
+      <Link>low_poly_character_panel.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\high_poly_creation_panel.h">
+      <Link>high_poly_creation_panel.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\zone_collision_geometry.h">
+      <Link>zone_collision_geometry.h</Link>
+    </ClInclude>
+    <ClInclude Include="..\DATura\zone_object_panel.h">
+      <Link>zone_object_panel.h</Link>
+    </ClInclude>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

@@ -103,6 +103,15 @@ struct ff11DatChunkDebug_t
     unsigned short effectHeaderWords[8];
     bool hasGeneratorMetadata;
     unsigned int generatorSectionOffsets[4];
+    unsigned short generatorAttachFlags;
+    unsigned short generatorEmissionVariance;
+    unsigned short generatorFramesPerEmission;
+    unsigned char generatorParticlesPerEmission;
+    unsigned char generatorFlags;
+    unsigned char generatorMoreFlags;
+    char generatorEnvironmentId[8];
+    char generatorLinkedResource[8];
+    unsigned char generatorLinkedDataType;
     bool hasKeyframeMetadata;
     int keyframePairCount;
     bool hasEnvironmentMetadata;
@@ -113,6 +122,143 @@ struct ff11DatChunkDebug_t
 };
 
 extern std::vector<ff11DatChunkDebug_t> gFF11LastDatChunks;
+
+struct ff11EnvironmentLightConfig_t
+{
+    unsigned int sunColor;
+    unsigned int moonColor;
+    unsigned int ambientColor;
+    unsigned int fogColor;
+    float fogFar;
+    float fogNear;
+    float diffuseMultiplier;
+};
+
+struct ff11EnvironmentRecord_t
+{
+    char name[8];
+    char directoryPath[128];
+    unsigned int indoorFlag;
+    ff11EnvironmentLightConfig_t modelLight;
+    ff11EnvironmentLightConfig_t terrainLight;
+    unsigned int clearColor;
+    float drawDistance;
+    unsigned short selector;
+    unsigned short sphereSpokeCount;
+    unsigned int horizonColor;
+    float skyBoxRadius;
+    unsigned int skyDomeRingColors[8];
+    float skyDomeElevations[8];
+    int skyDomeRingCount;
+    int minuteOfDay;
+};
+
+extern std::vector<ff11EnvironmentRecord_t> gFF11LastEnvironmentRecords;
+
+struct ff11GeneratorRecord_t
+{
+    char name[8];
+    char directoryPath[128];
+    unsigned short attachFlags;
+    unsigned short emissionVariance;
+    unsigned short framesPerEmission;
+    unsigned char particlesPerEmission;
+    unsigned char generatorFlags;
+    unsigned char moreFlags;
+    char environmentId[8];
+    char linkedResource[8];
+    unsigned char linkedDataType;
+    bool hasStandardParticleSetup;
+    unsigned int standardParticleFlags;
+    bool hasSpawnPosition;
+    float spawnPosition[3];
+    bool hasScale;
+    float scale[3];
+    bool hasRotation;
+    float rotation[3];
+    bool hasRotationVelocity;
+    float rotationVelocity[3];
+    bool hasColor;
+    unsigned int colorBgra;
+    bool hasBlendMode;
+    unsigned short blendMode;
+    bool hasCullDistance;
+    float cullDistance;
+    char redKeyframe[8];
+    char greenKeyframe[8];
+    char blueKeyframe[8];
+    char alphaKeyframe[8];
+    bool hasUvScrollU;
+    bool hasUvScrollV;
+    float uvScrollU;
+    float uvScrollV;
+    unsigned short particleLifetimeFrames;
+    bool hasLinearVelocity;
+    float linearVelocity[3];
+    bool hasLinearAcceleration;
+    float linearAcceleration[3];
+};
+
+extern std::vector<ff11GeneratorRecord_t> gFF11LastGeneratorRecords;
+
+struct ff11KeyframeRecord_t
+{
+    static const int skMaxPairs = 32;
+    char name[8];
+    char directoryPath[128];
+    int pairCount;
+    float times[skMaxPairs];
+    float values[skMaxPairs];
+};
+
+extern std::vector<ff11KeyframeRecord_t> gFF11LastKeyframeRecords;
+
+// Weather folders intentionally reuse short resource names (for example the
+// clod texture and clod_a01 shell occur independently under Clouds, Mist, and
+// Thunder). Scope only those resources by their directory so normal character
+// and terrain material names retain their original form.
+inline bool Model_FF11_IsWeatherDirectory(const char *path)
+{
+    if (!path)
+        return false;
+    for (const char *cursor = path; *cursor; ++cursor)
+    {
+        if (cursor[0] == '/' &&
+            (cursor[1] == 'w' || cursor[1] == 'W') &&
+            (cursor[2] == 'e' || cursor[2] == 'E') &&
+            (cursor[3] == 'a' || cursor[3] == 'A') &&
+            (cursor[4] == 't' || cursor[4] == 'T') &&
+            cursor[5] == '/')
+            return true;
+    }
+    return false;
+}
+
+inline unsigned int Model_FF11_WeatherDirectoryHash(const char *path)
+{
+    unsigned int hash = 2166136261u;
+    for (const unsigned char *cursor = (const unsigned char *)(path ? path : ""); *cursor; ++cursor)
+    {
+        unsigned char value = *cursor;
+        if (value >= 'A' && value <= 'Z')
+            value = (unsigned char)(value - 'A' + 'a');
+        hash = (hash ^ value) * 16777619u;
+    }
+    return hash;
+}
+
+inline void Model_FF11_BuildScopedResourceName(char *dst, const size_t dstSize,
+                                                const char *directoryPath,
+                                                const char *resourceName)
+{
+    if (!dst || dstSize == 0)
+        return;
+    if (Model_FF11_IsWeatherDirectory(directoryPath))
+        sprintf_s(dst, dstSize, "@%08X:%s", Model_FF11_WeatherDirectoryHash(directoryPath),
+                  resourceName ? resourceName : "");
+    else
+        strcpy_s(dst, dstSize, resourceName ? resourceName : "");
+}
 
 struct ff11MapHeaderDebug_t
 {
@@ -129,6 +275,28 @@ struct ff11MapHeaderDebug_t
 };
 
 extern ff11MapHeaderDebug_t gFF11LastMapHeader;
+
+struct ff11ZoneVisibilityLeaf_t
+{
+    float boundsMin[3];
+    float boundsMax[3];
+    std::vector<unsigned int> recordIndices;
+};
+
+struct ff11ZoneVisibilityRecord_t
+{
+    unsigned int cullingTableOffset;
+};
+
+struct ff11ZoneVisibilityTable_t
+{
+    unsigned int offset;
+    std::vector<unsigned int> visibleRecordIndices;
+};
+
+extern std::vector<ff11ZoneVisibilityLeaf_t> gFF11LastZoneVisibilityLeaves;
+extern std::vector<ff11ZoneVisibilityRecord_t> gFF11LastZoneVisibilityRecords;
+extern std::vector<ff11ZoneVisibilityTable_t> gFF11LastZoneVisibilityTables;
 
 struct ff11MapGeoDrawBatchDebug_t
 {
@@ -198,6 +366,10 @@ const ff11CollisionMeshDebug_t *Model_FF11_GetLastCollisionMesh(int index);
 int         Model_FF11_GetLastMapObjectCount();
 const char *Model_FF11_GetLastMapObjectDisplayName(int index);
 bool        Model_FF11_GetLastMapObjectTransform(int index, float trans[3], float scale[3], float rot[3] = nullptr);
+bool        Model_FF11_HasZoneVisibilityData();
+bool        Model_FF11_GetZoneVisibleMapObjects(const float viewerPoint[3],
+                                                std::vector<unsigned int> &mapObjectIndices);
+bool        Model_FF11_IsZonePointVisible(const float viewerPoint[3], const float subjectPoint[3]);
 int         Model_FF11_GetLastMapGeoDrawBatchCount();
 const ff11MapGeoDrawBatchDebug_t *Model_FF11_GetLastMapGeoDrawBatch(int index);
 
@@ -263,6 +435,17 @@ public:
 		bool mIsVirtual;
 	};
 	typedef std::vector<SChunk> TChunkList;
+
+	const char *GetChunkDirectoryPath(const SChunk &chunk) const
+	{
+		for (std::vector<ff11DatChunkDebug_t>::const_reverse_iterator it = gFF11LastDatChunks.rbegin();
+			 it != gFF11LastDatChunks.rend(); ++it)
+		{
+			if (it->dataOffset == chunk.mDataOffset)
+				return it->directoryPath;
+		}
+		return "";
+	}
 
 
 	explicit CFFXIDat(unsigned char *pData, const int dataSize, noeRAPI_t *pRapi)
@@ -330,6 +513,7 @@ class CFFXIDefaultHandlerSet
 {
 public:
 	explicit CFFXIDefaultHandlerSet(CFFXIDat *pDat = NULL);
+	~CFFXIDefaultHandlerSet();
 
 	void RegisterHandlersWithDat(CFFXIDat &dat);
 	// Pointer convenience overload used when callers hold a CFFXIDat*.

@@ -55,12 +55,12 @@ The most important negative result is that **the DATs do not expose a modern PBR
 The strongest local evidence is the parser and renderer implementation:
 
 - [`DATura/model_ff11.h`](DATura/model_ff11.h) defines known chunk types and inspection structures.
-- [`DATura/model_ff11_texture.inl`](DATura/model_ff11_texture.inl) decodes texture headers and pixel payloads.
-- [`DATura/model_ff11_geo.inl`](DATura/model_ff11_geo.inl) interprets character draw commands, primitive data, mirroring, and skinning.
-- [`DATura/model_ff11_map.inl`](DATura/model_ff11_map.inl) interprets zone placements, zone geometry batches, vertex layouts, indices, and candidate state flags.
-- [`DATura/model_ff11_skeleton_animation.inl`](DATura/model_ff11_skeleton_animation.inl) parses skeletons and animations.
-- [`DATura/model_ff11_creation.inl`](DATura/model_ff11_creation.inl) parses the separate high-poly character-creation shape and DMB texture formats.
-- [`DATura/model_ff11_effect.inl`](DATura/model_ff11_effect.inl) contains the current experimental effect-mesh interpretation.
+- [`DATura/model_ff11_texture_handler.h`](DATura/model_ff11_texture_handler.h) defines the private texture handler that decodes headers and pixel payloads.
+- [`DATura/model_ff11_geometry_handler.h`](DATura/model_ff11_geometry_handler.h) defines the private geometry handler for character draw commands, primitive data, mirroring, and skinning.
+- [`DATura/model_ff11_map_handlers.h`](DATura/model_ff11_map_handlers.h) defines the private handlers for zone placements, geometry batches, vertex layouts, indices, and candidate state flags.
+- [`DATura/model_ff11_animation_handlers.h`](DATura/model_ff11_animation_handlers.h) defines the private skeleton and animation handlers.
+- [`DATura/model_ff11_creation.cpp`](DATura/model_ff11_creation.cpp) implements the separate high-poly character-creation shape and DMB texture formats.
+- [`DATura/model_ff11_effect_handler.h`](DATura/model_ff11_effect_handler.h) defines the current experimental effect-mesh handler.
 - [`DATura/model_ff11_decrypt.h`](DATura/model_ff11_decrypt.h) documents the known obfuscation/decryption passes and their confidence.
 - [`DATura/main.cpp`](DATura/main.cpp) is the standalone D3D9 reconstruction. Its render states are useful experiments but must not automatically be attributed to retail.
 

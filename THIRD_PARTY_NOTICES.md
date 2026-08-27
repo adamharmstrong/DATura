@@ -36,8 +36,9 @@ The following source carries attribution to Rich Whitehouse or identifies itself
 
 - `DATura/CNoeR3000A.cpp`
 - `DATura/CNoeR3000A.h`
-- `DATura/model_ff11_fixed.cpp`
-- `DATura/model_ff11.h` and the associated `model_ff11_*.inl` files
+- `DATura/model_ff11.cpp`
+- `DATura/model_ff11_creation.cpp`
+- `DATura/model_ff11.h` and the associated private `model_ff11_*_handler*.h` files
 
 No explicit redistribution license was found alongside this material. Its existing attribution notices have been preserved. Redistribution authorization for these files should be confirmed before DATura is publicly released.
 
@@ -97,6 +98,16 @@ copy of that license is provided in
 [`LICENSE-POLUTILS-APACHE-2.0.txt`](LICENSE-POLUTILS-APACHE-2.0.txt). DATura's
 port includes additional bounds checks, unified format detection, modern
 `d_msg` layout disambiguation, and a native Win32 presentation layer.
+
+## LandSandBoat NPC placement data
+
+`DATura/npc_placements.csv` is generated from LandSandBoat's
+`sql/npc_list.sql` at commit `cc243c661a1c30c1e7fc4e0612601a7a3f2410ac`.
+LandSandBoat is licensed under the GNU General Public License, version 3. The
+upstream project and corresponding source are available from
+[LandSandBoat/server](https://github.com/LandSandBoat/server). The generated
+catalog contains zone/entity identifiers, transforms, names, and appearance
+selectors; it does not contain Square Enix DAT assets.
 
 ## FINAL FANTASY XI
 

@@ -8,15 +8,17 @@ struct FFXIPrototypeAreaEntry
     const char* modelDat;
 };
 
+// The environment shown during retail character selection. It is distinct
+// from the similarly themed Sel Phiner prototype terrain in ROM/0/28.DAT.
+static const char kFFXICharacterCreationZoneDat[] = "ROM/1/5.DAT";
+static const char kFFXISelPhinerExteriorDat[] = "ROM/0/28.DAT";
+
 static const FFXIPrototypeAreaEntry kFFXIPrototypeAreas[] =
 {
-    { "Sel Phiner - Exterior / Monorail", "ROM/0/28.DAT" },
+    { "Sel Phiner - Exterior / Monorail", kFFXISelPhinerExteriorDat },
     { "Sel Phiner - Town",                "ROM/0/33.DAT" },
 
-    // Historical aliases intentionally use direct model paths. This keeps the
-    // character-creation association out of the retail zone table and avoids
-    // assigning a second zone ID to the same Sel Phiner environment.
-    { "Character Creation (Sel Phiner)",   "ROM/0/28.DAT" },
+    { "Character Selection / Creation",    kFFXICharacterCreationZoneDat },
 
     // The Last Stand occupied the slot later released as zone 183,
     // Maquette Abdhaljs-Legion. Its old logical resource ID (6603) no longer

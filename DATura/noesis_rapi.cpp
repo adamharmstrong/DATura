@@ -750,6 +750,7 @@ void *noeRAPI_t::rpgCreateContext()
 {
     // Clear any leftover state from a previous load
     mSubmeshes.clear();
+    mSubmeshLookup.clear();
     mCurrentMaterial.clear();
     mCurrentName.clear();
     mPrimVerts.clear();
@@ -769,6 +770,7 @@ void *noeRAPI_t::rpgCreateContext()
 void noeRAPI_t::rpgDestroyContext(void * /*ctx*/)
 {
     mSubmeshes.clear();
+    mSubmeshLookup.clear();
     mPrimVerts.clear();
     mInPrimitive = false;
     mForceNewSubmesh = false;
@@ -975,18 +977,34 @@ noeRAPI_t::ActiveSubmesh &noeRAPI_t::CurrentSubmesh()
     if (mForceNewSubmesh)
     {
         mForceNewSubmesh = false;
+        const size_t newIndex = mSubmeshes.size();
         mSubmeshes.emplace_back();
         mSubmeshes.back().materialName = mCurrentMaterial;
         mSubmeshes.back().objectName = mCurrentName;
+        std::string lookupKey;
+        lookupKey.reserve(mCurrentMaterial.size() + mCurrentName.size() + 1);
+        lookupKey.append(mCurrentMaterial);
+        lookupKey.push_back('\x1f');
+        lookupKey.append(mCurrentName);
+        mSubmeshLookup.emplace(std::move(lookupKey), newIndex);
         return mSubmeshes.back();
     }
 
-    for (ActiveSubmesh &s : mSubmeshes)
-        if (s.materialName == mCurrentMaterial && s.objectName == mCurrentName)
-            return s;
+    std::string lookupKey;
+    lookupKey.reserve(mCurrentMaterial.size() + mCurrentName.size() + 1);
+    lookupKey.append(mCurrentMaterial);
+    lookupKey.push_back('\x1f');
+    lookupKey.append(mCurrentName);
+    const std::unordered_map<std::string, size_t>::const_iterator found =
+        mSubmeshLookup.find(lookupKey);
+    if (found != mSubmeshLookup.end() && found->second < mSubmeshes.size())
+        return mSubmeshes[found->second];
+
+    const size_t newIndex = mSubmeshes.size();
     mSubmeshes.emplace_back();
     mSubmeshes.back().materialName = mCurrentMaterial;
     mSubmeshes.back().objectName = mCurrentName;
+    mSubmeshLookup.emplace(std::move(lookupKey), newIndex);
     return mSubmeshes.back();
 }
 
@@ -1111,19 +1129,24 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
     pMdl->pBones    = mpStagedBones;
     pMdl->boneCount = mStagedBoneCount;
 
-    for (const ActiveSubmesh &src : mSubmeshes)
+    for (ActiveSubmesh &src : mSubmeshes)
     {
         if (src.verts.empty()) continue;
 
         noesisModel_t::Submesh dst;
-        dst.materialName = src.materialName;
-        dst.objectName   = src.objectName;
-        dst.cpuVerts     = src.verts;
-        dst.cpuBindVerts = src.verts;
-        dst.cpuSkinVerts = src.skinVerts;
-        dst.cpuIndices   = src.indices;
-        dst.vertCount    = (int)src.verts.size();
-        dst.triCount     = (int)(src.indices.size() / 3);
+        dst.materialName = std::move(src.materialName);
+        dst.objectName   = std::move(src.objectName);
+        // Static zone geometry never consumes a bind-pose copy. Keeping that
+        // duplicate (plus a 296-byte skin record) for every map vertex was the
+        // largest contributor to multi-gigabyte outdoor-zone working sets.
+        const bool needsBindPose = src.hasSkinning || mStagedBoneCount > 0 || mpStagedAnim != nullptr;
+        if (needsBindPose)
+            dst.cpuBindVerts = src.verts;
+        dst.cpuVerts     = std::move(src.verts);
+        dst.cpuSkinVerts = std::move(src.skinVerts);
+        dst.cpuIndices   = std::move(src.indices);
+        dst.vertCount    = (int)dst.cpuVerts.size();
+        dst.triCount     = (int)(dst.cpuIndices.size() / 3);
         dst.pVB          = nullptr;
         dst.pIB          = nullptr;
 
@@ -1138,6 +1161,7 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
 
     // Reset accumulator for the next model
     mSubmeshes.clear();
+    mSubmeshLookup.clear();
     mPrimVerts.clear();
     mInPrimitive     = false;
     mpStagedBones    = nullptr;
@@ -1152,18 +1176,159 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
 // noesisModel_t — D3D9 buffer management
 //========================================================================================
 
-void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
+void noesisModel_t::UpdateSubmeshBounds()
 {
     for (Submesh &sm : submeshes)
     {
-        if (sm.cpuVerts.empty() || sm.cpuIndices.empty()) continue;
-        if (sm.pVB || sm.pIB) continue; // already built
+        sm.hasBounds = false;
+        if (sm.cpuVerts.empty())
+            continue;
 
-        // Vertex buffer
+        for (const FFXIVertex &vertex : sm.cpuVerts)
+        {
+            if (!_finite(vertex.pos[0]) || !_finite(vertex.pos[1]) || !_finite(vertex.pos[2]))
+                continue;
+            if (!sm.hasBounds)
+            {
+                memcpy(sm.boundsMin, vertex.pos, sizeof(sm.boundsMin));
+                memcpy(sm.boundsMax, vertex.pos, sizeof(sm.boundsMax));
+                sm.hasBounds = true;
+                continue;
+            }
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                if (vertex.pos[axis] < sm.boundsMin[axis]) sm.boundsMin[axis] = vertex.pos[axis];
+                if (vertex.pos[axis] > sm.boundsMax[axis]) sm.boundsMax[axis] = vertex.pos[axis];
+            }
+        }
+        if (sm.hasBounds)
+            for (int axis = 0; axis < 3; ++axis)
+                sm.boundsCenter[axis] = (sm.boundsMin[axis] + sm.boundsMax[axis]) * 0.5f;
+    }
+}
+
+void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
+{
+    if (!pDevice)
+        return;
+
+    UpdateSubmeshBounds();
+
+    bool canUseSharedStaticBuffers = boneCount == 0 && pAnim == nullptr;
+    if (canUseSharedStaticBuffers)
+    {
+        for (const Submesh &sm : submeshes)
+        {
+            if (!sm.cpuSkinVerts.empty())
+            {
+                canUseSharedStaticBuffers = false;
+                break;
+            }
+        }
+    }
+
+    // Static zones used to allocate one managed VB and IB per object/material
+    // pair (often 40,000 COM buffers). Pack them into bounded shared groups so
+    // large outdoor zones retain 32-bit addressing without relying on a single
+    // driver allocation larger than roughly 32 MiB.
+    if (canUseSharedStaticBuffers && !submeshes.empty())
+    {
+        static const int kMaxVerticesPerGroup = 900000;
+        staticBufferGroups.clear();
+        int groupIndex = -1;
+        for (Submesh &sm : submeshes)
+        {
+            if (sm.cpuVerts.empty() || sm.cpuIndices.empty())
+                continue;
+            if (groupIndex < 0 ||
+                (staticBufferGroups[(size_t)groupIndex].vertCount > 0 &&
+                 staticBufferGroups[(size_t)groupIndex].vertCount + sm.vertCount > kMaxVerticesPerGroup))
+            {
+                staticBufferGroups.emplace_back();
+                groupIndex = (int)staticBufferGroups.size() - 1;
+            }
+
+            StaticBufferGroup &group = staticBufferGroups[(size_t)groupIndex];
+            sm.staticBufferGroupIndex = groupIndex;
+            sm.staticVertexOffset = group.vertCount;
+            sm.staticStartIndex = group.indexCount;
+            group.vertCount += sm.vertCount;
+            group.indexCount += (int)sm.cpuIndices.size();
+        }
+
+        bool sharedBuildOk = !staticBufferGroups.empty();
+        for (size_t index = 0; index < staticBufferGroups.size() && sharedBuildOk; ++index)
+        {
+            StaticBufferGroup &group = staticBufferGroups[index];
+            const UINT vbSize = (UINT)((size_t)group.vertCount * sizeof(FFXIVertex));
+            const UINT ibSize = (UINT)((size_t)group.indexCount * sizeof(DWORD));
+            HRESULT hr = pDevice->CreateVertexBuffer(vbSize, D3DUSAGE_WRITEONLY,
+                FFXI_VERTEX_FVF, D3DPOOL_MANAGED, &group.pVB, nullptr);
+            if (FAILED(hr))
+            {
+                sharedBuildOk = false;
+                break;
+            }
+            hr = pDevice->CreateIndexBuffer(ibSize, D3DUSAGE_WRITEONLY,
+                D3DFMT_INDEX32, D3DPOOL_MANAGED, &group.pIB, nullptr);
+            if (FAILED(hr))
+            {
+                sharedBuildOk = false;
+                break;
+            }
+
+            FFXIVertex *pVBData = nullptr;
+            DWORD *pIBData = nullptr;
+            const bool vbLocked = SUCCEEDED(group.pVB->Lock(0, 0, (void **)&pVBData, 0));
+            const bool ibLocked = SUCCEEDED(group.pIB->Lock(0, 0, (void **)&pIBData, 0));
+            if (!vbLocked || !ibLocked)
+            {
+                if (vbLocked) group.pVB->Unlock();
+                if (ibLocked) group.pIB->Unlock();
+                sharedBuildOk = false;
+                break;
+            }
+
+            for (const Submesh &sm : submeshes)
+            {
+                if (sm.staticBufferGroupIndex != (int)index)
+                    continue;
+                memcpy(pVBData + sm.staticVertexOffset, sm.cpuVerts.data(),
+                    sm.cpuVerts.size() * sizeof(FFXIVertex));
+                memcpy(pIBData + sm.staticStartIndex, sm.cpuIndices.data(),
+                    sm.cpuIndices.size() * sizeof(DWORD));
+            }
+            group.pVB->Unlock();
+            group.pIB->Unlock();
+        }
+
+        if (sharedBuildOk)
+            return;
+
+        for (StaticBufferGroup &group : staticBufferGroups)
+        {
+            if (group.pOpaqueBatchIB) { group.pOpaqueBatchIB->Release(); group.pOpaqueBatchIB = nullptr; }
+            if (group.pIB) { group.pIB->Release(); group.pIB = nullptr; }
+            if (group.pVB) { group.pVB->Release(); group.pVB = nullptr; }
+        }
+        staticBufferGroups.clear();
+        for (Submesh &sm : submeshes)
+        {
+            sm.staticBufferGroupIndex = -1;
+            sm.staticVertexOffset = 0;
+            sm.staticStartIndex = 0;
+        }
+    }
+
+    // Animated/skinned models retain independently lockable buffers.
+    for (Submesh &sm : submeshes)
+    {
+        if (sm.cpuVerts.empty() || sm.cpuIndices.empty()) continue;
+        if (sm.pVB && sm.pIB) continue;
+
         const UINT vbSize = (UINT)(sm.cpuVerts.size() * sizeof(FFXIVertex));
         HRESULT hr = pDevice->CreateVertexBuffer(vbSize, D3DUSAGE_WRITEONLY,
-                                                  FFXI_VERTEX_FVF, D3DPOOL_MANAGED,
-                                                  &sm.pVB, nullptr);
+            FFXI_VERTEX_FVF, D3DPOOL_MANAGED, &sm.pVB, nullptr);
         if (FAILED(hr)) continue;
 
         void *pVBData = nullptr;
@@ -1173,11 +1338,9 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
             sm.pVB->Unlock();
         }
 
-        // Index buffer (32-bit indices; large zone material buckets can exceed 65k vertices).
         const UINT ibSize = (UINT)(sm.cpuIndices.size() * sizeof(DWORD));
         hr = pDevice->CreateIndexBuffer(ibSize, D3DUSAGE_WRITEONLY,
-                                         D3DFMT_INDEX32, D3DPOOL_MANAGED,
-                                         &sm.pIB, nullptr);
+            D3DFMT_INDEX32, D3DPOOL_MANAGED, &sm.pIB, nullptr);
         if (FAILED(hr)) continue;
 
         void *pIBData = nullptr;
@@ -1189,9 +1352,14 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
     }
 }
 
-static bool FFXIAnimValueLooksSane(float v)
+static bool FFXIAnimValueLooksSane(float v, bool allowExtendedPoses = false)
 {
-    return _finite(v) && fabsf(v) < 100.0f;
+    // Ordinary model previews are local and should remain compact. Creation
+    // PB tracks are authored in a much larger cinematic coordinate system;
+    // rejecting them at 100 restores the bind pose every frame while the
+    // separately extracted root trajectory continues to move the actor.
+    const float limit = allowExtendedPoses ? 4096.0f : 100.0f;
+    return _finite(v) && fabsf(v) < limit;
 }
 
 static void FFXIAccumulateBounds(const std::vector<FFXIVertex> &verts, bool &haveBounds, RichVec3 &mins, RichVec3 &maxs)
@@ -1215,14 +1383,17 @@ static void FFXIAccumulateBounds(const std::vector<FFXIVertex> &verts, bool &hav
 }
 
 static bool FFXIBoundsLookSane(const RichVec3 &bindMins, const RichVec3 &bindMaxs,
-                               const RichVec3 &animMins, const RichVec3 &animMaxs)
+                               const RichVec3 &animMins, const RichVec3 &animMaxs,
+                               bool allowExtendedPoses)
 {
     for (int i = 0; i < 3; ++i)
     {
 		const float bindSize = bindMaxs[i] - bindMins[i];
 		const float animSize = animMaxs[i] - animMins[i];
-		const float allowance = std::max(2.0f, bindSize * 2.5f);
-		if (!FFXIAnimValueLooksSane(animMins[i]) || !FFXIAnimValueLooksSane(animMaxs[i]))
+		const float allowance = allowExtendedPoses ?
+            std::max(24.0f, bindSize * 8.0f) : std::max(2.0f, bindSize * 2.5f);
+		if (!FFXIAnimValueLooksSane(animMins[i], allowExtendedPoses) ||
+            !FFXIAnimValueLooksSane(animMaxs[i], allowExtendedPoses))
 			return false;
 		if (bindSize > 0.5f && animSize < bindSize * 0.2f)
 			return false;
@@ -1263,8 +1434,14 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
     if (!pDevice || !pAnim || pAnim->frameCount <= 0 || pAnim->boneCount <= 0 || pAnim->frameWorldMats.empty())
         return;
 
-    const int frameIndex = (int)(animTime * pAnim->fps) % pAnim->frameCount;
+    const float framePosition = std::fmod(
+        std::max(0.0f, animTime) * pAnim->fps, static_cast<float>(pAnim->frameCount));
+    const int frameIndex = static_cast<int>(framePosition);
+    const int nextFrameIndex = (frameIndex + 1) % pAnim->frameCount;
+    const float frameBlend = framePosition - static_cast<float>(frameIndex);
     const RichMat43 *pFrameMats = &pAnim->frameWorldMats[(size_t)frameIndex * (size_t)pAnim->boneCount];
+    const RichMat43 *pNextFrameMats = &pAnim->frameWorldMats[
+        (size_t)nextFrameIndex * (size_t)pAnim->boneCount];
 
     std::vector<std::vector<FFXIVertex> > candidateVerts;
     candidateVerts.resize(submeshes.size());
@@ -1295,23 +1472,39 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
                     continue;
 
                 RichMat44 skinMat = pFrameMats[boneIndex].ToMat44();
+                RichMat44 nextSkinMat = pNextFrameMats[boneIndex].ToMat44();
                 if (skin.mirrorAxis[weightIndex] == 1)
+                {
                     skinMat = skinMat * RichMat44(-RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+                    nextSkinMat = nextSkinMat * RichMat44(-RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+                }
                 else if (skin.mirrorAxis[weightIndex] == 2)
+                {
                     skinMat = skinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), -RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+                    nextSkinMat = nextSkinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), -RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+                }
                 else if (skin.mirrorAxis[weightIndex] == 3)
+                {
                     skinMat = skinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), -RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+                    nextSkinMat = nextSkinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), -RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+                }
 
                 const float weight = skin.boneWt[weightIndex];
                 const RichVec4 pos(skin.pos[weightIndex][0], skin.pos[weightIndex][1], skin.pos[weightIndex][2], weight);
-                transformedPos += skinMat.TransformVec4(pos);
+                const RichVec4 currentPos = skinMat.TransformVec4(pos);
+                const RichVec4 nextPos = nextSkinMat.TransformVec4(pos);
+                for (int component = 0; component < 4; ++component)
+                    transformedPos[component] += currentPos[component] * (1.0f - frameBlend) +
+                                                 nextPos[component] * frameBlend;
                 const RichVec3 nrm(skin.nrm[weightIndex][0], skin.nrm[weightIndex][1], skin.nrm[weightIndex][2]);
-                transformedNrm += skinMat.TransformNormal(nrm) * weight;
+                const RichVec3 currentNrm = skinMat.TransformNormal(nrm);
+                const RichVec3 nextNrm = nextSkinMat.TransformNormal(nrm);
+                transformedNrm += (currentNrm * (1.0f - frameBlend) + nextNrm * frameBlend) * weight;
             }
 
-            if (!FFXIAnimValueLooksSane(transformedPos[0]) ||
-                !FFXIAnimValueLooksSane(transformedPos[1]) ||
-                !FFXIAnimValueLooksSane(transformedPos[2]))
+            if (!FFXIAnimValueLooksSane(transformedPos[0], pAnim->allowExtendedPoseBounds) ||
+                !FFXIAnimValueLooksSane(transformedPos[1], pAnim->allowExtendedPoseBounds) ||
+                !FFXIAnimValueLooksSane(transformedPos[2], pAnim->allowExtendedPoseBounds))
             {
                 RestoreBindPose(pDevice);
                 return;
@@ -1329,7 +1522,15 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
         candidateVerts[meshIndex].swap(candidate);
     }
 
-    if (haveBindBounds && haveAnimBounds && !FFXIBoundsLookSane(bindMins, bindMaxs, animMins, animMaxs))
+    // The compact bind-relative bounds heuristic protects ordinary model
+    // previews from malformed animation data. PB creation performances contain
+    // legitimate prone, crouched, stretched, and cinematic poses whose axis
+    // extents can be much smaller or larger than the upright bind pose. Applying
+    // this heuristic to them restores the A-pose even though every transformed
+    // vertex is finite and inside the PB absolute safety envelope.
+    if (!pAnim->allowExtendedPoseBounds && haveBindBounds && haveAnimBounds &&
+        !FFXIBoundsLookSane(bindMins, bindMaxs, animMins, animMaxs,
+                           pAnim->allowExtendedPoseBounds))
     {
         RestoreBindPose(pDevice);
         return;
@@ -1357,9 +1558,20 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
 
 void noesisModel_t::ReleaseD3DBuffers()
 {
+    for (StaticBufferGroup &group : staticBufferGroups)
+    {
+        if (group.pOpaqueBatchIB) { group.pOpaqueBatchIB->Release(); group.pOpaqueBatchIB = nullptr; }
+        if (group.pIB) { group.pIB->Release(); group.pIB = nullptr; }
+        if (group.pVB) { group.pVB->Release(); group.pVB = nullptr; }
+    }
+    staticBufferGroups.clear();
+    opaqueBatches.clear();
     for (Submesh &sm : submeshes)
     {
         if (sm.pVB) { sm.pVB->Release(); sm.pVB = nullptr; }
         if (sm.pIB) { sm.pIB->Release(); sm.pIB = nullptr; }
+        sm.staticBufferGroupIndex = -1;
+        sm.staticVertexOffset = 0;
+        sm.staticStartIndex = 0;
     }
 }

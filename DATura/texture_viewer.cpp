@@ -3,6 +3,8 @@
 #include "model_ff11.h"
 #include "texture_viewer.h"
 #include "resource.h"
+#include "win32_panel_controls.h"
+#include "win32_tool_window.h"
 
 #include <commctrl.h>
 #include <shellapi.h>
@@ -26,6 +28,7 @@ namespace
         IDC_TEXTURE_PATH,
         IDC_TEXTURE_LIST,
         IDC_TEXTURE_CANVAS,
+        IDC_TEXTURE_PRESET,
         IDC_TEXTURE_CHANNELS,
         IDC_TEXTURE_ZOOM,
         IDC_TEXTURE_STATUS
@@ -43,6 +46,7 @@ namespace
     HWND g_path = nullptr;
     HWND g_list = nullptr;
     HWND g_canvas = nullptr;
+    HWND g_preset = nullptr;
     HWND g_channels = nullptr;
     HWND g_zoom = nullptr;
     HWND g_status = nullptr;
@@ -55,6 +59,24 @@ namespace
     int g_bitmapHeight = 0;
     int g_selectedTexture = -1;
     TextureChannelMode g_channelMode = TextureChannels_RGBA;
+
+    struct TextureDatPreset
+    {
+        const char* label;
+        const char* relativePath;
+    };
+
+    // These DATs are texture sheets used by FFXI's menu UI. Keeping them in the
+    // viewer makes the commonly edited icon sheets accessible without browsing
+    // through the install directory each time.
+    const TextureDatPreset kTextureDatPresets[] =
+    {
+        { "Icon DATs: select one...", nullptr },
+        { "Status icons (Japanese) - ROM\\0\\12.DAT", "ROM\\0\\12.DAT" },
+        { "Status icons (English) - ROM\\119\\57.DAT", "ROM\\119\\57.DAT" },
+        { "Spell / ability icons - ROM\\280\\15.DAT", "ROM\\280\\15.DAT" },
+        { "Additional spell / ability icons - ROM\\324\\95.DAT", "ROM\\324\\95.DAT" }
+    };
 
     void SetRootPath(const char* rootPath)
     {
@@ -514,6 +536,33 @@ namespace
             LoadTextureDat(path);
     }
 
+    void LoadTexturePreset()
+    {
+        const int selection = g_preset ? (int)SendMessageA(g_preset, CB_GETCURSEL, 0, 0) : 0;
+        if (selection <= 0 || selection >= (int)(sizeof(kTextureDatPresets) / sizeof(kTextureDatPresets[0])))
+            return;
+
+        const TextureDatPreset& preset = kTextureDatPresets[selection];
+        if (!g_rootPath[0] || !preset.relativePath)
+        {
+            MessageBoxA(g_window, "Set the FFXI install directory before opening an icon DAT.",
+                        "Texture Viewer", MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+
+        char path[MAX_PATH] = {};
+        sprintf_s(path, "%s%s", g_rootPath, preset.relativePath);
+        if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES)
+        {
+            char message[MAX_PATH + 128] = {};
+            sprintf_s(message, "Could not find:\n%s", path);
+            MessageBoxA(g_window, message, "Texture Viewer", MB_OK | MB_ICONWARNING);
+            return;
+        }
+
+        LoadTextureDat(path);
+    }
+
     void LayoutTextureViewer(HWND window)
     {
         RECT client = {};
@@ -532,15 +581,18 @@ namespace
         HWND zoomLabel = GetDlgItem(window, -11);
         if (openButton) MoveWindow(openButton, margin, margin, 88, rowHeight, TRUE);
 
-        const int toolsWidth = 326;
+        const int toolsWidth = 602;
         if (g_path)
             MoveWindow(g_path, margin + 96, margin,
                        std::max(80, width - margin * 2 - 96 - toolsWidth), rowHeight, TRUE);
         const int toolsX = std::max(margin + 190, width - margin - toolsWidth);
-        if (channelLabel) MoveWindow(channelLabel, toolsX, margin + 4, 58, 18, TRUE);
-        if (g_channels) MoveWindow(g_channels, toolsX + 60, margin, 104, 180, TRUE);
-        if (zoomLabel) MoveWindow(zoomLabel, toolsX + 174, margin + 4, 42, 18, TRUE);
-        if (g_zoom) MoveWindow(g_zoom, toolsX + 218, margin, 108, 180, TRUE);
+        HWND presetLabel = GetDlgItem(window, -12);
+        if (presetLabel) MoveWindow(presetLabel, toolsX, margin + 4, 58, 18, TRUE);
+        if (g_preset) MoveWindow(g_preset, toolsX + 60, margin, 242, 180, TRUE);
+        if (channelLabel) MoveWindow(channelLabel, toolsX + 312, margin + 4, 58, 18, TRUE);
+        if (g_channels) MoveWindow(g_channels, toolsX + 372, margin, 104, 180, TRUE);
+        if (zoomLabel) MoveWindow(zoomLabel, toolsX + 486, margin + 4, 42, 18, TRUE);
+        if (g_zoom) MoveWindow(g_zoom, toolsX + 530, margin, 72, 180, TRUE);
 
         if (g_list)
             MoveWindow(g_list, margin, contentTop, listWidth, contentHeight, TRUE);
@@ -559,35 +611,43 @@ namespace
         case WM_CREATE:
         {
             g_window = window;
-            const HINSTANCE instance = GetModuleHandleA(nullptr);
-            CreateWindowExA(0, "BUTTON", "Open DAT...",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_TEXTURE_OPEN, instance, nullptr);
-            g_path = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "No DAT open",
-                WS_CHILD | WS_VISIBLE | ES_READONLY | ES_AUTOHSCROLL,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_TEXTURE_PATH, instance, nullptr);
-            CreateWindowExA(0, "STATIC", "Channels:", WS_CHILD | WS_VISIBLE,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)-10, instance, nullptr);
-            g_channels = CreateWindowExA(0, "COMBOBOX", "",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_TEXTURE_CHANNELS, instance, nullptr);
+            Win32PanelControls::AddPanelControl(
+                window, "BUTTON", "Open DAT...", WS_TABSTOP,
+                IDC_TEXTURE_OPEN, 0, 0, 0, 0);
+            g_path = Win32PanelControls::AddPanelControl(
+                window, "EDIT", "No DAT open", ES_READONLY | ES_AUTOHSCROLL,
+                IDC_TEXTURE_PATH, 0, 0, 0, 0, WS_EX_CLIENTEDGE);
+            Win32PanelControls::AddPanelControl(
+                window, "STATIC", "Icon DAT:", 0, -12, 0, 0, 0, 0);
+            g_preset = Win32PanelControls::AddPanelControl(
+                window, "COMBOBOX", "", WS_TABSTOP | CBS_DROPDOWNLIST,
+                IDC_TEXTURE_PRESET, 0, 0, 0, 0);
+            for (const TextureDatPreset& preset : kTextureDatPresets)
+                SendMessageA(g_preset, CB_ADDSTRING, 0, (LPARAM)preset.label);
+            SendMessageA(g_preset, CB_SETCURSEL, 0, 0);
+            Win32PanelControls::AddPanelControl(
+                window, "STATIC", "Channels:", 0, -10, 0, 0, 0, 0);
+            g_channels = Win32PanelControls::AddPanelControl(
+                window, "COMBOBOX", "", WS_TABSTOP | CBS_DROPDOWNLIST,
+                IDC_TEXTURE_CHANNELS, 0, 0, 0, 0);
             SendMessageA(g_channels, CB_ADDSTRING, 0, (LPARAM)"RGBA");
             SendMessageA(g_channels, CB_ADDSTRING, 0, (LPARAM)"RGB");
             SendMessageA(g_channels, CB_ADDSTRING, 0, (LPARAM)"Alpha");
             SendMessageA(g_channels, CB_SETCURSEL, TextureChannels_RGBA, 0);
-            CreateWindowExA(0, "STATIC", "Zoom:", WS_CHILD | WS_VISIBLE,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)-11, instance, nullptr);
-            g_zoom = CreateWindowExA(0, "COMBOBOX", "",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_TEXTURE_ZOOM, instance, nullptr);
+            Win32PanelControls::AddPanelControl(
+                window, "STATIC", "Zoom:", 0, -11, 0, 0, 0, 0);
+            g_zoom = Win32PanelControls::AddPanelControl(
+                window, "COMBOBOX", "", WS_TABSTOP | CBS_DROPDOWNLIST,
+                IDC_TEXTURE_ZOOM, 0, 0, 0, 0);
             const char* zoomLabels[] = { "Fit", "25%", "50%", "100%", "200%", "400%", "800%" };
             for (const char* label : zoomLabels)
                 SendMessageA(g_zoom, CB_ADDSTRING, 0, (LPARAM)label);
             SendMessageA(g_zoom, CB_SETCURSEL, 0, 0);
 
-            g_list = CreateWindowExA(WS_EX_CLIENTEDGE, WC_LISTVIEWA, "",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_TEXTURE_LIST, instance, nullptr);
+            g_list = Win32PanelControls::AddPanelControl(
+                window, WC_LISTVIEWA, "",
+                WS_TABSTOP | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL,
+                IDC_TEXTURE_LIST, 0, 0, 0, 0, WS_EX_CLIENTEDGE);
             ListView_SetExtendedListViewStyle(g_list,
                 LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER | LVS_EX_LABELTIP);
             const char* headings[] = { "Name", "Size", "Format", "Data" };
@@ -602,13 +662,12 @@ namespace
                 SendMessageA(g_list, LVM_INSERTCOLUMNA, columnIndex, (LPARAM)&column);
             }
 
-            g_canvas = CreateWindowExA(WS_EX_CLIENTEDGE, kTextureCanvasClassName, "",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_TEXTURE_CANVAS, instance, nullptr);
-            g_status = CreateWindowExA(0, "STATIC",
-                "Open a DAT containing FFXI texture chunks.",
-                WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP,
-                0, 0, 0, 0, window, (HMENU)(INT_PTR)IDC_TEXTURE_STATUS, instance, nullptr);
+            g_canvas = Win32PanelControls::AddPanelControl(
+                window, kTextureCanvasClassName, "", WS_TABSTOP,
+                IDC_TEXTURE_CANVAS, 0, 0, 0, 0, WS_EX_CLIENTEDGE);
+            g_status = Win32PanelControls::AddPanelControl(
+                window, "STATIC", "Open a DAT containing FFXI texture chunks.",
+                SS_LEFTNOWORDWRAP, IDC_TEXTURE_STATUS, 0, 0, 0, 0);
 
             const HFONT font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
             EnumChildWindows(window, [](HWND child, LPARAM fontParam) -> BOOL
@@ -638,6 +697,10 @@ namespace
                     g_channelMode = (TextureChannelMode)SendMessageA(g_channels, CB_GETCURSEL, 0, 0);
                     BuildPreviewBitmap();
                 }
+                return 0;
+            case IDC_TEXTURE_PRESET:
+                if (HIWORD(wParam) == CBN_SELCHANGE)
+                    LoadTexturePreset();
                 return 0;
             case IDC_TEXTURE_ZOOM:
                 if (HIWORD(wParam) == CBN_SELCHANGE && g_canvas)
@@ -680,6 +743,7 @@ namespace
             g_path = nullptr;
             g_list = nullptr;
             g_canvas = nullptr;
+            g_preset = nullptr;
             g_channels = nullptr;
             g_zoom = nullptr;
             g_status = nullptr;
@@ -689,7 +753,7 @@ namespace
         return DefWindowProcA(window, message, wParam, lParam);
     }
 
-    bool RegisterTextureViewerClasses(HINSTANCE instance)
+    bool RegisterTextureCanvasClass(HINSTANCE instance)
     {
         WNDCLASSEXA existing = {};
         existing.cbSize = sizeof(existing);
@@ -706,23 +770,6 @@ namespace
             if (!RegisterClassExA(&canvasClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
                 return false;
         }
-
-        existing = {};
-        existing.cbSize = sizeof(existing);
-        if (!GetClassInfoExA(instance, kTextureViewerClassName, &existing))
-        {
-            WNDCLASSEXA viewerClass = {};
-            viewerClass.cbSize = sizeof(viewerClass);
-            viewerClass.style = CS_HREDRAW | CS_VREDRAW;
-            viewerClass.lpfnWndProc = TextureViewerWndProc;
-            viewerClass.hInstance = instance;
-            viewerClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
-            viewerClass.hIcon = LoadIcon(instance, MAKEINTRESOURCE(IDI_DATURA));
-            viewerClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-            viewerClass.lpszClassName = kTextureViewerClassName;
-            if (!RegisterClassExA(&viewerClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-                return false;
-        }
         return true;
     }
 }
@@ -733,21 +780,28 @@ void TextureViewer_Show(HWND owner, const char* ffxiRootPath)
     SetRootPath(ffxiRootPath);
     if (TextureViewer_IsOpen())
     {
-        ShowWindow(g_window, SW_RESTORE);
-        SetForegroundWindow(g_window);
+        Win32ToolWindow::Show(g_window, true, SW_RESTORE);
         return;
     }
 
     const HINSTANCE instance = GetModuleHandleA(nullptr);
-    if (!RegisterTextureViewerClasses(instance))
+    if (!RegisterTextureCanvasClass(instance))
         return;
 
-    g_window = CreateWindowExA(WS_EX_APPWINDOW, kTextureViewerClassName,
-        "DATura Image / Texture Viewer", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1120, 760, owner, nullptr, instance, nullptr);
+    Win32ToolWindow::Spec spec =
+    {
+        TextureViewerWndProc, kTextureViewerClassName,
+        "DATura Image / Texture Viewer", 1120, 760,
+        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+        (HBRUSH)(COLOR_WINDOW + 1)
+    };
+    spec.extendedStyle = WS_EX_APPWINDOW;
+    spec.icon = LoadIcon(instance, MAKEINTRESOURCE(IDI_DATURA));
+    spec.classStyle = CS_HREDRAW | CS_VREDRAW;
+    g_window = Win32ToolWindow::Create(owner, spec);
     if (g_window)
     {
-        ShowWindow(g_window, SW_SHOW);
+        Win32ToolWindow::Show(g_window, false);
         UpdateWindow(g_window);
         SetForegroundWindow(g_window);
     }
