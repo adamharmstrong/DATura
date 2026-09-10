@@ -1,0 +1,149 @@
+{
+  "scope": "Initial inspection, superseded by findings.md and verified-dat.json. Retail model-bank arithmetic plus installed file tables now confirm ID 0x33 resolves to ROM/3/25.DAT.",
+  "dat": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\ROM\\3\\25.DAT",
+  "sha256": "107a0ac5c7fe7e16868346f68c59bc142f9a2abed9a83b2cdf006ebf6a0ff1c3",
+  "size": 77120,
+  "chunk_counts": {
+    "0x1": 1,
+    "0x5": 13,
+    "0x7": 2,
+    "0x19": 6,
+    "0x1f": 5,
+    "0x20": 7,
+    "0x21": 2,
+    "0x29": 1,
+    "0x2a": 1,
+    "0x2b": 1,
+    "0x3d": 2,
+    "0x0": 1
+  },
+  "effect_meshes": [
+    {
+      "name": "wa",
+      "offset": "0x1580",
+      "material": "bind    tayu    ",
+      "triangles_header_interpretation": 48,
+      "geometry_status": "Unaligned vertex offset 30 yields finite bounded positions for all vertices. Current aligned offset 32 fails sanity for four of five chunks. Visual verification remains outstanding.",
+      "candidate_bounds": [
+        [
+          -1.0800000429153442,
+          1.0800000429153442
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          -1.0800000429153442,
+          1.0800000429153442
+        ]
+      ]
+    },
+    {
+      "name": "sil",
+      "offset": "0x29f0",
+      "material": "bind    nami    ",
+      "triangles_header_interpretation": 192,
+      "geometry_status": "Unaligned vertex offset 30 yields finite bounded positions for all vertices. Current aligned offset 32 fails sanity for four of five chunks. Visual verification remains outstanding.",
+      "candidate_bounds": [
+        [
+          -0.6000000238418579,
+          0.6000000238418579
+        ],
+        [
+          -1.2599999904632568,
+          0.0
+        ],
+        [
+          -0.6000000238418579,
+          0.6000000238418579
+        ]
+      ]
+    },
+    {
+      "name": "naka",
+      "offset": "0x7b20",
+      "material": "bind    tayu    ",
+      "triangles_header_interpretation": 24,
+      "geometry_status": "Unaligned vertex offset 30 yields finite bounded positions for all vertices. Current aligned offset 32 fails sanity for four of five chunks. Visual verification remains outstanding.",
+      "candidate_bounds": [
+        [
+          -0.19200000166893005,
+          0.19200000166893005
+        ],
+        [
+          -1.940000057220459,
+          -0.47999998927116394
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "name": "bind",
+      "offset": "0x8570",
+      "material": "bind    kori    ",
+      "triangles_header_interpretation": 30,
+      "geometry_status": "Unaligned vertex offset 30 yields finite bounded positions for all vertices. Current aligned offset 32 fails sanity for four of five chunks. Visual verification remains outstanding.",
+      "candidate_bounds": [
+        [
+          -0.22340300679206848,
+          0.22340300679206848
+        ],
+        [
+          -2.185331106185913,
+          -0.025330999866127968
+        ],
+        [
+          -0.23327100276947021,
+          0.192548006772995
+        ]
+      ]
+    },
+    {
+      "name": "pou1",
+      "offset": "0x9250",
+      "material": "bind    pou     ",
+      "triangles_header_interpretation": 2,
+      "geometry_status": "Unaligned vertex offset 30 yields finite bounded positions for all vertices. Current aligned offset 32 fails sanity for four of five chunks. Visual verification remains outstanding.",
+      "candidate_bounds": [
+        [
+          -1.0,
+          1.0
+        ],
+        [
+          -1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ]
+    }
+  ],
+  "client": {
+    "path": "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\FFXiMain.dll",
+    "sha256": "6f8844eb7f0380f30a3db2fc3c435e1145f5c450bdd0999133cc75c516ec3c3b",
+    "strings": [
+      {
+        "file_offset": "0x2ab08",
+        "text": "CMoGeneratorClone"
+      },
+      {
+        "file_offset": "0x2ba1c",
+        "text": "Scheduler"
+      },
+      {
+        "file_offset": "0x32680",
+        "text": "(ICRYSTALL)"
+      },
+      {
+        "file_offset": "0x2c4610",
+        "text": "D:\\build0001\\FFXi_Win\\Main\\FFXiMain___Win32_Retail\\FFXiMain.pdb"
+      }
+    ]
+  }
+}

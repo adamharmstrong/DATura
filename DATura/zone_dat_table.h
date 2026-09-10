@@ -211,7 +211,7 @@ static const FFXIZoneEntry kFFXIZoneTable[] =
     { 186, "Dynamis - Bastok",                 "ROM2/12/117.DAT",       "ROM2/17/119.DAT",      "ROM2/13/122.DAT",      "ROM2/13/32.DAT"      },
     { 187, "Dynamis - Windurst",               "ROM2/12/118.DAT",       "ROM2/17/120.DAT",      "ROM2/13/123.DAT",      "ROM2/13/33.DAT"      },
     { 188, "Dynamis - Jeuno",                  "ROM2/12/119.DAT",       "ROM2/17/121.DAT",      "ROM2/13/124.DAT",      "ROM2/13/34.DAT"      },
-    { 189, "(unnamed)",                        "ROM5/0/30.DAT",         "ROM/24/126.DAT",       "ROM/26/126.DAT",       "ROM/20/126.DAT"      },
+    { 189, "San d'Oria [S] Mog House",         "ROM5/0/30.DAT",         "ROM/24/126.DAT",       "ROM/26/126.DAT",       "ROM/20/126.DAT"      },
     { 190, "King Ranperre's Tomb",             "ROM/1/14.DAT",          "ROM/24/127.DAT",       "ROM/26/127.DAT",       "ROM/20/127.DAT"      },
     { 191, "Dangruf Wadi",                     "ROM/0/52.DAT",          "ROM/25/0.DAT",         "ROM/27/0.DAT",         "ROM/21/0.DAT"        },
     { 192, "Inner Horutoto Ruins",             "ROM/0/112.DAT",         "ROM/25/1.DAT",         "ROM/27/1.DAT",         "ROM/21/1.DAT"        },
@@ -221,7 +221,7 @@ static const FFXIZoneEntry kFFXIZoneTable[] =
     { 196, "Gusgen Mines",                     "ROM/1/16.DAT",          "ROM/25/5.DAT",         "ROM/27/5.DAT",         "ROM/21/5.DAT"        },
     { 197, "Crawlers' Nest",                   "ROM/0/76.DAT",          "ROM/25/6.DAT",         "ROM/27/6.DAT",         "ROM/21/6.DAT"        },
     { 198, "Maze of Shakhrami",                "ROM/0/75.DAT",          "ROM/25/7.DAT",         "ROM/27/7.DAT",         "ROM/21/7.DAT"        },
-    { 199, "(unnamed)",                        "ROM5/0/31.DAT",         "ROM/25/8.DAT",         "ROM/27/8.DAT",         "ROM/21/8.DAT"        },
+    { 199, "Bastok [S] Mog House",             "ROM5/0/31.DAT",         "ROM/25/8.DAT",         "ROM/27/8.DAT",         "ROM/21/8.DAT"        },
     { 200, "Garlaige Citadel",                 "ROM/1/17.DAT",          "ROM/25/9.DAT",         "ROM/27/9.DAT",         "ROM/21/9.DAT"        },
     { 201, "Cloister of Gales",                "ROM2/0/17.DAT",         "ROM2/18/6.DAT",        "ROM2/13/125.DAT",      "ROM2/13/35.DAT"      },
     { 202, "Cloister of Storms",               "ROM2/0/18.DAT",         "ROM2/18/7.DAT",        "ROM2/13/126.DAT",      "ROM2/13/36.DAT"      },
@@ -236,12 +236,12 @@ static const FFXIZoneEntry kFFXIZoneTable[] =
     { 211, "Cloister of Tides",                "ROM2/0/23.DAT",         "ROM2/18/16.DAT",       "ROM2/14/4.DAT",        "ROM2/13/42.DAT"      },
     { 212, "Gustav Tunnel",                    "ROM2/12/121.DAT",       "ROM2/18/17.DAT",       "ROM2/14/5.DAT",        "ROM2/13/43.DAT"      },
     { 213, "Labyrinth of Onzozo",              "ROM2/12/122.DAT",       "ROM2/18/18.DAT",       "ROM2/14/6.DAT",        "ROM2/13/44.DAT"      },
-    { 214, "(unnamed)",                        "ROM4/0/33.DAT",         "ROM/25/23.DAT",        "ROM/27/23.DAT",        "ROM/21/23.DAT"       },
+    { 214, "Aht Urhgan Mog House",             "ROM4/0/33.DAT",         "ROM/25/23.DAT",        "ROM/27/23.DAT",        "ROM/21/23.DAT"       },
     { 215, "Abyssea - Attohwa",                "ROM/254/7.DAT",         "ROM/25/24.DAT",        "ROM/27/24.DAT",        "ROM/21/24.DAT"       },
     { 216, "Abyssea - Misareaux",              "ROM/254/8.DAT",         "ROM/25/25.DAT",        "ROM/27/25.DAT",        "ROM/21/25.DAT"       },
     { 217, "Abyssea - Vunkerl",                "ROM/254/9.DAT",         "ROM/25/26.DAT",        "ROM/27/26.DAT",        "ROM/21/26.DAT"       },
     { 218, "Abyssea - Altepa",                 "ROM/258/110.DAT",       "ROM/25/27.DAT",        "ROM/27/27.DAT",        "ROM/21/27.DAT"       },
-    { 219, "(unnamed)",                        "ROM5/0/32.DAT",         "ROM/25/28.DAT",        "ROM/27/28.DAT",        "ROM/21/28.DAT"       },
+    { 219, "Windurst [S] Mog House",           "ROM5/0/32.DAT",         "ROM/25/28.DAT",        "ROM/27/28.DAT",        "ROM/21/28.DAT"       },
     { 220, "Ship bound for Selbina",           "ROM/1/24.DAT",          "ROM/25/29.DAT",        "ROM/27/29.DAT",        "ROM/21/29.DAT"       },
     { 221, "Ship bound for Mhaura",            "ROM/1/25.DAT",          "ROM/25/30.DAT",        "ROM/27/30.DAT",        "ROM/21/30.DAT"       },
     { 222, "Provenance",                       "ROM/280/2.DAT",         "ROM/25/31.DAT",        "ROM/27/31.DAT",        "ROM/21/31.DAT"       },
@@ -322,9 +322,13 @@ static const FFXIZoneEntry kFFXIZoneTable[] =
     { 297, "Dynamis - Jeuno [D]",              "ROM/355/47.DAT",        "ROM/355/51.DAT",       "ROM/355/54.DAT",       "ROM/355/49.DAT"      },
     { 298, "Walk of Echoes [P1]",              "",                      "",                     "",                     ""                    },
     { 299, "Gwora - Throne Room",              "",                      "",                     "",                     ""                    },
+    // Synthetic entries for home-nation Mog House interiors.
+    { 300, "San d'Oria Mog House",              "ROM/1/45.DAT",          "",                     "",                     ""                    },
+    { 301, "Bastok Mog House",                  "ROM/1/46.DAT",          "",                     "",                     ""                    },
+    { 302, "Windurst Mog House",                "ROM/1/47.DAT",          "",                     "",                     ""                    },
 };
 
-static const int kFFXIZoneCount = 300; // entries 0 through 299
+static const int kFFXIZoneCount = 303; // entries 0 through 302
 
 namespace FFXIZone
 {
@@ -454,6 +458,9 @@ static const int kZG_Lore_The_Aradjiah_Continent_Ruins_of_Alzadaal[] = {
 static const int kZG_Lore_The_Aradjiah_Continent_West_Aht_Urhgan[] = {
     50, 48, 52, 71
 };
+static const int kZG_Lore_The_Aradjiah_Continent_Residential_Area[] = {
+    214
+};
 static const int kZG_Lore_The_Shadowreign_Era_The_Aragoneu_Front[] = {
     99, 164, 97, 98
 };
@@ -481,6 +488,9 @@ static const int kZG_Lore_The_Shadowreign_Era_The_Threshold[] = {
 static const int kZG_Lore_The_Shadowreign_Era_The_Valdeaunia_Front[] = {
     137, 138, 155, 156
 };
+static const int kZG_Lore_The_Shadowreign_Era_Residential_Area[] = {
+    189, 199, 219
+};
 static const int kZG_Lore_The_Ulbuka_Continent_The_Sacred_City_of_Adoulin[] = {
     257, 256, 284
 };
@@ -491,7 +501,7 @@ static const int kZG_Lore_The_Ulbuka_Continent_East_Ulbuka_Territory[] = {
     261, 270, 271, 272, 262, 267, 281, 269, 265, 266, 259, 268, 260, 273, 263
 };
 static const int kZG_Lore_The_Ulbuka_Continent_Ra_Kaznar[] = {
-    274, 276, 275, 264, 133, 189, 277, 282, 278, 299
+    274, 276, 275, 264, 133, 277, 282, 278, 299
 };
 static const int kZG_Lore_Other_Areas_Promyvion[] = {
     14, 18, 16, 20, 22, 19, 17, 21, 23
@@ -533,13 +543,10 @@ static const int kZG_Lore_Other_Areas_The_Threshold[] = {
     298, 279
 };
 static const int kZG_Lore_Internal_Unused[] = {
-    49, 199, 214, 286
+    49, 286
 };
 static const int kZG_Lore_Internal_GM[] = {
     210
-};
-static const int kZG_Lore_Internal_Residential_Area[] = {
-    219
 };
 
 static const FFXIZoneGroup kFFXIZoneGroups[] =
@@ -577,6 +584,7 @@ static const FFXIZoneGroup kFFXIZoneGroups[] =
     { "The Aradjiah Continent / Mamool Ja Savagelands", kZG_Lore_The_Aradjiah_Continent_Mamool_Ja_Savagelands, (int)(sizeof(kZG_Lore_The_Aradjiah_Continent_Mamool_Ja_Savagelands)/sizeof(kZG_Lore_The_Aradjiah_Continent_Mamool_Ja_Savagelands[0])) },
     { "The Aradjiah Continent / Ruins of Alzadaal", kZG_Lore_The_Aradjiah_Continent_Ruins_of_Alzadaal, (int)(sizeof(kZG_Lore_The_Aradjiah_Continent_Ruins_of_Alzadaal)/sizeof(kZG_Lore_The_Aradjiah_Continent_Ruins_of_Alzadaal[0])) },
     { "The Aradjiah Continent / West Aht Urhgan", kZG_Lore_The_Aradjiah_Continent_West_Aht_Urhgan, (int)(sizeof(kZG_Lore_The_Aradjiah_Continent_West_Aht_Urhgan)/sizeof(kZG_Lore_The_Aradjiah_Continent_West_Aht_Urhgan[0])) },
+    { "The Aradjiah Continent / Residential Area", kZG_Lore_The_Aradjiah_Continent_Residential_Area, (int)(sizeof(kZG_Lore_The_Aradjiah_Continent_Residential_Area)/sizeof(kZG_Lore_The_Aradjiah_Continent_Residential_Area[0])) },
     { "The Shadowreign Era / The Aragoneu Front", kZG_Lore_The_Shadowreign_Era_The_Aragoneu_Front, (int)(sizeof(kZG_Lore_The_Shadowreign_Era_The_Aragoneu_Front)/sizeof(kZG_Lore_The_Shadowreign_Era_The_Aragoneu_Front[0])) },
     { "The Shadowreign Era / The Derfland Front", kZG_Lore_The_Shadowreign_Era_The_Derfland_Front, (int)(sizeof(kZG_Lore_The_Shadowreign_Era_The_Derfland_Front)/sizeof(kZG_Lore_The_Shadowreign_Era_The_Derfland_Front[0])) },
     { "The Shadowreign Era / The Fauregandi Front", kZG_Lore_The_Shadowreign_Era_The_Fauregandi_Front, (int)(sizeof(kZG_Lore_The_Shadowreign_Era_The_Fauregandi_Front)/sizeof(kZG_Lore_The_Shadowreign_Era_The_Fauregandi_Front[0])) },
@@ -586,6 +594,7 @@ static const FFXIZoneGroup kFFXIZoneGroups[] =
     { "The Shadowreign Era / The Sarutabaruta Front", kZG_Lore_The_Shadowreign_Era_The_Sarutabaruta_Front, (int)(sizeof(kZG_Lore_The_Shadowreign_Era_The_Sarutabaruta_Front)/sizeof(kZG_Lore_The_Shadowreign_Era_The_Sarutabaruta_Front[0])) },
     { "The Shadowreign Era / The Threshold", kZG_Lore_The_Shadowreign_Era_The_Threshold, (int)(sizeof(kZG_Lore_The_Shadowreign_Era_The_Threshold)/sizeof(kZG_Lore_The_Shadowreign_Era_The_Threshold[0])) },
     { "The Shadowreign Era / The Valdeaunia Front", kZG_Lore_The_Shadowreign_Era_The_Valdeaunia_Front, (int)(sizeof(kZG_Lore_The_Shadowreign_Era_The_Valdeaunia_Front)/sizeof(kZG_Lore_The_Shadowreign_Era_The_Valdeaunia_Front[0])) },
+    { "The Shadowreign Era / Residential Area", kZG_Lore_The_Shadowreign_Era_Residential_Area, (int)(sizeof(kZG_Lore_The_Shadowreign_Era_Residential_Area)/sizeof(kZG_Lore_The_Shadowreign_Era_Residential_Area[0])) },
     { "The Ulbuka Continent / The Sacred City of Adoulin", kZG_Lore_The_Ulbuka_Continent_The_Sacred_City_of_Adoulin, (int)(sizeof(kZG_Lore_The_Ulbuka_Continent_The_Sacred_City_of_Adoulin)/sizeof(kZG_Lore_The_Ulbuka_Continent_The_Sacred_City_of_Adoulin[0])) },
     { "The Ulbuka Continent / The Adoulin Islands", kZG_Lore_The_Ulbuka_Continent_The_Adoulin_Islands, (int)(sizeof(kZG_Lore_The_Ulbuka_Continent_The_Adoulin_Islands)/sizeof(kZG_Lore_The_Ulbuka_Continent_The_Adoulin_Islands[0])) },
     { "The Ulbuka Continent / East Ulbuka Territory", kZG_Lore_The_Ulbuka_Continent_East_Ulbuka_Territory, (int)(sizeof(kZG_Lore_The_Ulbuka_Continent_East_Ulbuka_Territory)/sizeof(kZG_Lore_The_Ulbuka_Continent_East_Ulbuka_Territory[0])) },
@@ -605,6 +614,5 @@ static const FFXIZoneGroup kFFXIZoneGroups[] =
     { "Other Areas / The Threshold", kZG_Lore_Other_Areas_The_Threshold, (int)(sizeof(kZG_Lore_Other_Areas_The_Threshold)/sizeof(kZG_Lore_Other_Areas_The_Threshold[0])) },
     { "Internal / Unused", kZG_Lore_Internal_Unused, (int)(sizeof(kZG_Lore_Internal_Unused)/sizeof(kZG_Lore_Internal_Unused[0])) },
     { "Internal / GM", kZG_Lore_Internal_GM, (int)(sizeof(kZG_Lore_Internal_GM)/sizeof(kZG_Lore_Internal_GM[0])) },
-    { "Internal / Residential Area", kZG_Lore_Internal_Residential_Area, (int)(sizeof(kZG_Lore_Internal_Residential_Area)/sizeof(kZG_Lore_Internal_Residential_Area[0])) },
 };
 static const int kFFXIZoneGroupCount = (int)(sizeof(kFFXIZoneGroups)/sizeof(kFFXIZoneGroups[0]));

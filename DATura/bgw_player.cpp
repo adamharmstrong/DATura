@@ -1,8 +1,11 @@
 #include "stdafx.h"
+#include "ffxi_dat_resolver.h"
 #include "bgw_player.h"
 
 #include <mmsystem.h>
 #include <stdint.h>
+#include <ctype.h>
+#include <algorithm>
 #include <vector>
 
 #pragma comment(lib, "winmm.lib")
@@ -22,9 +25,14 @@ static uint32_t ReadU32LE(const std::vector<unsigned char>& data, size_t ofs)
            ((uint32_t)data[ofs + 3] << 24);
 }
 
+static int32_t ReadS32LE(const std::vector<unsigned char>& data, size_t ofs)
+{
+    return (int32_t)ReadU32LE(data, ofs);
+}
+
 static bool ReadWholeFile(const char* path, std::vector<unsigned char>& data)
 {
-    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE hFile = FFXIDatResolver::OpenRead(path);
     if (hFile == INVALID_HANDLE_VALUE)
         return false;
 
@@ -103,60 +111,147 @@ static void DecodePSADPCMFrame(const unsigned char* frame, int frameSize, int& h
     }
 }
 
-static bool DecodeBGWToWAV(const char* bgwPath, const char* wavPath)
+struct ParsedAudioHeader
 {
-    std::vector<unsigned char> bgw;
-    if (!ReadWholeFile(bgwPath, bgw) || bgw.size() < 0x30)
+    FFXIAudioInfo info;
+    uint32_t declaredSize = 0;
+    uint32_t dataOffset = 0;
+};
+
+static bool ParseAudioHeader(const std::vector<unsigned char>& source, uint64_t actualFileSize,
+                             ParsedAudioHeader& header)
+{
+    if (source.size() < 0x30)
         return false;
 
-    if (memcmp(bgw.data(), "BGMStream\0\0\0", 12) != 0)
+    const bool music = memcmp(source.data(), "BGMStream\0\0\0", 12) == 0;
+    const bool soundEffect = memcmp(source.data(), "SeWave\0\0", 8) == 0;
+    if (!music && !soundEffect)
         return false;
 
-    const uint32_t codec = ReadU32LE(bgw, 0x0c);
-    const uint32_t fileSize = ReadU32LE(bgw, 0x10);
-    const uint32_t blockSize = ReadU32LE(bgw, 0x18);
-    const uint32_t sampleRate = (ReadU32LE(bgw, 0x20) + ReadU32LE(bgw, 0x24)) & 0x7fffffff;
-    const uint32_t startOffset = ReadU32LE(bgw, 0x28);
-    const int channels = (int)bgw[0x2e];
-    const int blockAlign = (int)bgw[0x2f];
+    const size_t codecOffset = 0x0c;
+    const size_t sizeOffset = music ? 0x10 : 0x08;
+    const size_t idOffset = music ? 0x14 : 0x10;
+    const size_t sampleOffset = music ? 0x18 : 0x14;
+    const size_t loopOffset = music ? 0x1c : 0x18;
+    const size_t rateLowOffset = music ? 0x20 : 0x1c;
+    const size_t rateHighOffset = music ? 0x24 : 0x20;
+    const size_t dataOffset = music ? 0x28 : 0x24;
+    const size_t channelsOffset = music ? 0x2e : 0x2a;
+    const size_t blockSizeOffset = music ? 0x2f : 0x2b;
 
-    if (codec != 0 || fileSize != bgw.size() || sampleRate == 0 ||
-        channels <= 0 || channels > 2 || blockAlign <= 0 || startOffset >= bgw.size())
+    const int32_t codecValue = ReadS32LE(source, codecOffset);
+    header = {};
+    header.info.kind = music ? FFXIAudioKind::Music : FFXIAudioKind::SoundEffect;
+    if (codecValue == (int32_t)FFXIAudioCodec::ADPCM ||
+        codecValue == (int32_t)FFXIAudioCodec::PCM ||
+        codecValue == (int32_t)FFXIAudioCodec::ATRAC3)
+    {
+        header.info.codec = (FFXIAudioCodec)codecValue;
+    }
+    header.declaredSize = ReadU32LE(source, sizeOffset);
+    header.info.id = ReadS32LE(source, idOffset);
+    header.info.sampleBlocks = ReadU32LE(source, sampleOffset);
+    header.info.loopStart = ReadS32LE(source, loopOffset);
+    header.info.sampleRate = (ReadU32LE(source, rateLowOffset) +
+                              ReadU32LE(source, rateHighOffset)) & 0x7fffffff;
+    header.dataOffset = ReadU32LE(source, dataOffset);
+    header.info.channels = source[channelsOffset];
+    header.info.blockSize = source[blockSizeOffset];
+
+    if (header.declaredSize != actualFileSize || header.info.sampleRate == 0 ||
+        header.info.channels == 0 || header.info.channels > 2 ||
+        (header.info.codec == FFXIAudioCodec::ADPCM && header.info.blockSize == 0) ||
+        header.dataOffset < 0x30 ||
+        header.dataOffset >= actualFileSize)
     {
         return false;
     }
 
-    const int frameSize = (blockAlign / 2) + 1;
-    const int samplesPerFrame = (frameSize - 1) * 2;
-    const uint32_t targetSamples = blockSize * blockAlign;
-    if (frameSize <= 1 || samplesPerFrame <= 0 || targetSamples == 0)
+    if (header.info.codec == FFXIAudioCodec::ADPCM)
+    {
+        header.info.durationSeconds =
+            (double)header.info.sampleBlocks * header.info.blockSize / header.info.sampleRate;
+    }
+    else
+    {
+        header.info.durationSeconds =
+            (double)header.info.sampleBlocks / header.info.sampleRate;
+    }
+    return true;
+}
+
+static bool DecodeAudioToWAV(const char* sourcePath, const char* wavPath)
+{
+    std::vector<unsigned char> source;
+    if (!ReadWholeFile(sourcePath, source))
         return false;
 
+    ParsedAudioHeader header;
+    if (!ParseAudioHeader(source, source.size(), header))
+        return false;
+
+    const int channels = (int)header.info.channels;
+    const int blockSize = (int)header.info.blockSize;
+    const uint32_t sampleRate = header.info.sampleRate;
     std::vector<int16_t> pcm;
-    pcm.reserve((size_t)targetSamples * (size_t)channels);
 
-    int hist1[2] = {};
-    int hist2[2] = {};
-    size_t dataOfs = startOffset;
-    while (dataOfs + (size_t)frameSize * channels <= bgw.size() &&
-           pcm.size() < (size_t)targetSamples * (size_t)channels)
+    if (header.info.codec == FFXIAudioCodec::ADPCM)
     {
-        std::vector<int16_t> channelSamples[2];
-        for (int ch = 0; ch < channels; ++ch)
-        {
-            DecodePSADPCMFrame(&bgw[dataOfs + (size_t)frameSize * ch], frameSize,
-                               hist1[ch], hist2[ch], channelSamples[ch]);
-        }
+        const int frameSize = (blockSize / 2) + 1;
+        const int samplesPerFrame = (frameSize - 1) * 2;
+        const uint64_t targetSamples = (uint64_t)header.info.sampleBlocks * blockSize;
+        const uint64_t totalSamples = targetSamples * channels;
+        if (frameSize <= 1 || samplesPerFrame <= 0 || targetSamples == 0 ||
+            totalSamples > (UINT32_MAX - 36ull) / sizeof(int16_t))
+            return false;
 
-        for (int s = 0; s < samplesPerFrame && pcm.size() < (size_t)targetSamples * (size_t)channels; ++s)
+        const uint64_t requiredBytes =
+            (uint64_t)header.info.sampleBlocks * frameSize * channels;
+        if (requiredBytes > source.size() - header.dataOffset)
+            return false;
+        pcm.reserve((size_t)totalSamples);
+
+        int hist1[2] = {};
+        int hist2[2] = {};
+        size_t dataOfs = header.dataOffset;
+        while (dataOfs + (size_t)frameSize * channels <= source.size() &&
+               pcm.size() < (size_t)targetSamples * (size_t)channels)
         {
+            std::vector<int16_t> channelSamples[2];
             for (int ch = 0; ch < channels; ++ch)
             {
-                pcm.push_back(channelSamples[ch][s]);
+                DecodePSADPCMFrame(&source[dataOfs + (size_t)frameSize * ch], frameSize,
+                                   hist1[ch], hist2[ch], channelSamples[ch]);
             }
-        }
 
-        dataOfs += (size_t)frameSize * channels;
+            for (int s = 0;
+                 s < samplesPerFrame &&
+                 pcm.size() < (size_t)targetSamples * (size_t)channels;
+                 ++s)
+            {
+                for (int ch = 0; ch < channels; ++ch)
+                    pcm.push_back(channelSamples[ch][s]);
+            }
+
+            dataOfs += (size_t)frameSize * channels;
+        }
+    }
+    else if (header.info.codec == FFXIAudioCodec::PCM)
+    {
+        const uint64_t requestedBytes =
+            (uint64_t)header.info.sampleBlocks * channels * sizeof(int16_t);
+        const size_t availableBytes = source.size() - header.dataOffset;
+        if (requestedBytes > availableBytes || requestedBytes > UINT32_MAX - 36ull ||
+            requestedBytes < (size_t)channels * sizeof(int16_t))
+            return false;
+        const size_t pcmBytes = (size_t)requestedBytes;
+        pcm.resize(pcmBytes / sizeof(int16_t));
+        memcpy(pcm.data(), source.data() + header.dataOffset, pcm.size() * sizeof(int16_t));
+    }
+    else
+    {
+        return false;
     }
 
     if (pcm.empty())
@@ -203,22 +298,139 @@ static bool FindBGWPath(const char* ffxiRootPath, int musicId, char* outPath, DW
     return false;
 }
 
-static bool GetCachedWAVPath(int musicId, char* outPath, DWORD outPathSize)
+static uint64_t HashSourcePath(const char* path)
+{
+    uint64_t hash = 1469598103934665603ull;
+    for (const unsigned char* p = (const unsigned char*)path; p && *p; ++p)
+    {
+        hash ^= (uint64_t)tolower(*p);
+        hash *= 1099511628211ull;
+    }
+
+    WIN32_FILE_ATTRIBUTE_DATA attributes = {};
+    if (GetFileAttributesExA(path, GetFileExInfoStandard, &attributes))
+    {
+        const uint32_t values[] =
+        {
+            attributes.nFileSizeLow, attributes.nFileSizeHigh,
+            attributes.ftLastWriteTime.dwLowDateTime,
+            attributes.ftLastWriteTime.dwHighDateTime,
+        };
+        for (uint32_t value : values)
+        {
+            hash ^= value;
+            hash *= 1099511628211ull;
+        }
+    }
+    return hash;
+}
+
+static bool GetCachedWAVPath(const char* sourcePath, char* outPath, DWORD outPathSize)
 {
     char tempPath[MAX_PATH] = {};
     if (!GetTempPathA(sizeof(tempPath), tempPath))
         return false;
 
     char cacheDir[MAX_PATH] = {};
-    sprintf_s(cacheDir, "%sDATuraMusic", tempPath);
+    sprintf_s(cacheDir, "%sDATuraAudio", tempPath);
     CreateDirectoryA(cacheDir, nullptr);
-    sprintf_s(outPath, outPathSize, "%s\\music%03d.wav", cacheDir, musicId);
+    const auto resolved = FFXIDatResolver::Resolve(sourcePath);
+    const uint64_t hash = HashSourcePath(resolved.sourcePath.c_str());
+    sprintf_s(outPath, outPathSize, "%s\\%08X%08X.wav", cacheDir,
+              (uint32_t)(hash >> 32), (uint32_t)hash);
     return true;
+}
+
+bool FFXIAudio_ReadInfo(const char* path, FFXIAudioInfo* outInfo)
+{
+    if (!path || !path[0] || !outInfo)
+        return false;
+
+    HANDLE hFile = FFXIDatResolver::OpenRead(path);
+    if (hFile == INVALID_HANDLE_VALUE)
+        return false;
+
+    LARGE_INTEGER size = {};
+    std::vector<unsigned char> headerBytes(0x30);
+    DWORD bytesRead = 0;
+    const bool read = GetFileSizeEx(hFile, &size) && size.QuadPart >= 0x30 &&
+                      ReadFile(hFile, headerBytes.data(), (DWORD)headerBytes.size(),
+                               &bytesRead, nullptr) && bytesRead == headerBytes.size();
+    CloseHandle(hFile);
+    if (!read)
+        return false;
+
+    ParsedAudioHeader header;
+    if (!ParseAudioHeader(headerBytes, (uint64_t)size.QuadPart, header))
+        return false;
+    *outInfo = header.info;
+    return true;
+}
+
+const char* FFXIAudio_CodecName(FFXIAudioCodec codec)
+{
+    switch (codec)
+    {
+    case FFXIAudioCodec::ADPCM: return "ADPCM";
+    case FFXIAudioCodec::PCM: return "PCM";
+    case FFXIAudioCodec::ATRAC3: return "ATRAC3";
+    default: return "Unknown";
+    }
 }
 
 void BGM_Stop()
 {
     PlaySoundA(nullptr, nullptr, 0);
+}
+
+bool FFXIAudio_PlayFile(const char* path, bool loop)
+{
+    char wavPath[MAX_PATH] = {};
+    if (!FFXIAudio_PrepareFile(path, wavPath, sizeof(wavPath)))
+        return false;
+    return FFXIAudio_PlayPreparedFile(wavPath, loop);
+}
+
+bool FFXIAudio_PrepareFile(const char* path, char* outWavPath, size_t outWavPathSize)
+{
+    if (!path || !path[0] || !outWavPath || outWavPathSize == 0 ||
+        outWavPathSize > MAXDWORD)
+        return false;
+
+    if (!GetCachedWAVPath(path, outWavPath, (DWORD)outWavPathSize))
+        return false;
+
+    if (GetFileAttributesA(outWavPath) == INVALID_FILE_ATTRIBUTES)
+    {
+        char temporaryPath[MAX_PATH] = {};
+        sprintf_s(temporaryPath, "%s.%08X.%08X.tmp", outWavPath,
+                  GetCurrentProcessId(), GetCurrentThreadId());
+        if (!DecodeAudioToWAV(path, temporaryPath))
+        {
+            DeleteFileA(temporaryPath);
+            return false;
+        }
+        if (!MoveFileExA(temporaryPath, outWavPath,
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            DeleteFileA(temporaryPath);
+            if (GetFileAttributesA(outWavPath) == INVALID_FILE_ATTRIBUTES)
+                return false;
+        }
+    }
+    return true;
+}
+
+bool FFXIAudio_PlayPreparedFile(const char* wavPath, bool loop)
+{
+    BGM_Stop();
+    if (!wavPath || !wavPath[0])
+        return false;
+
+    DWORD flags = SND_FILENAME | SND_ASYNC | SND_NODEFAULT;
+    if (loop)
+        flags |= SND_LOOP;
+    return PlaySoundA(wavPath, nullptr, flags) != FALSE;
 }
 
 bool BGM_PlayZoneMusic(const char* ffxiRootPath, int musicId)
@@ -232,16 +444,5 @@ bool BGM_PlayZoneMusic(const char* ffxiRootPath, int musicId)
     if (!FindBGWPath(ffxiRootPath, musicId, bgwPath, sizeof(bgwPath)))
         return false;
 
-    char wavPath[MAX_PATH] = {};
-    if (!GetCachedWAVPath(musicId, wavPath, sizeof(wavPath)))
-        return false;
-
-    if (GetFileAttributesA(wavPath) == INVALID_FILE_ATTRIBUTES)
-    {
-        if (!DecodeBGWToWAV(bgwPath, wavPath))
-            return false;
-    }
-
-    return PlaySoundA(wavPath, nullptr, SND_FILENAME | SND_ASYNC | SND_LOOP | SND_NODEFAULT) != FALSE;
+    return FFXIAudio_PlayFile(bgwPath, true);
 }
-

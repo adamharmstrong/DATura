@@ -1,0 +1,738 @@
+[
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 32,
+    "name": "font    moji    ",
+    "width": 1024,
+    "height": 2048,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2106784,
+    "name": "font    font    ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2125408,
+    "name": "menu    menufont",
+    "width": 256,
+    "height": 256,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2256672,
+    "name": "menu    mn3font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2343072,
+    "name": "menu    mn5font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2359552,
+    "name": "menu    mn6font ",
+    "width": 256,
+    "height": 256,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2468768,
+    "name": "other   dg_font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2477056,
+    "name": "menu    mn7font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2493536,
+    "name": "menu    mn8font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2510016,
+    "name": "menu    mn9font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2526496,
+    "name": "menu    mn10font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2562528,
+    "name": "font    elwater ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2562880,
+    "name": "font    elwind  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2563232,
+    "name": "font    elearth ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2563584,
+    "name": "font    elice   ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2563936,
+    "name": "font    elholy  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2564288,
+    "name": "font    elfire  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2564640,
+    "name": "font    elthunde",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2564992,
+    "name": "font    eldark  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2574720,
+    "name": "menu    mn11font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/1.DAT",
+    "offset": 2594560,
+    "name": "menu    mn12font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/0/2.DAT",
+    "offset": 250464,
+    "name": "menu    lbfontp ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 32,
+    "name": "font    moji    ",
+    "width": 1024,
+    "height": 2048,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2106784,
+    "name": "font    font    ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2238912,
+    "name": "other   dg_font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2275040,
+    "name": "font    elwater ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2275392,
+    "name": "font    elwind  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2275744,
+    "name": "font    elearth ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2276096,
+    "name": "font    elice   ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2276448,
+    "name": "font    elholy  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2276800,
+    "name": "font    elfire  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2277152,
+    "name": "font    elthunde",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2277504,
+    "name": "font    eldark  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/118/111.DAT",
+    "offset": 2414080,
+    "name": "menu    mn10font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 32,
+    "name": "font    moji    ",
+    "width": 1024,
+    "height": 2048,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2156800,
+    "name": "other   dg_font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2184640,
+    "name": "font    font    ",
+    "width": 256,
+    "height": 256,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2315904,
+    "name": "font    elwater ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2316256,
+    "name": "font    elwind  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2316608,
+    "name": "font    eldark  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2316960,
+    "name": "font    elice   ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2317312,
+    "name": "font    elholy  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2317664,
+    "name": "font    elfire  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2318016,
+    "name": "font    elearth ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2318368,
+    "name": "font    elthunde",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/119/51.DAT",
+    "offset": 2528864,
+    "name": "menu    mn10font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 32,
+    "name": "font    moji    ",
+    "width": 1024,
+    "height": 2048,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2156800,
+    "name": "other   dg_font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2184640,
+    "name": "font    font    ",
+    "width": 256,
+    "height": 256,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2315904,
+    "name": "font    elwater ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2316256,
+    "name": "font    elwind  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2316608,
+    "name": "font    eldark  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2316960,
+    "name": "font    elice   ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2317312,
+    "name": "font    elholy  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2317664,
+    "name": "font    elfire  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2318016,
+    "name": "font    elearth ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2318368,
+    "name": "font    elthunde",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/176/75.DAT",
+    "offset": 2520928,
+    "name": "menu    mn10font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 32,
+    "name": "font    moji    ",
+    "width": 1024,
+    "height": 2048,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2156800,
+    "name": "other   dg_font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2184640,
+    "name": "font    font    ",
+    "width": 256,
+    "height": 256,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2315904,
+    "name": "font    elwater ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2316256,
+    "name": "font    elwind  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2316608,
+    "name": "font    eldark  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2316960,
+    "name": "font    elice   ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2317312,
+    "name": "font    elholy  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2317664,
+    "name": "font    elfire  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2318016,
+    "name": "font    elearth ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2318368,
+    "name": "font    elthunde",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/178/14.DAT",
+    "offset": 2520928,
+    "name": "menu    mn10font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 32,
+    "name": "font    moji    ",
+    "width": 1024,
+    "height": 2048,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2156800,
+    "name": "other   dg_font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2184640,
+    "name": "menu    mn8font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2201120,
+    "name": "menu    mn7font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2217600,
+    "name": "menu    mn6font ",
+    "width": 256,
+    "height": 256,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2283232,
+    "name": "menu    mn5font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2299712,
+    "name": "menu    mn3font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2316192,
+    "name": "menu    menufont",
+    "width": 256,
+    "height": 256,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2513088,
+    "name": "menu    mn9font ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2529568,
+    "name": "menu    mn10font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2546048,
+    "name": "font    elwater ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2546400,
+    "name": "font    elwind  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2546752,
+    "name": "font    eldark  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2547104,
+    "name": "font    elice   ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2547456,
+    "name": "font    elholy  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2547808,
+    "name": "font    elfire  ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2548160,
+    "name": "font    elearth ",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2548512,
+    "name": "font    elthunde",
+    "width": 16,
+    "height": 16,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2549952,
+    "name": "menu    mn11font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2569792,
+    "name": "menu    mn12font",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/15.DAT",
+    "offset": 2586880,
+    "name": "font    font    ",
+    "width": 256,
+    "height": 256,
+    "type": 161
+  },
+  {
+    "path": "ROM/91/16.DAT",
+    "offset": 1242912,
+    "name": "menu    lbfontw ",
+    "width": 128,
+    "height": 128,
+    "type": 161
+  }
+]

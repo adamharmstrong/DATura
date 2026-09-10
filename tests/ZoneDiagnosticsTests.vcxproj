@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{EE49878D-5593-4357-8CBD-E1F7CA69B582}</ProjectGuid>
+    <RootNamespace>ZoneDiagnosticsTests</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)bin\zone-diagnostics\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\zone-diagnostics\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\DATura;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>comdlg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="zone_diagnostics_tests.cpp" />
+    <ClCompile Include="..\DATura\zone_coverage.cpp" />
+    <ClCompile Include="..\DATura\zone_scene_diagnostics.cpp" />
+    <ClCompile Include="..\DATura\zone_environment_identity.cpp" />
+    <ClCompile Include="..\DATura\zone_object_transform.cpp" />
+    <ClCompile Include="..\DATura\zone_model_transform.cpp" />
+    <ClCompile Include="..\DATura\zone_collision_geometry.cpp" />
+    <ClCompile Include="..\DATura\zone_room_loader.cpp" />
+    <ClCompile Include="..\DATura\model_ff11.cpp" />
+    <ClCompile Include="..\DATura\noesis_rapi.cpp" />
+    <ClCompile Include="..\DATura\ffxi_file_io.cpp" />
+    <ClCompile Include="..\DATura\d3d_model_buffers.cpp" />
+    <ClCompile Include="..\DATura\npc_placement.cpp" />
+    <ClCompile Include="..\DATura\d3d_math.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

@@ -56,7 +56,7 @@ def decrypt_object_map(buf):
         pos += xor_len
 
     node_count = u24le(out, 4)
-    node_stride = 96
+    node_stride = 100
     max_nodes = max(0, (len(out) - 32) // node_stride)
     for i in range(min(node_count, max_nodes)):
         off = 32 + i * node_stride
@@ -173,6 +173,7 @@ def iter_mapgeo_segments(payload):
                 index_count, flags2 = struct.unpack_from("<HH", payload, draw_off)
                 draw_off += 4
                 index_data_off = draw_off
+                indices = list(struct.unpack_from(f"<{index_count}H", payload, index_data_off)) if index_count else []
                 draw_off += index_count * 2
                 draw_off = (draw_off + 3) & ~3
 
@@ -183,6 +184,8 @@ def iter_mapgeo_segments(payload):
                 xs = []
                 ys = []
                 zs = []
+                radial = []
+                elevations = []
                 clr_off = 36 if vert_stride == 48 else 24
                 uv_off = 40 if vert_stride == 48 else 28
                 for vi in range(vert_count):
@@ -195,10 +198,90 @@ def iter_mapgeo_segments(payload):
                     xs.append(x)
                     ys.append(y)
                     zs.append(z)
+                    horizontal_radius = math.hypot(x, z)
+                    radial.append(horizontal_radius)
+                    # MapGeo weather caps use FFXI's native Y-down coordinates,
+                    # so negative Y is physical elevation above the horizon.
+                    elevations.append(math.degrees(math.atan2(-y, horizontal_radius)))
                     us.append(u)
                     vs.append(v)
                     colors.append(tuple(color))
                     alphas.append(color[3])
+
+                triangle_count = 0
+                local_valid_triangle_count = 0
+                max_triangle_edge = 0.0
+                coincident_uv_seam_count = 0
+                coincident_uv_seam_samples = []
+                coincident_vertices = {}
+                for vertex_index, position in enumerate(zip(xs, ys, zs)):
+                    position_key = tuple(round(component, 5) for component in position)
+                    coincident_vertices.setdefault(position_key, []).append(vertex_index)
+                for position_key, vertex_indices in coincident_vertices.items():
+                    uv_values = {(round(us[index], 6), round(vs[index], 6)) for index in vertex_indices}
+                    if len(uv_values) <= 1:
+                        continue
+                    coincident_uv_seam_count += 1
+                    if len(coincident_uv_seam_samples) < 8:
+                        coincident_uv_seam_samples.append((position_key, vertex_indices, sorted(uv_values)))
+                u_wrap_triangle_count = 0
+                max_triangle_u_span = 0.0
+                u_wrap_samples = []
+                v_wrap_triangle_count = 0
+                max_triangle_v_span = 0.0
+                v_wrap_samples = []
+                geometric_triangles = {}
+                geometric_edges = {}
+                triangle_offsets = range(0, max(0, index_count - 2), 3) if sub_flag == 0 else range(max(0, index_count - 2))
+                for triangle_offset in triangle_offsets:
+                    tri = indices[triangle_offset:triangle_offset + 3]
+                    if len(tri) < 3 or len(set(tri)) < 3 or max(tri) >= len(xs):
+                        continue
+                    triangle_count += 1
+                    triangle_us = [us[index] for index in tri]
+                    triangle_u_span = max(triangle_us) - min(triangle_us)
+                    max_triangle_u_span = max(max_triangle_u_span, triangle_u_span)
+                    if triangle_u_span > 0.5:
+                        u_wrap_triangle_count += 1
+                        if len(u_wrap_samples) < 8:
+                            u_wrap_samples.append((triangle_offset, tri, triangle_us))
+                    triangle_vs = [vs[index] for index in tri]
+                    triangle_v_span = max(triangle_vs) - min(triangle_vs)
+                    max_triangle_v_span = max(max_triangle_v_span, triangle_v_span)
+                    if triangle_v_span > 0.5:
+                        v_wrap_triangle_count += 1
+                        if len(v_wrap_samples) < 8:
+                            v_wrap_samples.append((triangle_offset, tri, triangle_vs))
+                    edge_lengths = []
+                    for edge in range(3):
+                        a = tri[edge]
+                        b = tri[(edge + 1) % 3]
+                        edge_lengths.append(math.sqrt(
+                            (xs[a] - xs[b]) ** 2 +
+                            (ys[a] - ys[b]) ** 2 +
+                            (zs[a] - zs[b]) ** 2
+                        ))
+                    triangle_max_edge = max(edge_lengths)
+                    max_triangle_edge = max(max_triangle_edge, triangle_max_edge)
+                    if triangle_max_edge <= 80.0:
+                        local_valid_triangle_count += 1
+                    position_keys = [
+                        tuple(round(component, 5) for component in (xs[index], ys[index], zs[index]))
+                        for index in tri
+                    ]
+                    triangle_key = tuple(sorted(position_keys))
+                    geometric_triangles.setdefault(triangle_key, []).append(triangle_offset)
+                    for edge in range(3):
+                        edge_key = tuple(sorted((position_keys[edge], position_keys[(edge + 1) % 3])))
+                        geometric_edges[edge_key] = geometric_edges.get(edge_key, 0) + 1
+
+                duplicate_geometric_triangles = {
+                    triangle: offsets for triangle, offsets in geometric_triangles.items()
+                    if len(offsets) > 1
+                }
+                boundary_geometric_edges = [
+                    edge for edge, count in geometric_edges.items() if count == 1
+                ]
 
                 yield {
                     "object_name": object_name,
@@ -229,6 +312,29 @@ def iter_mapgeo_segments(payload):
                         max(ys) if ys else None,
                         max(zs) if zs else None,
                     ),
+                    "radial_bounds": (
+                        min(radial) if radial else None,
+                        max(radial) if radial else None,
+                    ),
+                    "elevation_bounds": (
+                        min(elevations) if elevations else None,
+                        max(elevations) if elevations else None,
+                    ),
+                    "triangle_count": triangle_count,
+                    "local_valid_triangle_count": local_valid_triangle_count,
+                    "max_triangle_edge": max_triangle_edge,
+                    "coincident_uv_seam_count": coincident_uv_seam_count,
+                    "coincident_uv_seam_samples": coincident_uv_seam_samples,
+                    "u_wrap_triangle_count": u_wrap_triangle_count,
+                    "max_triangle_u_span": max_triangle_u_span,
+                    "u_wrap_samples": u_wrap_samples,
+                    "v_wrap_triangle_count": v_wrap_triangle_count,
+                    "max_triangle_v_span": max_triangle_v_span,
+                    "v_wrap_samples": v_wrap_samples,
+                    "duplicate_geometric_triangle_count": len(duplicate_geometric_triangles),
+                    "duplicate_geometric_triangle_samples": list(duplicate_geometric_triangles.items())[:8],
+                    "boundary_geometric_edge_count": len(boundary_geometric_edges),
+                    "boundary_geometric_edge_samples": boundary_geometric_edges[:8],
                 }
             super_index += 1
 
@@ -481,7 +587,13 @@ def main():
             "chunk_offset", "chunk_size", "object_name", "super_index", "sub_index",
             "material", "sub_flag", "vert_stride", "vert_count", "index_count",
 			"blend_flags", "flags2", "alpha_min", "alpha_max", "alpha_unique",
-			"color_samples", "uv_bounds", "bounds",
+			"color_samples", "uv_bounds", "bounds", "radial_bounds", "elevation_bounds",
+			"triangle_count", "local_valid_triangle_count", "max_triangle_edge",
+			"coincident_uv_seam_count", "coincident_uv_seam_samples",
+			"u_wrap_triangle_count", "max_triangle_u_span", "u_wrap_samples",
+			"v_wrap_triangle_count", "max_triangle_v_span", "v_wrap_samples",
+			"duplicate_geometric_triangle_count", "duplicate_geometric_triangle_samples",
+			"boundary_geometric_edge_count", "boundary_geometric_edge_samples",
 		]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()

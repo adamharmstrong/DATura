@@ -1,1497 +1,26 @@
-//Displaying model_ff11.cpp
-
-/*========================================================================================
- Noesis FF11 support
- Life regrettably wasted by Rich Whitehouse
- (c) Never, all rights to be taken to the grave.
-========================================================================================*/
-
-#include stdafx.h
-#include model_ff11.h
-#include model_ff11_decrypt.h
-
-//========================================================================================
-
-templatetypename T
-static const T get_and_incr_offset(const unsigned char pBuffer, int &bufferOfs, const int count = 1)
-{
-	const T pCmd = (const T )(pBuffer + bufferOfs);
-	bufferOfs += sizeof(T)  count;
-	return pCmd;
-}
-
-static void align_offset(int &bufferOfs, const int alignment)
-{
-	//assumes power of 2
-	const int alignmentMinusOne = alignment - 1;
-	bufferOfs = ((bufferOfs + alignmentMinusOne) & ~alignmentMinusOne);
-}
-
-//========================================================================================
-
-class CFFXITextureHandler  public CFFXIChunkHandler
-{
-public
-	static const int skTexNameLength = 16;
-	static const int skMaterialNamePad = 32;
-	static const char skpShinySuffix;
-	static const char skpSoftBlendSuffix;
-	static const char skpNoBlendSuffix;
-
-	struct STexHeader
-	{
-		unsigned char mType;
-		char mName[skTexNameLength];
-		unsigned int mVer; maybe
-		int mWidth;
-		int mHeight;
-		unsigned int mUnknown[6];
-		unsigned int mBitsPerPalClr; //unverified - kind of seems more like bits per pixel  4, since i've only seen 16 for dxt1.
-	};
-
-	CFFXITextureHandler()
-		 CFFXIChunkHandler(CFFXIDatskChunkType_Texture)
-		, mFlatNormalIndex(-1)
-		, mFlatSpecIndex(-1)
-	{
-	}
-
-	static const int skDefaultColorFixShift = 0;
-	static const int skDefaultAlphaFixShift = 2;
-
-	static const int skTextureVersion = 40;
-	//texture type is probably only the high 4 bits, but 1 always seems to be set
-	static const int skTextureType_DXT = 0xA1;
-	static const int skTextureType_Pal = 0x91;
-	static const int skTextureType_Pal2 = 0x01; //unsure how this is different from skTextureType_Pal
-	static const int skTextureType_PalCombo = 0x81; //paletted followed by dxt
-	static const int skTextureType_PalLeadingInt = 0xB1; //preceded by 32 bits, unknown
-
-	virtual CFFXIDatEValidateChunkResult ValidateChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-															const unsigned char pChunkData, const int dataSize) const
-	{
-		if (dataSize = sizeof(STexHeader))
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		const STexHeader pTexHdr = (const STexHeader )pChunkData;
-		if (pTexHdr-mWidth = 0  pTexHdr-mWidth  4096 
-			pTexHdr-mHeight = 0  pTexHdr-mHeight  4096 
-			pTexHdr-mVer != skTextureVersion 
-			unknown, but seems to be consistent
-			pTexHdr-mUnknown[0] == 0 
-			pTexHdr-mUnknown[1] != 0  pTexHdr-mUnknown[2] != 0  pTexHdr-mUnknown[3] != 0 
-			pTexHdr-mUnknown[4] != 0  pTexHdr-mUnknown[5] != 0)
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		else if (pTexHdr-mType != skTextureType_DXT && pTexHdr-mType != skTextureType_Pal && pTexHdr-mType != skTextureType_Pal2 &&
-				pTexHdr-mType != skTextureType_PalCombo && pTexHdr-mType != skTextureType_PalLeadingInt)
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-
-		return CFFXIDatkVCR_Supported;
-	}
-
-	static unsigned char CreateRgbaFromPaletted(noeRAPI_t pRapi, const unsigned char pRawPalData, const unsigned char pPixelData,
-													const int width, const int height, const int bitsPerColor)
-	{
-		//unverified - can bpc be 16 in this context, and if so, does it mean 16-color 8888 or 256-color 5551
-		const int palSize = 256  (bitsPerColor  8);
-		unsigned int pPalData = (unsigned int )pRapi-Noesis_ImageDecodeRaw(const_castunsigned char (pRawPalData), palSize, 256, 1,
-			(bitsPerColor == 32)  b8g8r8a8  b5g5r5a1);
-		unsigned int pDst = (unsigned int )pRapi-Noesis_UnpooledAlloc(width  height  4);
-		for (int y = 0; y  height; ++y)
-		{
-			for (int x = 0; x  width; ++x)
-			{
-				const int palIndex = pPixelData[(height - y - 1)  width + x];
-				pDst[y  width + x] = pPalData[palIndex];
-			}
-		}
-		pRapi-Noesis_UnpooledFree(pPalData);
-
-		return (unsigned char )pDst;
-	}
-
-	static void ShiftRgbaData(unsigned char pTexData, const int width, const int height, const int texColorShift, const int texAlphaShift)
-	{
-		for (int pixelIndex = 0; pixelIndex  width  height; ++pixelIndex)
-		{
-			unsigned char pPix = pTexData + pixelIndex  4;
-			if (texColorShift)
-			{
-				pPix[0] = stdminint((int)pPix[0]  texColorShift, 255);
-				pPix[1] = stdminint((int)pPix[1]  texColorShift, 255);
-				pPix[2] = stdminint((int)pPix[2]  texColorShift, 255);
-			}
-			if (texAlphaShift)
-			{
-				pPix[3] = stdminint((int)pPix[3]  texAlphaShift, 255);
-			}
-		}
-	}
-
-	virtual bool HandleChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-								const unsigned char pChunkData, const int dataSize)
-	{
-		//dxt's generally don't appear to have been encoded from a higher-bit-depth source, so paletted always provides better quality.
-		const bool preferDxtToPalette = false;
-		const int texColorShift = (gpFF11Opts && gpFF11Opts-explicitColorShift)  gpFF11Opts-fixColorShift  skDefaultColorFixShift;
-		const int texAlphaShift = (gpFF11Opts && gpFF11Opts-explicitAlphaShift)  gpFF11Opts-fixAlphaShift  skDefaultAlphaFixShift;
-		const bool fixAlphaOrColor = (texColorShift  texAlphaShift);
-
-		const STexHeader pTexHdr = (const STexHeader )pChunkData;
-
-		bool copyFromSource = false;
-		unsigned char pSrcData = (unsigned char )(pTexHdr + 1);
-		int srcDataSize = dataSize - sizeof(STexHeader);
-		unsigned char pTexData = NULL;
-		int texDataSize = 0;
-		noesisTexType_e texType = NOESISTEX_UNKNOWN;
-		noeRAPI_t pRapi = dat.GetRAPI();
-
-		const int palSize = 256  (pTexHdr-mBitsPerPalClr  8);
-
-		switch (pTexHdr-mType)
-		{
-		case skTextureType_PalCombo
-			if (!preferDxtToPalette)
-			{
-				goto PickPalOverDXT; ))((
-			}
-			else
-			{
-				push is up and prefer to take the dxt version
-				const int palTextureSize = palSize + pTexHdr-mWidth  pTexHdr-mHeight;
-				pSrcData += palTextureSize;
-				srcDataSize -= palTextureSize;
-			}
-			fall through intentionally in the else case
-		case skTextureType_DXT
-			{
-				const int dxtType = (const int )pSrcData;
-				switch (dxtType)
-				{
-				case 'DXT1'
-					texType = NOESISTEX_DXT1;
-					break;
-				case 'DXT3'
-					texType = NOESISTEX_DXT3;
-					break;
-				case 'DXT5'
-					texType = NOESISTEX_DXT5;
-					break;
-				default
-					break;
-				}
-				if (texType != NOESISTEX_UNKNOWN)
-				{
-					if (fixAlphaOrColor)
-					{
-						//it wouldn't be too much work to just shift the 4-bit alphas in the dxt3 blocks, but, fuck it.
-						pTexData = pRapi-Noesis_ConvertDXT(pTexHdr-mWidth, pTexHdr-mHeight, const_castunsigned char (pSrcData) + 12, texType);
-						ShiftRgbaData(pTexData, pTexHdr-mWidth, pTexHdr-mHeight, texColorShift, texAlphaShift);
-						texType = NOESISTEX_RGBA32;
-					}
-					else
-					{
-						copyFromSource = true;
-						pTexData = const_castunsigned char (pSrcData) + 12;
-						texDataSize = srcDataSize - 12;
-					}
-				}
-				else
-				{
-					pRapi-LogOutput(WARNING Unknown DXT texture type.n);
-				}
-			}
-			break;
-
-		case skTextureType_PalLeadingInt
-			not sure what this is used for
-			pSrcData += sizeof(int);
-			srcDataSize -= sizeof(int);
-			intentionally fall through
-		case skTextureType_Pal
-		case skTextureType_Pal2
-		PickPalOverDXT ~~~~C====((__)
-			pTexData = CreateRgbaFromPaletted(pRapi, pSrcData, pSrcData + palSize, pTexHdr-mWidth, pTexHdr-mHeight, pTexHdr-mBitsPerPalClr);
-			if (fixAlphaOrColor)
-			{
-				ShiftRgbaData(pTexData, pTexHdr-mWidth, pTexHdr-mHeight, texColorShift, texAlphaShift);
-			}
-			texDataSize = pTexHdr-mWidth  pTexHdr-mHeight  4;
-			texType = NOESISTEX_RGBA32;
-			break;
-		}
-
-		if (!pTexData)
-		{
-			just use a stub if something went wrong
-			texDataSize = pTexHdr-mWidth  pTexHdr-mHeight  4;
-			pTexData = (unsigned char )pRapi-Noesis_UnpooledAlloc(texDataSize);
-			memset(pTexData, 0, texDataSize);
-			texType = NOESISTEX_RGBA32;
-		}
-		else if (copyFromSource)
-		{
-			NoeAssert(texDataSize  0);
-			const unsigned char pSourceData = pTexData;
-			pTexData = (unsigned char )pRapi-Noesis_UnpooledAlloc(texDataSize);
-			memcpy(pTexData, pSourceData, texDataSize);
-		}
-
-		char texName[skTexNameLength + skMaterialNamePad];
-		memcpy(texName, pTexHdr-mName, skTexNameLength);
-		texName[skTexNameLength] = 0;
-
-		//allocate flat normal and spec texture in case we haven't yet, used for shiny material
-		if (mFlatNormalIndex == -1 && (!gpFF11Opts  !gpFF11Opts-noShinyMaterials))
-		{
-			NoeAssert(mFlatSpecIndex == -1);
-			unsigned char pFlatNormalData = (unsigned char )pRapi-Noesis_UnpooledAlloc(4  4  4);
-			for (int pixelIndex = 0; pixelIndex  4  4; ++pixelIndex)
-			{
-				unsigned char pPixel = pFlatNormalData + pixelIndex  4;
-				pPixel[0] = 127;
-				pPixel[1] = 127;
-				pPixel[2] = 255;
-				pPixel[3] = 255;
-			}
-			noesisTex_t pFlatNormalTex = pRapi-Noesis_TextureAlloc(__flat_normal, 4, 4, pFlatNormalData, NOESISTEX_RGBA32);
-			mFlatNormalIndex = mTextures.Num();
-			pFlatNormalTex-shouldFreeData = true;
-			mTextures.Append(pFlatNormalTex);
-
-			unsigned char pFlatSpecData = (unsigned char )pRapi-Noesis_UnpooledAlloc(4  4  4);
-			memset(pFlatSpecData, 0xFF, 4  4  4);
-			noesisTex_t pFlatSpecTex = pRapi-Noesis_TextureAlloc(__flat_spec, 4, 4, pFlatSpecData, NOESISTEX_RGBA32);
-			mFlatSpecIndex = mTextures.Num();
-			pFlatSpecTex-shouldFreeData = true;
-			mTextures.Append(pFlatSpecTex);
-		}
-
-		noesisTex_t pTex = pRapi-Noesis_TextureAllocEx(texName, pTexHdr-mWidth, pTexHdr-mHeight, pTexData, texDataSize, texType, 0, 0);
-		pTex-shouldFreeData = true;
-
-		const int defaultMtlFlags = (gpFF11Opts && gpFF11Opts-forceCull)  0  NMATFLAG_TWOSIDED;
-
-		noesisMaterial_t pMat = pRapi-Noesis_GetMaterialList(1, true);
-		pMat-name = pRapi-Noesis_PooledString(texName);
-		pMat-texIdx = mTextures.Num();
-		pMat-flags = defaultMtlFlags;
-		//don't alpha blend by default, but do alpha test
-		pMat-noDefaultBlend = true;
-		pMat-alphaTest = 0.5f;
-
-		char mtlVariantName[skTexNameLength + skMaterialNamePad];
-
-		//add a material variant for shiny stuff
-		if (mFlatNormalIndex = 0 && mFlatSpecIndex = 0)
-		{
-			noesisMaterial_t pMatShiny = pRapi-Noesis_GetMaterialList(1, true);
-			sprintf_s(mtlVariantName, %s%s, texName, skpShinySuffix);
-			pMatShiny-name = pRapi-Noesis_PooledString(mtlVariantName);
-			pMatShiny-texIdx = mTextures.Num();
-			pMatShiny-flags = defaultMtlFlags;
-			pMatShiny-noDefaultBlend = true;
-			pMatShiny-alphaTest = 0.5f;
-			pMatShiny-normalTexIdx = mFlatNormalIndex;
-			pMatShiny-specularTexIdx = mFlatSpecIndex;
-			pMatShiny-specular[0] = 0.5f;
-			pMatShiny-specular[1] = 0.5f;
-			pMatShiny-specular[2] = 0.5f;
-			pMatShiny-specular[3] = 64.0f;
-			mMaterials.Append(pMatShiny);
-		}
-
-		//add soft blend and no blend variants
-		noesisMaterial_t pMatSoftBlend = pRapi-Noesis_GetMaterialList(1, true);
-		sprintf_s(mtlVariantName, %s%s, texName, skpSoftBlendSuffix);
-		pMatSoftBlend-name = pRapi-Noesis_PooledString(mtlVariantName);
-		pMatSoftBlend-texIdx = mTextures.Num();
-		pMatSoftBlend-flags = defaultMtlFlags;
-		pMatSoftBlend-noDefaultBlend = false;
-		mMaterials.Append(pMatSoftBlend);
-		noesisMaterial_t pMatNoBlend = pRapi-Noesis_GetMaterialList(1, true);
-		sprintf_s(mtlVariantName, %s%s, texName, skpNoBlendSuffix);
-		pMatNoBlend-name = pRapi-Noesis_PooledString(mtlVariantName);
-		pMatNoBlend-texIdx = mTextures.Num();
-		pMatNoBlend-flags = defaultMtlFlags;
-		pMatNoBlend-noDefaultBlend = true;
-		mMaterials.Append(pMatNoBlend);
-
-		mTextures.Append(pTex);
-		mMaterials.Append(pMat);
-
-		return true;
-	}
-
-	CArrayListnoesisTex_t  &Textures() { return mTextures; }
-	CArrayListnoesisMaterial_t  &Materials() { return mMaterials; }
-
-protected
-	CArrayListnoesisTex_t  mTextures;
-	CArrayListnoesisMaterial_t  mMaterials;
-	int mFlatNormalIndex;
-	int mFlatSpecIndex;
-};
-
-const char CFFXITextureHandlerskpShinySuffix = _explicitshiny;
-const char CFFXITextureHandlerskpSoftBlendSuffix = _explicitsoftblend;
-const char CFFXITextureHandlerskpNoBlendSuffix = _explicitnoblend;
-
-========================================================================================
-
-class CFFXISkelHandler  public CFFXIChunkHandler
-{
-public
-	struct SSkelHeader
-	{
-		short mUnknown;
-		short mBoneCount;
-	};
-
-	struct SSkelBone
-	{
-		unsigned char mParentIndex;
-		unsigned char mUnknown;
-		RichQuat mQuat;
-		RichVec3 mTran;
-	};
-
-	struct SInterpretedSkel
-	{
-		explicit SInterpretedSkel(modelBone_t pBones, const int boneCount)
-			 mpBones(pBones)
-			, mBoneCount(boneCount)
-		{
-		}
-
-		modelBone_t mpBones;
-		int mBoneCount;
-	};
-	typedef stdvectorSInterpretedSkel TSInterpretedSkelList;
-
-	CFFXISkelHandler()
-		 CFFXIChunkHandler(CFFXIDatskChunkType_Skeleton)
-	{
-	}
-
-	virtual CFFXIDatEValidateChunkResult ValidateChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-															const unsigned char pChunkData, const int dataSize) const
-	{
-		if (dataSize = sizeof(SSkelHeader))
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		const SSkelHeader pSkelHdr = (const SSkelHeader )pChunkData;
-		if (pSkelHdr-mBoneCount = 0)
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		const int expectedBoneEndOfs = sizeof(SSkelHeader) + sizeof(SSkelBone)  pSkelHdr-mBoneCount;
-		if (expectedBoneEndOfs = 0  expectedBoneEndOfs  dataSize)
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		return CFFXIDatkVCR_Supported;
-	}
-
-	virtual bool HandleChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-								const unsigned char pChunkData, const int dataSize)
-	{
-		const SSkelHeader pSkelHdr = (const SSkelHeader )pChunkData;
-		const SSkelBone pSkelBones = (const SSkelBone )(pSkelHdr + 1);
-		
-		noeRAPI_t pRapi = dat.GetRAPI();
-		modelBone_t pBones = pRapi-Noesis_AllocBones(pSkelHdr-mBoneCount);
-
-		for (int boneIndex = 0; boneIndex  pSkelHdr-mBoneCount; ++boneIndex)
-		{
-			const SSkelBone pSkelBone = pSkelBones + boneIndex;
-			modelBone_t pBone = pBones + boneIndex;
-			RichMat43 &boneMat = (RichMat43 &)pBone-mat;
-
-			pBone-index = boneIndex;
-			sprintf_s(pBone-name, bone%04i, boneIndex);
-			boneMat = pSkelBone-mQuat.ToMat43(true);
-			boneMat[3] = pSkelBone-mTran;
-			pBone-eData.parent = (pSkelBone-mParentIndex != boneIndex)  pBones + pSkelBone-mParentIndex  NULL;
-		}
-
-		pRapi-rpgMultiplyBones(pBones, pSkelHdr-mBoneCount);
-
-		mSkeletons.push_back(SInterpretedSkel(pBones, pSkelHdr-mBoneCount));
-
-		return true;
-	}
-
-	TSInterpretedSkelList &Skeletons() { return mSkeletons; }
-
-protected
-	TSInterpretedSkelList mSkeletons;
-};
-
-//========================================================================================
-
-class CFFXIAnimHandler  public CFFXIChunkHandler
-{
-public
-	struct SAnimHeader
-	{
-		unsigned short mUnknown;
-		unsigned short mElemCount;
-		unsigned short mFrameCount;
-		float mSpeedScale; factor with desired frame interval
-	};
-
-	//each animation element may reference up to 10 channels, 1 for each component of each transform element
-	struct SAnimElemHeader
-	{
-		int mBoneIndex;
-		int mQuatIndex[4];
-		RichQuat mQuatBase;
-		int mTranIndex[3];
-		RichVec3 mTranBase;
-		int mScaleIndex[3];
-		RichVec3 mScaleBase;
-	};
-
-	struct SAnimHeaderData
-	{
-		explicit SAnimHeaderData(const SAnimHeader pAnimHdr, const int animDataSize, const char pName)
-			 mpAnimHdr(pAnimHdr)
-			, mAnimDataSize(animDataSize)
-		{
-			memcpy(mName, pName, 4);
-			mName[4] = 0;
-		}
-
-		const SAnimHeader mpAnimHdr;
-		int mAnimDataSize;
-		char mName[8];
-	};
-	typedef stdvectorSAnimHeaderData TAnimHeaderList;
-
-	CFFXIAnimHandler()
-		 CFFXIChunkHandler(CFFXIDatskChunkType_Animation)
-	{
-	}
-
-	virtual CFFXIDatEValidateChunkResult ValidateChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-															const unsigned char pChunkData, const int dataSize) const
-	{
-		if (dataSize = sizeof(SAnimHeader))
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		const SAnimHeader pAnimHdr = (const SAnimHeader )pChunkData;
-		const int expectedElemEndOfs = sizeof(SAnimHeader) + sizeof(SAnimElemHeader)  pAnimHdr-mElemCount;
-		if (expectedElemEndOfs = 0  expectedElemEndOfs  dataSize)
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		could potentially validate elem offsets if we really care
-		const float pData = (const float )(pAnimHdr + 1);
-		const SAnimElemHeader pElemHdr = (const SAnimElemHeader )pData;
-		return CFFXIDatkVCR_Supported;
-	}
-
-	virtual bool HandleChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-								const unsigned char pChunkData, const int dataSize)
-	{
-		const SAnimHeader pAnimHdr = (const SAnimHeader )pChunkData;
-		mAnimHeaderList.push_back(SAnimHeaderData(pAnimHdr, dataSize, chunk.mName));
-		return true;
-	}
-
-	noesisAnim_t ConstructAnimations(noeRAPI_t pRapi, const CFFXISkelHandlerSInterpretedSkel pSkel) const
-	{
-		CArrayListnoesisAnim_t  anims;
-
-		for (TAnimHeaderListconst_iterator it = mAnimHeaderList.begin(); it != mAnimHeaderList.end(); ++it)
-		{
-			const SAnimHeaderData &animHeaderData = it;
-			const SAnimHeader pAnimHdr = animHeaderData.mpAnimHdr;
-			if (pAnimHdr-mFrameCount  0 && pAnimHdr-mElemCount  0)
-			{
-				const int transformCount = pSkel-mBoneCount  pAnimHdr-mFrameCount;
-				create a parent-relative base frame from the skeleton
-				RichMat43 pBaseMats = (RichMat43 )pRapi-Noesis_UnpooledAlloc(sizeof(RichMat43)  pSkel-mBoneCount);
-				for (int boneIndex = 0; boneIndex  pSkel-mBoneCount; ++boneIndex)
-				{
-					const modelBone_t pBone = pSkel-mpBones + boneIndex;
-					const RichMat43 &boneMat = (const RichMat43 &)pBone-mat;
-					if (!pBone-eData.parent)
-					{
-						pBaseMats[boneIndex] = boneMat;
-					}
-					else
-					{
-						const RichMat43 &parentBoneMat = (const RichMat43 &)pBone-eData.parent-mat;
-						pBaseMats[boneIndex] = boneMat  parentBoneMat.GetInverse();
-					}
-				}
-
-				//initialize the anim frames with the default pose
-				RichMat43 pMats = (RichMat43 )pRapi-Noesis_UnpooledAlloc(sizeof(RichMat43)  transformCount);
-				for (int frameIndex = 0; frameIndex  pAnimHdr-mFrameCount; ++frameIndex)
-				{
-					memcpy(pMats + frameIndex  pSkel-mBoneCount, pBaseMats, sizeof(RichMat43)  pSkel-mBoneCount);
-				}
-
-				//now modify the transforms
-				const SAnimElemHeader pElems = (const SAnimElemHeader )(pAnimHdr + 1);
-				const float pAnimData = (const float )pElems;
-				RichQuat frameQ;
-				RichVec3 frameT;
-				RichVec3 frameS;
-				for (int elemIndex = 0; elemIndex  pAnimHdr-mElemCount; ++elemIndex)
-				{
-					const SAnimElemHeader pElem = pElems + elemIndex;
-					if (pElem-mBoneIndex  0  pElem-mBoneIndex = pSkel-mBoneCount)
-					{
-						pRapi-LogOutput(WARNING Out of range animation element! (index %i, but only %i bones)n,
-							pElem-mBoneIndex, pSkel-mBoneCount);
-						continue;
-					}
-
-					for (int frameIndex = 0; frameIndex  pAnimHdr-mFrameCount; ++frameIndex)
-					{
-						RichMat43 pFrameMats = pMats + pSkel-mBoneCount  frameIndex;
-						RichMat43 &mat = pFrameMats[pElem-mBoneIndex];
-						if (pElem-mQuatIndex[0]  0  pElem-mQuatIndex[1]  0  pElem-mQuatIndex[2]  0  pElem-mQuatIndex[3]  0)
-						{
-							no change
-							mat = pBaseMats[pElem-mBoneIndex];
-						}
-						else
-						{
-							frameQ[0] = (pElem-mQuatIndex[0]  0)  pAnimData[pElem-mQuatIndex[0] + frameIndex]  pElem-mQuatBase[0];
-							frameQ[1] = (pElem-mQuatIndex[1]  0)  pAnimData[pElem-mQuatIndex[1] + frameIndex]  pElem-mQuatBase[1];
-							frameQ[2] = (pElem-mQuatIndex[2]  0)  pAnimData[pElem-mQuatIndex[2] + frameIndex]  pElem-mQuatBase[2];
-							frameQ[3] = (pElem-mQuatIndex[3]  0)  pAnimData[pElem-mQuatIndex[3] + frameIndex]  pElem-mQuatBase[3];
-							frameT[0] = (pElem-mTranIndex[0]  0)  pAnimData[pElem-mTranIndex[0] + frameIndex]  pElem-mTranBase[0];
-							frameT[1] = (pElem-mTranIndex[1]  0)  pAnimData[pElem-mTranIndex[1] + frameIndex]  pElem-mTranBase[1];
-							frameT[2] = (pElem-mTranIndex[2]  0)  pAnimData[pElem-mTranIndex[2] + frameIndex]  pElem-mTranBase[2];
-							frameS[0] = (pElem-mScaleIndex[0]  0)  pAnimData[pElem-mScaleIndex[0] + frameIndex]  pElem-mScaleBase[0];
-							frameS[1] = (pElem-mScaleIndex[1]  0)  pAnimData[pElem-mScaleIndex[1] + frameIndex]  pElem-mScaleBase[1];
-							frameS[2] = (pElem-mScaleIndex[2]  0)  pAnimData[pElem-mScaleIndex[2] + frameIndex]  pElem-mScaleBase[2];
-
-							const RichVec3 &centerPoint = pBaseMats[pElem-mBoneIndex][3];
-							re-assign, just in case something went wrong with multiple elements referencing a single bone
-							mat = pBaseMats[pElem-mBoneIndex];
-							mat.TransformQST(&centerPoint, &frameQ, &frameS, &centerPoint, &frameQ, &frameT);
-						}
-					}
-				}
-
-				noesisAnim_t pAnim = pRapi-rpgAnimFromBonesAndMatsFinish(pSkel-mpBones, pSkel-mBoneCount, (modelMatrix_t )pMats,
-																			pAnimHdr-mFrameCount, pAnimHdr-mSpeedScale  30.0f);
-				pRapi-Noesis_UnpooledFree(pBaseMats);
-				pRapi-Noesis_UnpooledFree(pMats);
-				if (pAnim)
-				{
-					pAnim-filename = pRapi-Noesis_PooledString(const_castchar (animHeaderData.mName));
-					pAnim-flags = NANIMFLAG_FILENAMETOSEQ;
-					anims.Append(pAnim);
-				}
-			}
-		}
-
-		return (anims.Num()  0)  pRapi-Noesis_AnimFromAnimsList(anims, anims.Num())  NULL;
-	}
-
-	bool AnimDataIsPresent() const { return mAnimHeaderList.size()  0; }
-
-protected
-	TAnimHeaderList mAnimHeaderList;
-};
-
-//========================================================================================
-
-class CFFXIGeoHandler  public CFFXIChunkHandler
-{
-public
-	struct SGeoHeader
-	{
-		//most offsetssizes are in quantity of shorts
-		short mUnknown1;
-		unsigned short mVertAndBoneRefFlag;
-		unsigned short mMirror;
-
-		int mDrawDataOfs;
-		unsigned short mDrawDataSize;
-
-		int mBoneRefOfs;
-		unsigned short mBoneRefCount;
-
-		//weird setup - offset to short-sized counts
-		int mWeightedVertCountOfs;
-		unsigned short mMaxWeightsPerVertex;
-
-		//each data entry contains 2 bone indices and mirror type (see SGeoWeightData)
-		int mWeightDataOfs;
-		unsigned short mWeightDataCount;
-
-		int mVertOfs;
-		unsigned short mVertDataSize;
-
-		int mUnknown2Ofs; usually offset to end
-		unsigned short mUnknown3;
-		unsigned short mUnknown4;
-		unsigned short mUnknown5;
-
-		int mUnknown6Ofs; usually offset to end
-		unsigned short mUnknown7;
-
-		int mUnknown8;
-		int mUnknown9;
-		unsigned short mUnknown10;
-		unsigned short mUnknown11;
-	};
-
-	struct SGeoDrawState
-	{
-		SGeoDrawState()
-		{
-			mEnableShinyMat = false;
-			mMaterialName[0] = 0;
-		}
-
-		bool mEnableShinyMat;
-		char mMaterialName[CFFXITextureHandlerskTexNameLength + 1];
-	};
-
-	struct SGeoTriPrim
-	{
-		unsigned short mIndices[3];
-		RichVec2 mUVs[3];
-	};
-
-	struct SGeoStripPrim
-	{
-		unsigned short mIndex;
-		RichVec2 mUV;
-	};
-
-	struct SGeoWeightData
-	{
-		unsigned short mBoneIndexPass0  7; unmirrored index
-		unsigned short mBoneIndexPass1  7; mirrored index
-		unsigned short mMirrorAxis  2; only relevant for mirror pass
-	};
-
-	struct SGeoNativeDrawState
-	{
-		unsigned char mColor[4]; just a guess, alpha seems to frequently switch between 0 and 128
-		float mUnknown1[2];
-		unsigned int mUnknown3;
-		float mUnknown4[4];
-		unsigned int mUnknown5;
-		float mSpecular[2];
-	};
-
-	struct SGeoHeaderData
-	{
-		explicit SGeoHeaderData(const SGeoHeader pGeoHdr, const int geoDataSize, const char pName)
-			 mpGeoHdr(pGeoHdr)
-			, mGeoDataSize(geoDataSize)
-		{
-			memcpy(mName, pName, 4);
-			mName[4] = 0;
-		}
-
-		const SGeoHeader mpGeoHdr;
-		int mGeoDataSize;
-		char mName[8];
-	};
-	typedef stdvectorSGeoHeaderData TGeoHeaderList;
-
-	static const int skVertFlag_NoNormals = 0x7F; //if any of these bits are set, seems to indicate lack of normals. not sure what else this means.
-	static const int skVertFlag_UseBoneRefs = 0x80;
-
-	static const int skDrawCmd_SetMaterial = 0x8000;
-	static const int skDrawCmd_TriList = 0x0054;
-	static const int skDrawCmd_TriStrip = 0x5453;
-	static const int skDrawCmd_DrawState = 0x8010;
-	static const int skDrawCmd_Unknown2 = 0x4353;
-	static const int skDrawCmd_Unknown3 = 0x0043;
-	static const int skDrawCmd_End = 0xFFFF;
-
-	static const int skTriCWIdx[3];
-	static const int skTriCCWIdx[3];
-	static const RichMat44 skMirrorTransforms[3];
-
-	CFFXIGeoHandler()
-		 CFFXIChunkHandler(CFFXIDatskChunkType_Geo)
-	{
-	}
-
-	virtual CFFXIDatEValidateChunkResult ValidateChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-															const unsigned char pChunkData, const int dataSize) const
-	{
-		if (dataSize = sizeof(SGeoHeader))
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		const SGeoHeader pGeoHdr = (const SGeoHeader )pChunkData;
-		if (pGeoHdr-mDrawDataOfs = 0  (pGeoHdr-mDrawDataOfs  2) = dataSize 
-			pGeoHdr-mVertOfs = 0  (pGeoHdr-mVertOfs  2) = dataSize 
-			(pGeoHdr-mBoneRefOfs  2) = dataSize 
-			(pGeoHdr-mWeightedVertCountOfs  2) = dataSize 
-			(pGeoHdr-mWeightDataOfs  2) = dataSize 
-			pGeoHdr-mDrawDataSize == 0  pGeoHdr-mVertDataSize == 0)
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		else if (pGeoHdr-mWeightedVertCountOfs  0 && pGeoHdr-mMaxWeightsPerVertex != 2)
-		{
-			/*  seems to always be in this form, even though the format would allow for
-                more varying amounts of weights per vert if interpreted that way.*/
-			return CFFXIDatkVCR_Invalid;
-		}
-		return CFFXIDatkVCR_Supported;
-	}
-
-	virtual bool HandleChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-								const unsigned char pChunkData, const int dataSize)
-	{
-		const SGeoHeader pGeoHdr = (const SGeoHeader )pChunkData;
-		mGeoHeaderList.push_back(SGeoHeaderData(pGeoHdr, dataSize, chunk.mName));
-		return true;
-	}
-
-	void RenderGeoData(noeRAPI_t pRapi, const CFFXISkelHandlerSInterpretedSkel pSkel) const
-	{
-		for (TGeoHeaderListconst_iterator it = mGeoHeaderList.begin(); it != mGeoHeaderList.end(); ++it)
-		{
-			const SGeoHeaderData &geoHeaderData = it;
-			const SGeoHeader pGeoHdr = geoHeaderData.mpGeoHdr;
-			const unsigned short pSData = (const unsigned short )pGeoHdr;
-
-			pRapi-rpgSetName(const_castchar (geoHeaderData.mName));
-
-			SGeoDrawState drawState;
-
-			const unsigned char pDrawCommands = (const unsigned char )(pSData + pGeoHdr-mDrawDataOfs);
-			const int drawCommandEndOfs = (pGeoHdr-mDrawDataSize  1);
-			const int drawCommandLastCommandOfs = drawCommandEndOfs - sizeof(unsigned short);
-			const int passCount = (pGeoHdr-mMirror)  2  1;
-			for (int passIndex = 0; passIndex  passCount; ++passIndex)
-			{
-				const bool isMirroring = (passIndex  0);
-				int drawCommandOfs = 0;
-				while (drawCommandOfs = drawCommandLastCommandOfs)
-				{
-					const unsigned short cmdType = get_and_incr_offsetunsigned short(pDrawCommands, drawCommandOfs);
-					switch (cmdType)
-					{
-					case skDrawCmd_DrawState
-						{
-							//draw state isn't mapped out. might have 2-sided and blending bits in here.
-							const SGeoNativeDrawState pNativeState = get_and_incr_offsetSGeoNativeDrawState(pDrawCommands, drawCommandOfs);
-							//might be something like exponent and scale
-							drawState.mEnableShinyMat = (pNativeState-mSpecular[0]  128.0f  pNativeState-mSpecular[1] != 0.0f);
-							UpdateDrawState(pRapi, drawState);
-						}
-						break;
-
-					case skDrawCmd_SetMaterial
-						{
-							const char pMatNameData = get_and_incr_offsetchar(pDrawCommands, drawCommandOfs, CFFXITextureHandlerskTexNameLength);
-							memcpy(drawState.mMaterialName, pMatNameData, CFFXITextureHandlerskTexNameLength);
-							drawState.mMaterialName[CFFXITextureHandlerskTexNameLength] = 0;
-
-							UpdateDrawState(pRapi, drawState);
-						}
-						break;
-
-					case skDrawCmd_TriList
-						{
-							const unsigned short primCount = get_and_incr_offsetunsigned short(pDrawCommands, drawCommandOfs);
-							const int primDataSize = sizeof(SGeoTriPrim)  primCount;
-							const SGeoTriPrim pTris = get_and_incr_offsetSGeoTriPrim(pDrawCommands, drawCommandOfs, primCount);
-
-							pRapi-rpgBegin(RPGEO_TRIANGLE);
-
-							const int pTriWindIdx = (isMirroring)  skTriCCWIdx  skTriCWIdx;
-							for (int triIdx = 0; triIdx  primCount; ++triIdx)
-							{
-								const SGeoTriPrim pTri = pTris + triIdx;
-								for (int triVertIdx = 0; triVertIdx  3; ++triVertIdx)
-								{
-									const int windIdx = pTriWindIdx[triVertIdx];
-									really need to fix the fucking constness on these functions one of these days.
-									pRapi-rpgVertUV2f(const_castfloat (pTri-mUVs[windIdx].v), 0);
-									PlotVertex(pRapi, pTri-mIndices[windIdx], isMirroring, pGeoHdr, pSkel);
-								}
-							}
-
-							pRapi-rpgEnd();
-						}
-						break;
-
-					case skDrawCmd_TriStrip
-						{
-							const unsigned short primCount = get_and_incr_offsetunsigned short(pDrawCommands, drawCommandOfs);
-							const int stripVertCount = primCount - 1;
-							const SGeoTriPrim pFirstTri = get_and_incr_offsetSGeoTriPrim(pDrawCommands, drawCommandOfs);
-							const SGeoStripPrim pStripVerts = get_and_incr_offsetSGeoStripPrim(pDrawCommands, drawCommandOfs, stripVertCount);
-
-							const rpgeoPrimType_e stripType = (isMirroring)  RPGEO_TRIANGLE_STRIP_FLIPPED  RPGEO_TRIANGLE_STRIP;
-							pRapi-rpgBegin(stripType);
-
-							for (int triVertIdx = 0; triVertIdx  3; ++triVertIdx)
-							{
-								pRapi-rpgVertUV2f(const_castfloat (pFirstTri-mUVs[triVertIdx].v), 0);
-								PlotVertex(pRapi, pFirstTri-mIndices[triVertIdx], isMirroring, pGeoHdr, pSkel);
-							}
-							for (int stripIdx = 0; stripIdx  stripVertCount; ++stripIdx)
-							{
-								const SGeoStripPrim pStripVert = pStripVerts + stripIdx;
-								pRapi-rpgVertUV2f(const_castfloat (pStripVert-mUV.v), 0);
-								PlotVertex(pRapi, pStripVert-mIndex, isMirroring, pGeoHdr, pSkel);
-							}
-
-							pRapi-rpgEnd();
-						}
-						break;
-
-					case skDrawCmd_Unknown2
-						{
-							const unsigned short primCount = get_and_incr_offsetunsigned short(pDrawCommands, drawCommandOfs);
-							get_and_incr_offsetunsigned char(pDrawCommands, drawCommandOfs, 8);
-							get_and_incr_offsetunsigned short(pDrawCommands, drawCommandOfs, primCount);
-						}
-						break;
-
-					case skDrawCmd_Unknown3
-						{
-							const unsigned short primCount = get_and_incr_offsetunsigned short(pDrawCommands, drawCommandOfs);
-							get_and_incr_offsetunsigned char(pDrawCommands, drawCommandOfs, primCount  10);
-						}
-						break;
-
-					default
-						{
-							NoeAssert(cmdType == skDrawCmd_End);
-							drawCommandOfs = drawCommandEndOfs;
-						}
-						break;
-					}
-				}
-			}
-		}
-
-		if (pSkel)
-		{
-			pRapi-rpgSetExData_Bones(pSkel-mpBones, pSkel-mBoneCount);
-		}
-	}
-
-	bool GeoDataIsPresent() const { return mGeoHeaderList.size()  0; }
-
-protected
-	static void PlotVertex(noeRAPI_t pRapi, const int index, const bool isMirroring,
-							const SGeoHeader pGeoHdr, const CFFXISkelHandlerSInterpretedSkel pSkel)
-	{
-		const unsigned short pSData = (const unsigned short )pGeoHdr;
-		const bool isSkinned = (pSkel && pGeoHdr-mWeightedVertCountOfs  0 && pGeoHdr-mWeightDataOfs  0);
-		const bool noNormals = (pGeoHdr-mVertAndBoneRefFlag & skVertFlag_NoNormals) != 0;
-		int oneWeightVertCount;
-		if (pGeoHdr-mWeightedVertCountOfs  0)
-		{
-			const unsigned short pWeightedCounts = pSData + pGeoHdr-mWeightedVertCountOfs;
-			oneWeightVertCount = pWeightedCounts[0];
-		}
-		else
-		{
-			consider every vert single-weight
-			oneWeightVertCount = 0x10000;
-		}
-
-		const int weightCount = (index  oneWeightVertCount)  1  2;
-		const int oneWeightVertSize = (noNormals)  sizeof(float)  3  sizeof(float)  6;
-		const int twoWeightVertSize = oneWeightVertSize  2 + sizeof(float)  2;
-		const int oneWeightVertElemCount = (oneWeightVertSize  2);
-		const int twoWeightVertElemCount = (twoWeightVertSize  2);
-
-		const int firstTwoWeightElemIndex = oneWeightVertCount  oneWeightVertElemCount;
-
-		const float pVertElems = (const float )(pSData + pGeoHdr-mVertOfs);
-		const float pVertData = (weightCount == 1)  pVertElems + index  oneWeightVertElemCount 
-									pVertElems + firstTwoWeightElemIndex + (index - oneWeightVertCount)  twoWeightVertElemCount;
-		const float pNrmVertData = (noNormals)  NULL  pVertData + 3  weightCount + ((weightCount  1)  weightCount  0);
-		
-		interleaved elements for each weight, pretty nasty.
-		if (!isSkinned)
-		{
-			pRapi-rpgVertBoneIndexI(NULL, 0);
-			pRapi-rpgVertBoneWeightF(NULL, 0);
-			if (pNrmVertData)
-			{
-				const RichVec3 nrm(pNrmVertData[0  weightCount], pNrmVertData[1  weightCount], pNrmVertData[2  weightCount]);
-				pRapi-rpgVertNormal3f(const_castfloat (nrm.v));
-			}
-			else
-			{
-				pRapi-rpgVertNormal3f(NULL);
-			}
-			const RichVec3 pos(pVertData[0  weightCount], pVertData[1  weightCount], pVertData[2  weightCount]);
-			pRapi-rpgVertex3f(const_castfloat (pos.v));
-		}
-		else
-		{
-			const unsigned short pBoneRefs = ((pGeoHdr-mVertAndBoneRefFlag & skVertFlag_UseBoneRefs) && pGeoHdr-mBoneRefOfs  0) 
-												pSData + pGeoHdr-mBoneRefOfs  NULL;
-
-			static const float skDefaultWeights[2] = { 1.0f, 0.0f };
-			const SGeoWeightData pWeightDatas = (const SGeoWeightData )(pSData + pGeoHdr-mWeightDataOfs) + index  2;
-			int boneIndices[2] = { 0, 0 };
-			RichMat44 skinMats[2]; we pull the matrices out, as we may end up needing to modify them for mirroring anyway. could be optimized.
-			for (int weightIndex = 0; weightIndex  weightCount; ++weightIndex)
-			{
-				const SGeoWeightData pWeightData = pWeightDatas + weightIndex;
-				int &boneIndex = boneIndices[weightIndex];
-				boneIndex = (isMirroring)  pWeightData-mBoneIndexPass1  pWeightData-mBoneIndexPass0;
-				NoeAssert(!pBoneRefs  boneIndex  pGeoHdr-mBoneRefCount);
-				if (pBoneRefs && boneIndex  pGeoHdr-mBoneRefCount)
-				{
-					boneIndex = pBoneRefs[boneIndex];
-				}
-				NoeAssert(boneIndex = 0 && boneIndex  pSkel-mBoneCount);
-				skinMats[weightIndex] = ((RichMat43 )&pSkel-mpBones[boneIndex].mat)-ToMat44();
-				if (isMirroring && pWeightData-mMirrorAxis)
-				{
-					skinMats[weightIndex] = skMirrorTransforms[pWeightData-mMirrorAxis - 1]  skinMats[weightIndex];
-				}
-			}
-			const float pWeightValues = (weightCount  1)  pVertData + 3  weightCount  skDefaultWeights;
-			feed 2 weights to Noesis in order to keep consistent per-triangle. Noesis doesn't require this, but this allows the draws between
-			1 and 2 weight segments to not be partitioned.
-			pRapi-rpgVertBoneIndexI(const_castint (boneIndices), 2);
-			pRapi-rpgVertBoneWeightF(const_castfloat (pWeightValues), 2);
-
-			now that we've pulled the weights out and fed them in, we need to put our verts in model space.
-			RichVec4 transformedPos;
-			RichVec3 transformedNrm;
-			for (int weightIndex = 0; weightIndex  weightCount; ++weightIndex)
-			{
-				const RichMat44 &skinMat = skinMats[weightIndex];
-				const RichVec4 pos(
-					pVertData[weightIndex + 0  weightCount],
-					pVertData[weightIndex + 1  weightCount],
-					pVertData[weightIndex + 2  weightCount],
-					this is certainly one of the most terrible ways you can possibly do weighted transforms. we're effectively weighting the
-					matrix translation with each transform. this is why the per-weight positions are needed. so, rather than having to actually
-					weight each translation, we can just stuff the weight into the w for our 4x4 transform.
-					pWeightValues[weightIndex]
-				);
-
-				transformedPos += skinMat.TransformVec4(pos);
-
-				if (pNrmVertData)
-				{
-					const RichVec3 nrm(
-						pNrmVertData[weightIndex + 0  weightCount],
-						pNrmVertData[weightIndex + 1  weightCount],
-						pNrmVertData[weightIndex + 2  weightCount]
-					);
-					this is inconsistent with the position transform, but appears to be in line with the game itself.
-					transformedNrm += skinMat.TransformNormal(nrm)  pWeightValues[weightIndex];
-				}
-			}
-
-			if (pNrmVertData)
-			{
-				transformedNrm.Normalize();
-				pRapi-rpgVertNormal3f(transformedNrm.v);
-			}
-			else
-			{
-				pRapi-rpgVertNormal3f(NULL);
-			}
-			pRapi-rpgVertex3f(transformedPos.v);
-		}
-	}
-
-	static void UpdateDrawState(noeRAPI_t pRapi, SGeoDrawState &drawState)
-	{
-		if (drawState.mEnableShinyMat && (!gpFF11Opts  !gpFF11Opts-noShinyMaterials))
-		{
-			char materialName[CFFXITextureHandlerskTexNameLength + CFFXITextureHandlerskMaterialNamePad];
-			sprintf_s(materialName, %s%s, drawState.mMaterialName, CFFXITextureHandlerskpShinySuffix);
-			pRapi-rpgSetMaterial(materialName);
-		}
-		else
-		{
-			pRapi-rpgSetMaterial(drawState.mMaterialName);
-		}
-	}
-
-	TGeoHeaderList mGeoHeaderList;
-};
-
-const RichMat44 CFFXIGeoHandlerskMirrorTransforms[3] =
-{
-	RichMat44(
-		-RichVec4(g_identityMatrix4x4.c1),
-		 RichVec4(g_identityMatrix4x4.c2),
-		 RichVec4(g_identityMatrix4x4.c3),
-		 RichVec4(g_identityMatrix4x4.c4)
-	),
-	RichMat44(
-		 RichVec4(g_identityMatrix4x4.c1),
-		-RichVec4(g_identityMatrix4x4.c2),
-		 RichVec4(g_identityMatrix4x4.c3),
-		 RichVec4(g_identityMatrix4x4.c4)
-	),
-	RichMat44(
-		 RichVec4(g_identityMatrix4x4.c1),
-		 RichVec4(g_identityMatrix4x4.c2),
-		-RichVec4(g_identityMatrix4x4.c3),
-		 RichVec4(g_identityMatrix4x4.c4)
-	)
-};
-
-const int CFFXIGeoHandlerskTriCWIdx[3] = { 0, 1, 2 };
-
-const int CFFXIGeoHandlerskTriCCWIdx[3] = { 2, 1, 0 };
-
-========================================================================================
-
-class CFFXIMapHandler  public CFFXIChunkHandler
-{
-public
-	struct SMapHeader
-	{
-		unsigned char mHeaderData[4];
-		unsigned int mObjectCount  24;
-		unsigned int mUnknown1  8;
-		unsigned int mUnknown2[6];
-	};
-
-	static const int skObjectNameLength = 16;
-	struct SMapObject
-	{
-		char mObjectName[skObjectNameLength];
-		
-		RichVec3 mTrans;
-		float mRawAngles[3];
-		RichVec3 mScale;
-
-		RichVec4 mVec;
-		int mData2[8];
-	};
-
-	struct SInterpretedMapObject
-	{
-		explicit SInterpretedMapObject(const SMapObject pMapObject)
-		{
-			mTransform = RichAngles(pMapObject-mRawAngles, true).ToMat43_XYZ();
-			mTransform[3] = pMapObject-mTrans;
-			mTransform[0][0] = pMapObject-mScale[0];
-			mTransform[1][0] = pMapObject-mScale[0];
-			mTransform[2][0] = pMapObject-mScale[0];
-			mTransform[0][1] = pMapObject-mScale[1];
-			mTransform[1][1] = pMapObject-mScale[1];
-			mTransform[2][1] = pMapObject-mScale[1];
-			mTransform[0][2] = pMapObject-mScale[2];
-			mTransform[1][2] = pMapObject-mScale[2];
-			mTransform[2][2] = pMapObject-mScale[2];
-			mBackwardWinding = (pMapObject-mScale[0]  pMapObject-mScale[1]  pMapObject-mScale[2])  0.0f;
-			memcpy(mObjectName, pMapObject-mObjectName, skObjectNameLength);
-			mObjectFlags[0] = pMapObject-mData2[0];
-			mObjectFlags[1] = pMapObject-mData2[4];
-			mVec = pMapObject-mVec;
-		};
-
-		char mObjectName[skObjectNameLength];
-
-		RichMat43 mTransform;
-		bool mBackwardWinding;
-
-		unsigned int mObjectFlags[2];
-		RichVec4 mVec;
-	};
-	typedef stdvectorSInterpretedMapObject TMapObjectList;
-
-	CFFXIMapHandler()
-		 CFFXIChunkHandler(CFFXIDatskChunkType_Map)
-	{
-	}
-
-	virtual CFFXIDatEValidateChunkResult ValidateChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-															const unsigned char pChunkData, const int dataSize) const
-	{
-		if (dataSize  16)
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		else if (pChunkData[3]  0x1B)
-		{
-			if (((unsigned int )pChunkData & 0xFFFFFF) != 0x00425a4d) MZB
-			{
-				return CFFXIDatkVCR_Invalid;
-			}
-		}
-		else
-		{
-			const int dataLen = (((const unsigned int )pChunkData) & 0xFFFFFF);
-			if (dataLen  dataSize 
-				(dataLen + 16)  dataSize)
-			{
-				return CFFXIDatkVCR_Invalid;
-			}
-		}
-		return CFFXIDatkVCR_Supported;
-	}
-
-	virtual bool HandleChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-								const unsigned char pChunkData, const int dataSize)
-	{
-		noeRAPI_t pRapi = dat.GetRAPI();
-		unsigned char pDecrypted = (unsigned char )pRapi-Noesis_UnpooledAlloc(dataSize);
-		memcpy(pDecrypted, pChunkData, dataSize);
-		Model_FF11_DecryptMZB(pDecrypted, dataSize);
-
-		const SMapHeader pMapHdr = (const SMapHeader )pDecrypted;
-		const SMapObject pMapObjects = (const SMapObject )(pMapHdr + 1);
-
-		mMapObjects.reserve(mMapObjects.size() + pMapHdr-mObjectCount);
-		for (unsigned int objectIndex = 0; objectIndex  pMapHdr-mObjectCount; ++objectIndex)
-		{
-			const SMapObject pMapObject = pMapObjects + objectIndex;
-			mMapObjects.push_back(SInterpretedMapObject(pMapObject));
-		}
-
-		data following map objects isn't mapped out, but likely pertains to visibiltiy and partitioning
-
-		pRapi-Noesis_UnpooledFree(pDecrypted);
-		return true;
-	}
-
-	TMapObjectList &MapObjects() { return mMapObjects; }
-
-protected
-	TMapObjectList mMapObjects;
-};
-
-//========================================================================================
-
-class CFFXIMapGeoHandler  public CFFXIChunkHandler
-{
-public
-	struct SMapGeoHeader
-	{
-		unsigned char mHeaderData[4];
-		unsigned int mUnknown1;
-		char mUnknownName[8];
-		char mObjectName[CFFXIMapHandlerskObjectNameLength];
-	};
-
-	struct SMapGeoData
-	{
-		explicit SMapGeoData(const SMapGeoHeader pMapGeoHdr, noeRAPI_t pAllocatingInstance, const int dataSize)
-			 mpMapGeoHdr(pMapGeoHdr)
-			, mpAllocatingInstance(pAllocatingInstance)
-			, mDataSize(dataSize)
-		{
-		}
-
-		const SMapGeoHeader mpMapGeoHdr;
-		noeRAPI_t mpAllocatingInstance;
-		int mDataSize;
-	};
-	typedef stdvectorSMapGeoData TMapGeoList;
-
-	struct SDrawHeader
-	{
-		int mSegCount;
-		float mBounds[6];
-		int mFlag; typically 64 for super header, varying for sub
-	};
-
-	static const int skMapGeoFlag_BlendHardAlpha = 0x2000;
-	static const int skMapGeoFlag_BlendTerrain = 0x8000;
-
-	static const int skDefaultVertColorFixShift = 1;
-	static const int skDefaultVertAlphaFixShift = 1;
-
-	CFFXIMapGeoHandler()
-		 CFFXIChunkHandler(CFFXIDatskChunkType_MapGeo)
-		, mMapGeoHash(CFFXIMapHandlerskObjectNameLength)
-	{
-	}
-
-	virtual ~CFFXIMapGeoHandler()
-	{
-		for (TMapGeoListiterator it = mMapGeoList.begin(); it != mMapGeoList.end(); ++it)
-		{
-			SMapGeoData &geoData = it;
-			geoData.mpAllocatingInstance-Noesis_UnpooledFree((void )geoData.mpMapGeoHdr);
-		}
-	}
-
-	virtual CFFXIDatEValidateChunkResult ValidateChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-															const unsigned char pChunkData, const int dataSize) const
-	{
-		if (dataSize  16)
-		{
-			return CFFXIDatkVCR_Invalid;
-		}
-		else if (pChunkData[3]  5)
-		{
-			if (((unsigned int )pChunkData & 0xFFFFFF) != 0x00424d4d) MMB
-			{
-				return CFFXIDatkVCR_Invalid;
-			}
-		}
-		else
-		{
-			const int dataLen = (((const unsigned int )pChunkData) & 0xFFFFFF);
-			if (dataLen  dataSize 
-				(dataLen + 16)  dataSize)
-			{
-				return CFFXIDatkVCR_Invalid;
-			}
-		}
-		return CFFXIDatkVCR_Supported;
-	}
-
-	virtual bool HandleChunk(const CFFXIDat &dat, const CFFXIDatSChunk &chunk,
-								const unsigned char pChunkData, const int dataSize)
-	{
-		noeRAPI_t pRapi = dat.GetRAPI();
-		unsigned char pDecrypted = (unsigned char )pRapi-Noesis_UnpooledAlloc(dataSize);
-		memcpy(pDecrypted, pChunkData, dataSize);
-		Model_FF11_DecryptMMB(pDecrypted, dataSize);
-
-		const SMapGeoHeader pMapGeoHdr = (const SMapGeoHeader )pDecrypted;
-		const int index = mMapGeoList.size();
-		mMapGeoList.push_back(SMapGeoData(pMapGeoHdr, pRapi, dataSize));
-		mMapGeoHash.FindOrAddResource(pMapGeoHdr-mObjectName, index, true);
-		return true;
-	}
-
-	void RenderMapObjectGeo(noeRAPI_t pRapi, const int index, const RichMat43 &transform, const bool backwardWinding,
-							const CFFXIMapHandlerSInterpretedMapObject pMapObject)
-	{
-		SMapGeoData &geoData = mMapGeoList[index];
-		const SMapGeoHeader pMapGeoHdr = geoData.mpMapGeoHdr;
-		const unsigned char pDrawData = (const unsigned char )pMapGeoHdr;
-		const int endDrawOfs = geoData.mDataSize - sizeof(SDrawHeader);
-		const unsigned int objectFlags0 = (pMapObject)  pMapObject-mObjectFlags[0]  0;
-		const unsigned int objectFlags1 = (pMapObject)  pMapObject-mObjectFlags[1]  0;
-
-#if !defined(_DEBUG_MAP_MESHES)
-		if (gpFF11Opts && gpFF11Opts-keepNames)
-		{
-			char nameString[CFFXIMapHandlerskObjectNameLength + 1];
-			memcpy(nameString, pMapGeoHdr-mObjectName, CFFXIMapHandlerskObjectNameLength);
-			nameString[CFFXIMapHandlerskObjectNameLength] = 0;
-			pRapi-rpgSetName(nameString);
-		}
-#endif
-
-		pRapi-rpgSetTransform(const_castmodelMatrix_t (&transform.m));
-
-		char matName[CFFXITextureHandlerskTexNameLength + CFFXITextureHandlerskMaterialNamePad];
-
-		int drawOfs = sizeof(SMapGeoHeader);
-		while (drawOfs = endDrawOfs)
-		{
-			const SDrawHeader pSuperHeader = get_and_incr_offsetSDrawHeader(pDrawData, drawOfs);
-			for (int superIndex = 0; superIndex  pSuperHeader-mSegCount && drawOfs = endDrawOfs; ++superIndex)
-			{
-				const SDrawHeader pSubHeader = get_and_incr_offsetSDrawHeader(pDrawData, drawOfs);
-				for (int subIndex = 0; subIndex  pSubHeader-mSegCount && drawOfs = endDrawOfs; ++subIndex)
-				{
-					NoeAssert((drawOfs & 3) == 0);
-					const char pMatName = get_and_incr_offsetchar(pDrawData, drawOfs, CFFXITextureHandlerskTexNameLength);
-
-					const unsigned short vertCount = get_and_incr_offsetunsigned short(pDrawData, drawOfs);
-					const unsigned short blendFlags = get_and_incr_offsetunsigned short(pDrawData, drawOfs);
-					const int vertStride = (pSubHeader-mFlag == 0)  48  36;
-					const unsigned char pVertData = get_and_incr_offsetunsigned char(pDrawData, drawOfs, vertStride  vertCount);
-					const unsigned short indexCount = get_and_incr_offsetunsigned short(pDrawData, drawOfs);
-					const unsigned short flags2 = get_and_incr_offsetunsigned short(pDrawData, drawOfs);
-					const unsigned short pIndexData = get_and_incr_offsetunsigned short(pDrawData, drawOfs, indexCount);
-					align_offset(drawOfs, 4);
-
-#if defined(_DEBUG_MAP_MESHES)
-					//segment things up to give us some more info about each mesh in debug
-					char nameString[CFFXIMapHandlerskObjectNameLength + 128];
-					memcpy(nameString, pMapGeoHdr-mObjectName, CFFXIMapHandlerskObjectNameLength);
-					NoeAssert(pMapObject);
-					sprintf_s(&nameString[CFFXIMapHandlerskObjectNameLength], 128, _fl%08x_fb%08x_ps%08x_bl%08x,
-								objectFlags0, objectFlags1, pSubHeader-mFlag, blendFlags);
-					sprintf_s(&nameString[CFFXIMapHandlerskObjectNameLength], 128, _fl%08x_x%.02fy%.02fz%.02fw%.02f,
-								objectFlags0, pMapObject-mVec[0], pMapObject-mVec[1], pMapObject-mVec[2], pMapObject-mVec[3]);
-					pRapi-rpgSetName(nameString);
-#endif
-
-					memcpy(matName, pMatName, CFFXITextureHandlerskTexNameLength);
-					matName[CFFXITextureHandlerskTexNameLength] = 0;
-					int candidateBlendFlags = skMapGeoFlag_BlendTerrain;
-					//this is pretty certainly not correct
-					const bool explicitObjectTransparency = (objectFlags0 & 0x01000000) != 0;
-					if (explicitObjectTransparency)
-					{
-						candidateBlendFlags = skMapGeoFlag_BlendHardAlpha;
-					}
-					/*this is a bunch of bullshit, still not sure what reliably controls blended objects.
-					terrain blend flags are definitely in blendFlags, but lots of non-terrain objects still look to need blending.*/
-					const bool shouldBlend = ((explicitObjectTransparency && vertStride == 48)  (blendFlags & candidateBlendFlags) 
-												(pMapObject && objectFlags0 == 0x01000000 && pMapObject-mVec[3]  1000.0f));
-					const char pBlendSuffix = (shouldBlend) 
-												CFFXITextureHandlerskpSoftBlendSuffix  CFFXITextureHandlerskpNoBlendSuffix;
-					strcpy_s(&matName[CFFXITextureHandlerskTexNameLength], CFFXITextureHandlerskMaterialNamePad, pBlendSuffix);
-					pRapi-rpgSetMaterial(matName);
-
-					if (vertCount == 0  indexCount  3)
-					{
-						pRapi-LogOutput(WARNING Unexpected vertindex count.n);
-						break;
-					}
-					else if (drawOfs  geoData.mDataSize)
-					{
-						pRapi-LogOutput(WARNING Ran off end of MapGeo.n);
-						break;
-					}
-
-					int posOfs, nrmOfs, clrOfs, uvOfs;
-					switch (vertStride)
-					{
-					case 48
-						posOfs = 0;
-						nrmOfs = 24;
-						clrOfs = 36;
-						uvOfs = 40;
-						break;
-					default
-						NoeAssert(vertStride == 36);
-						posOfs = 0;
-						nrmOfs = 12;
-						clrOfs = 24;
-						uvOfs = 28;
-						break;
-					}
-
-					const int colorShift = (gpFF11Opts && gpFF11Opts-explicitVertColorShift) 
-											gpFF11Opts-fixVertColorShift  skDefaultVertColorFixShift;
-					const int alphaShift = (gpFF11Opts && gpFF11Opts-explicitVertAlphaShift) 
-											gpFF11Opts-fixVertAlphaShift  skDefaultVertAlphaFixShift;
-
-					const unsigned int debugSeedBase = 0;
-
-					if (pSubHeader-mFlag == 0)
-					{
-						tri list
-						const int pTriWindIdx = (backwardWinding)  CFFXIGeoHandlerskTriCCWIdx  CFFXIGeoHandlerskTriCWIdx;
-						pRapi-rpgBegin(RPGEO_TRIANGLE);
-						for (int index = 0; index  indexCount; index += 3)
-						{
-							for (int triIndex = 0; triIndex  3; ++triIndex)
-							{
-								const int vertIndex = pIndexData[index + pTriWindIdx[triIndex]];
-								const unsigned char pVert = pVertData + vertIndex  vertStride;
-								PlotMapVertex(pRapi, pVert, posOfs, nrmOfs, clrOfs, uvOfs, colorShift, alphaShift, debugSeedBase);
-							}
-						}
-						pRapi-rpgEnd();
-					}
-					else
-					{
-						tri strip
-						const rpgeoPrimType_e primType = (backwardWinding)  RPGEO_TRIANGLE_STRIP_FLIPPED  RPGEO_TRIANGLE_STRIP;
-						pRapi-rpgBegin(primType);
-						for (int index = 0; index  indexCount; ++index)
-						{
-							const int vertIndex = pIndexData[index];
-							const unsigned char pVert = pVertData + vertIndex  vertStride;
-							PlotMapVertex(pRapi, pVert, posOfs, nrmOfs, clrOfs, uvOfs, colorShift, alphaShift, debugSeedBase);
-						}
-						pRapi-rpgEnd();
-					}
-				}
-			}
-		}
-
-		pRapi-rpgSetTransform(NULL);
-	}
-
-	void RenderMapObjectGeoForMapObject(noeRAPI_t pRapi, const CFFXIMapHandlerSInterpretedMapObject &mapObject)
-	{
-		const int index = mMapGeoHash.FindOrAddResource(mapObject.mObjectName, -1);
-		if (index  0)
-		{
-			pRapi-LogOutput(WARNING Could not find object in resource hash, skipping.n);
-		}
-		else
-		{
-			RenderMapObjectGeo(pRapi, index, mapObject.mTransform, mapObject.mBackwardWinding, &mapObject);
-		}
-	}
-
-	const TMapGeoList &GetMapGeoList() const { return mMapGeoList; }
-
-protected
-	void PlotMapVertex(noeRAPI_t pRapi, const unsigned char pVert, const int posOfs, const int nrmOfs, const int clrOfs, const int uvOfs,
-						const int colorShift, const int alphaShift, const unsigned int debugSeedBase)
-	{
-		pRapi-rpgVertNormal3f((float )(pVert + nrmOfs));
-						
-		if (!debugSeedBase)
-		{
-			pRapi-rpgVertUV2f((float )(pVert + uvOfs), 0);
-			if (!gpFF11Opts  !gpFF11Opts-noVertColors)
-			{
-				if (colorShift  alphaShift)
-				{
-					fix the coloralpha range
-					unsigned char clr[4];
-					memcpy(clr, pVert + clrOfs, 4);
-					clr[0] = (unsigned char)stdminint((int)clr[0]  colorShift, 255);
-					clr[1] = (unsigned char)stdminint((int)clr[1]  colorShift, 255);
-					clr[2] = (unsigned char)stdminint((int)clr[2]  colorShift, 255);
-					clr[3] = (unsigned char)stdminint((int)clr[3]  alphaShift, 255);
-					pRapi-rpgVertColor4ub(clr);
-				}
-				else
-				{
-					pRapi-rpgVertColor4ub(const_castunsigned char (pVert + clrOfs));
-				}
-			}
-		}
-		else
-		{
-			unsigned int debugSeed = debugSeedBase;
-			pRapi-rpgVertUV2f(NULL, 0);
-			const float debugColor[4] =
-			{
-				g_mfn-Math_RandFloatOnSeed(0.5f, 1.0f, debugSeed),
-				g_mfn-Math_RandFloatOnSeed(0.5f, 1.0f, debugSeed),
-				g_mfn-Math_RandFloatOnSeed(0.5f, 1.0f, debugSeed),
-				1.0f
-			};
-			pRapi-rpgVertColor4f(const_castfloat (debugColor));
-		}
-
-		pRapi-rpgVertex3f((float )(pVert + posOfs));
-	}
-
-	TMapGeoList mMapGeoList;
-	CLocalResHash mMapGeoHash;
-};
-
-//========================================================================================
-
-bool Model_FF11_CheckDAT(BYTE fileBuffer, int bufferLen, noeRAPI_t rapi)
+﻿#include "stdafx.h"
+#include "noesis_rapi.h"
+#include "model_ff11.h"
+#include "model_ff11_decrypt.h"
+#include "model_ff11_water.h"
+#include "ffxi_file_io.h"
+#include <filesystem>
+#include <set>
+#include <unordered_map>
+
+#pragma warning(disable: 4996)
+#pragma warning(disable: 4267)
+#pragma pack(push, 1)
+
+#include "model_ff11_internal.h"
+#include "model_ff11_texture_handler.h"
+#include "model_ff11_effect_handler.h"
+#include "model_ff11_animation_handlers.h"
+#include "model_ff11_geometry_handler.h"
+#include "model_ff11_map_handlers.h"
+#include "model_ff11_weather.h"
+
+bool Model_FF11_CheckDAT(BYTE *fileBuffer, int bufferLen, noeRAPI_t *rapi)
 {
 	CFFXIDat dat(fileBuffer, bufferLen, rapi);
 	CFFXIDefaultHandlerSet datHandlers(&dat);
@@ -1499,118 +28,339 @@ bool Model_FF11_CheckDAT(BYTE fileBuffer, int bufferLen, noeRAPI_t rapi)
 	return dat.ParseChunksOfInterest();
 }
 
-static noesisModel_t Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t pRapi, CFFXIDefaultHandlerSet &datHandlers, bool promptForExternalSkel)
+static int Model_FF11_WeatherRootLength(const char *path)
 {
-	noesisMatData_t pMd = NULL;
-
-	CFFXITextureHandler pTextureHandler = datHandlers.TextureHandler();
-	if (pTextureHandler-Textures().Num()  0)
+	if (!path)
+		return 0;
+	for (const char *cursor = path; *cursor; ++cursor)
 	{
-		pMd = pRapi-Noesis_GetMatDataFromLists(pTextureHandler-Materials(), pTextureHandler-Textures());
+		if (cursor[0] == '/' && _strnicmp(cursor, "/weat/", 6) == 0)
+		{
+			const char *rootEnd = cursor + 6;
+			while (*rootEnd && *rootEnd != '/')
+				++rootEnd;
+			return (int)(rootEnd - path);
+		}
+	}
+	return 0;
+}
+
+static bool Model_FF11_SameWeatherRoot(const char *a, const char *b)
+{
+	const int aLength = Model_FF11_WeatherRootLength(a);
+	const int bLength = Model_FF11_WeatherRootLength(b);
+	if (aLength <= 0 || aLength != bLength)
+		return false;
+	return _strnicmp(a, b, aLength) == 0;
+}
+
+static void Model_FF11_FindEnvironmentGenerators(
+	const CFFXIMapGeoHandler::SMapGeoData &mapGeoData,
+	std::vector<const ff11GeneratorRecord_t *> &matches)
+{
+	matches.clear();
+	if (!Model_FF11_IsWeatherDirectory(mapGeoData.mDirectoryPath) ||
+		!mapGeoData.mResourceName[0])
+		return;
+
+	for (const ff11GeneratorRecord_t &generator : gFF11LastGeneratorRecords)
+	{
+		if (generator.hasStandardParticleSetup && generator.linkedResource[0] &&
+			_stricmp(generator.linkedResource, mapGeoData.mResourceName) == 0 &&
+			Model_FF11_SameWeatherRoot(generator.directoryPath, mapGeoData.mDirectoryPath))
+		{
+			matches.push_back(&generator);
+		}
+	}
+}
+
+static RichMat43 Model_FF11_BuildEnvironmentTransform(const ff11GeneratorRecord_t &generator)
+{
+	RichMat43 transform;
+	float scale[3] = { 1.0f, 1.0f, 1.0f };
+	if (generator.hasScale)
+	{
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			if (std::isfinite(generator.scale[axis]) && fabsf(generator.scale[axis]) > 0.00001f)
+				scale[axis] = generator.scale[axis];
+		}
+	}
+	if (generator.hasSpawnPosition)
+	{
+		transform[3] = RichVec3(generator.spawnPosition[0],
+			generator.spawnPosition[1], generator.spawnPosition[2]);
 	}
 
-	noesisModel_t pMdl = NULL;
+	transform[0] *= scale[0];
+	// Generator-owned MapGeo already uses the zone's FFXI coordinate system:
+	// positive Y is down and the upper half of a weather shell is negative Y.
+	// Reflecting this axis turns the authored dome into a bowl under the zone.
+	transform[1] *= scale[1];
+	transform[2] *= scale[2];
+	return transform;
+}
 
-	//possible todo - can we have more than 1 skeleton in a dat with skinned geo andor anims
-	const CFFXISkelHandlerSInterpretedSkel pSkel = NULL;
-	CFFXISkelHandler pSkelHandler = datHandlers.SkelHandler();
-	if (pSkelHandler-Skeletons().size()  0)
+static int Model_FF11_FindWaterResource(const ff11GeneratorRecord_t &generator,
+	const CFFXIMapGeoHandler::TMapGeoList &mapGeoList)
+{
+	int selected = -1;
+	size_t bestRank = 0;
+	bool ambiguous = false;
+	for (size_t index = 0; index < mapGeoList.size(); ++index)
 	{
-		just pick the first skeleton for now
-		pSkel = &pSkelHandler-Skeletons()[0];
+		const auto &resource = mapGeoList[index];
+		if (_stricmp(generator.linkedResource, resource.mResourceName) != 0)
+			continue;
+		const size_t rank = FF11Water::ResourceScopeRank(generator.directoryPath, resource.mDirectoryPath);
+		if (rank > bestRank)
+		{
+			selected = (int)index;
+			bestRank = rank;
+			ambiguous = false;
+		}
+		else if (rank && rank == bestRank)
+			ambiguous = true;
+	}
+	return ambiguous ? -1 : selected;
+}
+
+static void Model_FF11_CopyObjectName(char *dst, const int dstSize, const char *src)
+{
+	const int copyLen = (dstSize - 1 < CFFXIMapHandler::skObjectNameLength) ? dstSize - 1 : CFFXIMapHandler::skObjectNameLength;
+	memcpy(dst, src, copyLen);
+	dst[copyLen] = 0;
+}
+
+static float Model_FF11_VecLength(const RichVec3 &v)
+{
+	return sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+}
+
+static void Model_FF11_AddMapObjectDebug(const CFFXIMapHandler::SInterpretedMapObject &mapObject)
+{
+	ff11MapObjectDebug_t dbg = {};
+	Model_FF11_CopyObjectName(dbg.objectName, sizeof(dbg.objectName), mapObject.mObjectName);
+	sprintf_s(dbg.displayName, "%03d: %s", mapObject.mObjectIndex, dbg.objectName);
+	dbg.mapRecordIndex = mapObject.mObjectIndex;
+	dbg.mapGeoIndex = -1;
+	dbg.referencedByMap = true;
+	dbg.objectFlags[0] = mapObject.mObjectFlags[0];
+	dbg.objectFlags[1] = mapObject.mObjectFlags[1];
+	memcpy(dbg.data2, mapObject.mData2, sizeof(dbg.data2));
+	dbg.vec[0] = mapObject.mVec[0];
+	dbg.vec[1] = mapObject.mVec[1];
+	dbg.vec[2] = mapObject.mVec[2];
+	dbg.vec[3] = mapObject.mVec[3];
+	dbg.trans[0] = mapObject.mTrans[0];
+	dbg.trans[1] = mapObject.mTrans[1];
+	dbg.trans[2] = mapObject.mTrans[2];
+	dbg.rot[0] = mapObject.mRawAngles[0];
+	dbg.rot[1] = mapObject.mRawAngles[1];
+	dbg.rot[2] = mapObject.mRawAngles[2];
+	dbg.scale[0] = mapObject.mScale[0];
+	dbg.scale[1] = mapObject.mScale[1];
+	dbg.scale[2] = mapObject.mScale[2];
+	gFF11LastMapObjects.push_back(dbg);
+}
+
+static void Model_FF11_AddEnvironmentDebug(const CFFXIMapGeoHandler::SMapGeoData &mapGeoData, const RichMat43 &transform, const int mapGeoIndex)
+{
+	ff11MapObjectDebug_t dbg = {};
+	Model_FF11_CopyObjectName(dbg.objectName, sizeof(dbg.objectName), mapGeoData.mpMapGeoHdr->mObjectName);
+	sprintf_s(dbg.displayName, "env: %s", dbg.objectName);
+	dbg.mapRecordIndex = -1;
+	dbg.mapGeoIndex = mapGeoIndex;
+	dbg.referencedByMap = false;
+	dbg.trans[0] = transform[3][0];
+	dbg.trans[1] = transform[3][1];
+	dbg.trans[2] = transform[3][2];
+	dbg.scale[0] = Model_FF11_VecLength(transform[0]);
+	dbg.scale[1] = Model_FF11_VecLength(transform[1]);
+	dbg.scale[2] = Model_FF11_VecLength(transform[2]);
+	gFF11LastMapObjects.push_back(dbg);
+}
+
+static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, CFFXIDefaultHandlerSet &datHandlers, bool promptForExternalSkel)
+{
+	noesisMatData_t *pMd = NULL;
+	auto weatherSprites = Model_FF11_LoadWeatherSprites(pRapi, datHandlers);
+	std::map<std::string, std::shared_ptr<ZoneWater::Surface>> waterSurfaces;
+
+	CFFXITextureHandler *pTextureHandler = datHandlers.TextureHandler();
+	if (pTextureHandler->Textures().Num() > 0)
+	{
+		pMd = pRapi->Noesis_GetMatDataFromLists(pTextureHandler->Materials(), pTextureHandler->Textures());
 	}
 
-	noesisAnim_t pAnim = NULL;
-	const CFFXIAnimHandler pAnimHandler = datHandlers.AnimHandler();
-	const CFFXIGeoHandler pGeoHandler = datHandlers.GeoHandler();
+	noesisModel_t *pMdl = NULL;
 
-	CFFXIDat pSkelDat = NULL;
-	unsigned char pSkelDatBuffer = NULL;
+	//possible todo - can we have more than 1 skeleton in a dat with skinned geo and/or anims
+	const CFFXISkelHandler::SInterpretedSkel *pSkel = NULL;
+	CFFXISkelHandler *pSkelHandler = datHandlers.SkelHandler();
+	if (pSkelHandler->Skeletons().size() > 0)
+	{
+		//just pick the first skeleton for now
+		pSkel = &pSkelHandler->Skeletons()[0];
+	}
+
+	noesisAnim_t *pAnim = NULL;
+	const CFFXIAnimHandler *pAnimHandler = datHandlers.AnimHandler();
+	const CFFXIGeoHandler *pGeoHandler = datHandlers.GeoHandler();
+
+	CFFXIDat *pSkelDat = NULL;
+	unsigned char *pSkelDatBuffer = NULL;
 	if (promptForExternalSkel &&
 		!pSkel &&
-		(pAnimHandler-AnimDataIsPresent()  pGeoHandler-GeoDataIsPresent()))
+		(pAnimHandler->AnimDataIsPresent() || pGeoHandler->GeoDataIsPresent()))
 	{
 		//prompt to load skeleton from another dat
 		int skelDatSize = 0;
-		pSkelDatBuffer = pRapi-Noesis_LoadPairedFile(FFXI Skeleton DAT, .dat, skelDatSize, NULL);
+		pSkelDatBuffer = pRapi->Noesis_LoadPairedFile("FFXI Skeleton DAT", ".dat", skelDatSize, NULL);
 		if (pSkelDatBuffer)
 		{
 			pSkelDat = new CFFXIDat(pSkelDatBuffer, skelDatSize, pRapi);
-			//register the existing handlers with the new dat and just load the skeleton (and possibly animations) into the exisating handlers.
+			//register the existing handlers with the new dat and just load the skeleton (and possibly animations) into the existing handlers.
 			datHandlers.RegisterHandlersWithDat(pSkelDat);
-			if (pSkelDat-ParseChunksOfInterest() &&
-				pSkelDat-RunChunkHandlersForChunksOfInterest(CFFXIDatskChunkType_Skeleton))
+			if (pSkelDat->ParseChunksOfInterest() &&
+				pSkelDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Skeleton))
 			{
-				if (pSkelHandler-Skeletons().size()  0)
+				if (pSkelHandler->Skeletons().size() > 0)
 				{
-					pSkel = &pSkelHandler-Skeletons()[0];
-					if (!pAnimHandler-AnimDataIsPresent())
+					pSkel = &pSkelHandler->Skeletons()[0];
+					if (!pAnimHandler->AnimDataIsPresent())
 					{ //if there are no animations in the dat being loaded, try loading them from the skeleton dat.
-						pSkelDat-RunChunkHandlersForChunksOfInterest(CFFXIDatskChunkType_Animation);
+						pSkelDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Animation);
 					}
 				}
 			}
 		}
 	}
 
-	if (pAnimHandler-AnimDataIsPresent())
+	if (pAnimHandler->AnimDataIsPresent())
 	{
 		if (!pSkel)
 		{
-			pRapi-LogOutput(WARNING Discarding animation data, because no skeleton is present.n);
+			pRapi->LogOutput("WARNING: Discarding animation data, because no skeleton is present.\n");
 		}
 		else
 		{
-			pAnim = pAnimHandler-ConstructAnimations(pRapi, pSkel);
+			pAnim = pAnimHandler->ConstructAnimations(pRapi, pSkel);
 		}
 	}
 
-	CFFXIMapHandler pMapHandler = datHandlers.MapHandler();
-	CFFXIMapGeoHandler pMapGeoHandler = datHandlers.MapGeoHandler();
-	const CFFXIMapGeoHandlerTMapGeoList &mapGeoList = pMapGeoHandler-GetMapGeoList();
+	CFFXIMapHandler *pMapHandler = datHandlers.MapHandler();
+	CFFXIMapGeoHandler *pMapGeoHandler = datHandlers.MapGeoHandler();
+	CFFXIEffectHandler *pEffectModelHandler = datHandlers.EffectModelHandler();
+	CFFXIEffectHandler *pEffectAnimatedHandler = datHandlers.EffectAnimatedHandler();
+	CFFXIEffectHandler *pEffectMorphHandler = datHandlers.EffectMorphHandler();
+	const CFFXIMapGeoHandler::TMapGeoList &mapGeoList = pMapGeoHandler->GetMapGeoList();
 	const int mapGeoCount = mapGeoList.size();
+	const int effectMeshCount =
+		(pEffectModelHandler ? (int)pEffectModelHandler->EffectMeshes().size() : 0) +
+		(pEffectAnimatedHandler ? (int)pEffectAnimatedHandler->EffectMeshes().size() : 0) +
+		(pEffectMorphHandler ? (int)pEffectMorphHandler->EffectMeshes().size() : 0);
 
-	const bool anyGeoDataIsPresent = (mapGeoCount  0  pGeoHandler-GeoDataIsPresent());
+	const bool shouldRenderEffectMeshes = (gpFF11Opts && gpFF11Opts->renderEffectMeshes && effectMeshCount > 0);
+	const bool anyGeoDataIsPresent = (mapGeoCount > 0 || pGeoHandler->GeoDataIsPresent() || shouldRenderEffectMeshes);
 
-	void pCtx = NULL;
+	void *pCtx = NULL;
 	if (anyGeoDataIsPresent)
 	{
-		pCtx = pRapi-rpgCreateContext();
-		pRapi-rpgSetOption(RPGOPT_TRIWINDBACKWARD, true);
+		pCtx = pRapi->rpgCreateContext();
+		pRapi->rpgSetOption(RPGOPT_TRIWINDBACKWARD, true);
 	}
 
-	render any character data
-	if (pGeoHandler-GeoDataIsPresent())
+	//render any character data
+	if (pGeoHandler->GeoDataIsPresent())
 	{
-		pGeoHandler-RenderGeoData(pRapi, pSkel);
+		pGeoHandler->RenderGeoData(pRapi, pSkel);
 	}
 
 	/*check for map geo, and toss it into the same rpg context (for now - if these things are often present at once, throwing into separate
 	models probably makes sense)*/
-	if (mapGeoCount  0)
+	if (mapGeoCount > 0)
 	{
-		CFFXIMapHandlerTMapObjectList &mapObjects = pMapHandler-MapObjects();
-		if (mapObjects.size()  0)
+		gFF11LastMapObjects.clear();
+		gFF11LastMapGeoDrawBatches.clear();
+		CFFXIMapHandler::TMapObjectList &mapObjects = pMapHandler->MapObjects();
+		if (mapObjects.size() > 0)
 		{
-			for (CFFXIMapHandlerTMapObjectListconst_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
+			for (CFFXIMapHandler::TMapObjectList::const_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
 			{
-				const CFFXIMapHandlerSInterpretedMapObject &mapObject = it;
-				pMapGeoHandler-RenderMapObjectGeoForMapObject(pRapi, mapObject);
+				const CFFXIMapHandler::SInterpretedMapObject &mapObject = *it;
+				Model_FF11_AddMapObjectDebug(mapObject);
+				const size_t collisionStart = gFF11LastCollisionTriangles.size();
+				pMapGeoHandler->RenderMapObjectGeoForMapObject(pRapi, mapObject);
+				gFF11LastMapObjects.back().visualCollisionStart = collisionStart;
+				gFF11LastMapObjects.back().visualCollisionCount = gFF11LastCollisionTriangles.size() - collisionStart;
 			}
 
-			if (gpFF11Opts && gpFF11Opts-renderUnreferenced)
+			if (gpFF11Opts && gpFF11Opts->collectCollision && gpFF11Opts->collectCollisionUnreferenced)
+			{
+				RichMat43 collisionTransform;
+				for (int mapGeoIndex = 0; mapGeoIndex < mapGeoCount; ++mapGeoIndex)
+				{
+					const CFFXIMapGeoHandler::SMapGeoData &mapGeoData = mapGeoList[mapGeoIndex];
+					bool isReferenced = false;
+					for (CFFXIMapHandler::TMapObjectList::const_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
+					{
+						const CFFXIMapHandler::SInterpretedMapObject &mapObject = *it;
+						if (ZoneLod::SameFamily(mapGeoData.mpMapGeoHdr->mObjectName, mapObject.mObjectName))
+						{
+							isReferenced = true;
+							break;
+						}
+					}
+
+					if (!isReferenced)
+						pMapGeoHandler->RenderMapObjectGeo(pRapi, mapGeoIndex, collisionTransform, false, NULL, false);
+				}
+			}
+
+			// MZB tables do not place the river and sea sheets. Their persistent
+			// generators name MMB resources in their own scope or a parent effe
+			// scope. Keep them as world geometry and leave weather shell selection
+			// and ordinary room/LOD placement behavior unchanged.
+			std::vector<bool> generatedWater(mapGeoCount, false);
+			if (gpFF11Opts && gpFF11Opts->renderWater)
+			{
+				for (const auto &generator : gFF11LastGeneratorRecords)
+				{
+					if (!FF11Water::IsSupportedGenerator(generator)) continue;
+					const int resourceIndex = Model_FF11_FindWaterResource(generator, mapGeoList);
+					if (resourceIndex < 0) continue;
+					const auto &resource = mapGeoList[resourceIndex];
+					const RichMat43 transform = FF11Water::PlacementTransform(generator);
+					if (!pMapGeoHandler->RenderMapObjectGeo(pRapi, resourceIndex, transform,
+						FF11Water::BackwardWinding(generator), NULL, true, &generator, 7, true))
+						continue;
+					generatedWater[resourceIndex] = true;
+					waterSurfaces[FF11Water::ObjectIdentity(generator, resource.mResourceName,
+						resource.mpMapGeoHdr->mObjectName)] = FF11Water::BuildSurface(generator);
+					Model_FF11_AddEnvironmentDebug(resource, transform, resourceIndex);
+					auto &debug = gFF11LastMapObjects.back();
+					strcpy_s(debug.displayName, FF11Water::ObjectIdentity(generator,
+						resource.mResourceName, resource.mpMapGeoHdr->mObjectName).c_str());
+					if (generator.hasRotation) memcpy(debug.rot, generator.rotation, sizeof(debug.rot));
+					if (generator.hasScale) memcpy(debug.scale, generator.scale, sizeof(debug.scale));
+				}
+			}
+
+			if (gpFF11Opts && (gpFF11Opts->renderUnreferenced || gpFF11Opts->renderEnvironment))
 			{
 				RichMat43 unreferencedTransform;
-				run through and manually render any geometry that wasn't referenced by a map object
-				for (int mapGeoIndex = 0; mapGeoIndex  mapGeoCount; ++mapGeoIndex)
+				//run through and manually render allowed geometry that wasn't referenced by a map object
+				for (int mapGeoIndex = 0; mapGeoIndex < mapGeoCount; ++mapGeoIndex)
 				{
-					not particularly concerned about speed here, it's not a default option
-					const CFFXIMapGeoHandlerSMapGeoData &mapGeoData = mapGeoList[mapGeoIndex];
+					if (generatedWater[mapGeoIndex]) continue;
+					//not particularly concerned about speed here, it's not a default option
+					const CFFXIMapGeoHandler::SMapGeoData &mapGeoData = mapGeoList[mapGeoIndex];
 					bool isReferenced = false;
-					for (CFFXIMapHandlerTMapObjectListconst_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
+					for (CFFXIMapHandler::TMapObjectList::const_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
 					{
-						const CFFXIMapHandlerSInterpretedMapObject &mapObject = it;
-						if (memcmp(mapGeoData.mpMapGeoHdr-mObjectName, mapObject.mObjectName, CFFXIMapHandlerskObjectNameLength) == 0)
+						const CFFXIMapHandler::SInterpretedMapObject &mapObject = *it;
+						if (ZoneLod::SameFamily(mapGeoData.mpMapGeoHdr->mObjectName, mapObject.mObjectName))
 						{
 							isReferenced = true;
 							break;
@@ -1619,73 +369,106 @@ static noesisModel_t Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t pRapi, CF
 
 					if (!isReferenced)
 					{
-						pMapGeoHandler-RenderMapObjectGeo(pRapi, mapGeoIndex, unreferencedTransform, false, NULL);
+						std::vector<const ff11GeneratorRecord_t *> environmentGenerators;
+						Model_FF11_FindEnvironmentGenerators(mapGeoData, environmentGenerators);
+						if (!environmentGenerators.empty())
+						{
+							for (const ff11GeneratorRecord_t *generator : environmentGenerators)
+							{
+								RichMat43 environmentTransform =
+									Model_FF11_BuildEnvironmentTransform(*generator);
+								Model_FF11_AddEnvironmentDebug(mapGeoData, environmentTransform, mapGeoIndex);
+								pMapGeoHandler->RenderMapObjectGeo(pRapi, mapGeoIndex,
+									environmentTransform, false, NULL, true, generator);
+							}
+						}
+						else if (gpFF11Opts->renderUnreferenced)
+						{
+							Model_FF11_AddEnvironmentDebug(mapGeoData, unreferencedTransform, mapGeoIndex);
+							pMapGeoHandler->RenderMapObjectGeo(pRapi, mapGeoIndex,
+								unreferencedTransform, false, NULL);
+						}
 					}
 				}
 			}
 		}
 		else
 		{
-			if no map data exists alongside the map geo, just render the raw data at identity
+			//if no map data exists alongside the map geo, just render the raw data at identity
 			RichMat43 defaultTransform;
-			for (int mapGeoIndex = 0; mapGeoIndex  mapGeoCount; ++mapGeoIndex)
+			for (int mapGeoIndex = 0; mapGeoIndex < mapGeoCount; ++mapGeoIndex)
 			{
-				pMapGeoHandler-RenderMapObjectGeo(pRapi, mapGeoIndex, defaultTransform, false, NULL);
+				const CFFXIMapGeoHandler::SMapGeoData &mapGeoData = mapGeoList[mapGeoIndex];
+				Model_FF11_AddEnvironmentDebug(mapGeoData, defaultTransform, mapGeoIndex);
+				pMapGeoHandler->RenderMapObjectGeo(pRapi, mapGeoIndex, defaultTransform, false, NULL);
 			}
 		}
 	}
 
-	construct the model from the combined rendering
+	if (shouldRenderEffectMeshes)
+	{
+		if (pEffectModelHandler)
+			pEffectModelHandler->RenderEffectMeshes(pRapi);
+		if (pEffectAnimatedHandler)
+			pEffectAnimatedHandler->RenderEffectMeshes(pRapi);
+		if (pEffectMorphHandler)
+			pEffectMorphHandler->RenderEffectMeshes(pRapi);
+	}
+
+	//construct the model from the combined rendering
 	if (pCtx)
 	{
 		if (pAnim)
 		{
-			pRapi-rpgSetExData_Anims(pAnim);
+			pRapi->rpgSetExData_Anims(pAnim);
 		}
 		if (pMd)
 		{
-			pRapi-rpgSetExData_Materials(pMd);
+			pRapi->rpgSetExData_Materials(pMd);
 		}
 
 		NoeAssert(anyGeoDataIsPresent);
-		if (gpFF11Opts && gpFF11Opts-optimizeGeo)
+		if (gpFF11Opts && gpFF11Opts->optimizeGeo)
 		{
-			pRapi-rpgOptimize();
-			pMdl = pRapi-rpgConstructModel();
+			pRapi->rpgOptimize();
+			pMdl = pRapi->rpgConstructModel();
 		}
 		else
 		{
-			pMdl = pRapi-rpgConstructModelAndSort();
+			pMdl = pRapi->rpgConstructModelAndSort();
 		}
-		pRapi-rpgDestroyContext(pCtx);
+		pRapi->rpgDestroyContext(pCtx);
+		if (pMdl)
+		{
+			for (auto &submesh : pMdl->submeshes)
+			{
+				const auto water = waterSurfaces.find(submesh.objectName);
+				if (water != waterSurfaces.end()) submesh.water = water->second;
+			}
+		}
 	}
 
-	//if a model wasn't constructed, create a container for any anims andor textures we loaded
-	if ((pAnim  pMd) && !pMdl)
+	//if a model wasn't constructed, create a container for any anims and/or textures we loaded
+	if ((pAnim || pMd) && !pMdl)
 	{
-		pMdl = pRapi-Noesis_AllocModelContainer(pMd, pAnim, (pAnim)  1  0);
+		pMdl = pRapi->Noesis_AllocModelContainer(pMd, pAnim, (pAnim) ? 1 : 0);
 	}
 
 	//free second skeleton dat if it was created
 	if (pSkelDatBuffer)
 	{
-		pRapi-Noesis_UnpooledFree(pSkelDatBuffer);
+		pRapi->Noesis_UnpooledFree(pSkelDatBuffer);
 		if (pSkelDat)
 		{
 			delete pSkelDat;
 		}
 	}
 
+	if (pMdl) pMdl->weatherSprites = std::move(weatherSprites);
 	return pMdl;
 }
 
-static void Model_FF11_SetPreviewOffset(noeRAPI_t pRapi)
-{
-	float mdlAngOfs[3] = { 0.0f, 180.0f, 270.0f };
-	pRapi-SetPreviewAngOfs(mdlAngOfs);
-}
-
-noesisModel_t Model_FF11_LoadDAT(BYTE fileBuffer, int bufferLen, int &numMdl, noeRAPI_t rapi)
+noesisModel_t *Model_FF11_LoadDAT(BYTE *fileBuffer, int bufferLen, int &numMdl, noeRAPI_t *rapi)
 {
 	CFFXIDat dat(fileBuffer, bufferLen, rapi);
 	CFFXIDefaultHandlerSet datHandlers(&dat);
@@ -1693,167 +476,857 @@ noesisModel_t Model_FF11_LoadDAT(BYTE fileBuffer, int bufferLen, int &numMdl, no
 
 	if (!dat.RunChunkHandlersForChunksOfInterest())
 	{
-		rapi-LogOutput(Error Unrecoverable error during chunk handling.n);
+		rapi->LogOutput("Error: Unrecoverable error during chunk handling.\n");
 		return NULL;
 	}
 
-	noesisModel_t pMdl = Model_FF11_ConstructModelFromHandlerSet(rapi, datHandlers, true);
+	noesisModel_t *pMdl = Model_FF11_ConstructModelFromHandlerSet(rapi, datHandlers, true);
 
 	Model_FF11_SetPreviewOffset(rapi);
 
-	numMdl = (pMdl)  1  0;
+	numMdl = (pMdl) ? 1 : 0;
 	return pMdl;
 }
 
-ff11Opts_t gpFF11Opts = NULL;
-
-#define FF11_LOCAL_DECL_OPTS(argRequired) 
-	ff11Opts_t pOpts = (ff11Opts_t )store; 
-	NoeAssert(storeSize == sizeof(ff11Opts_t)); 
-	if (argRequired && !arg) 
-	{ 
-		return false; 
+noesisModel_t *Model_FF11_LoadTextureDAT(BYTE *fileBuffer, int bufferLen, int &numMdl, noeRAPI_t *rapi)
+{
+	numMdl = 0;
+	if (!fileBuffer || bufferLen <= 0 || !rapi)
+	{
+		return NULL;
 	}
 
-bool Model_FF11_ShiftColorHandler(const char arg, unsigned char store, int storeSize)
+	CFFXIDat dat(fileBuffer, bufferLen, rapi);
+	CFFXIDefaultHandlerSet datHandlers(&dat);
+	if (!dat.ParseChunksOfInterest() ||
+		!dat.RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Texture))
+	{
+		return NULL;
+	}
+
+	CFFXITextureHandler *pTextureHandler = datHandlers.TextureHandler();
+	if (!pTextureHandler || pTextureHandler->Textures().Num() <= 0)
+	{
+		return NULL;
+	}
+
+	noesisMatData_t *pMd = rapi->Noesis_GetMatDataFromLists(
+		pTextureHandler->Materials(), pTextureHandler->Textures());
+	noesisModel_t *pMdl = rapi->Noesis_AllocModelContainer(pMd, NULL, 0);
+	numMdl = pMdl ? 1 : 0;
+	return pMdl;
+}
+
+ff11Opts_t *gpFF11Opts = NULL;
+std::vector<ff11MapObjectDebug_t> gFF11LastMapObjects;
+std::vector<ff11DatChunkDebug_t> gFF11LastDatChunks;
+std::vector<ff11EnvironmentRecord_t> gFF11LastEnvironmentRecords;
+std::vector<ff11GeneratorRecord_t> gFF11LastGeneratorRecords;
+std::vector<ff11KeyframeRecord_t> gFF11LastKeyframeRecords;
+ff11MapHeaderDebug_t gFF11LastMapHeader = {};
+std::vector<ff11ZoneVisibilityLeaf_t> gFF11LastZoneVisibilityLeaves;
+std::vector<ff11ZoneVisibilityRecord_t> gFF11LastZoneVisibilityRecords;
+std::vector<ff11ZoneVisibilityTable_t> gFF11LastZoneVisibilityTables;
+std::vector<ff11MapGeoDrawBatchDebug_t> gFF11LastMapGeoDrawBatches;
+std::vector<ff11CollisionTriangle_t> gFF11LastCollisionTriangles;
+std::vector<ff11CollisionMeshDebug_t> gFF11LastCollisionMeshes;
+
+namespace
+{
+// Zone visibility tables are immutable after a zone finishes loading. Looking
+// up a table by offset occurs for every visible NPC and every rendered frame;
+// indexing them once avoids repeatedly walking the complete table list.
+const ff11ZoneVisibilityTable_t *FindZoneVisibilityTable(const unsigned int offset)
+{
+    static const ff11ZoneVisibilityTable_t *cachedData = nullptr;
+    static size_t cachedCount = 0;
+    static unsigned int cachedFirstOffset = 0;
+    static unsigned int cachedLastOffset = 0;
+    static std::unordered_map<unsigned int, const ff11ZoneVisibilityTable_t *> tablesByOffset;
+
+    const auto *data = gFF11LastZoneVisibilityTables.data();
+    const size_t count = gFF11LastZoneVisibilityTables.size();
+    const unsigned int firstOffset = count ? gFF11LastZoneVisibilityTables.front().offset : 0;
+    const unsigned int lastOffset = count ? gFF11LastZoneVisibilityTables.back().offset : 0;
+    if (data != cachedData || count != cachedCount || firstOffset != cachedFirstOffset ||
+        lastOffset != cachedLastOffset)
+    {
+        tablesByOffset.clear();
+        tablesByOffset.reserve(count);
+        for (const ff11ZoneVisibilityTable_t &table : gFF11LastZoneVisibilityTables)
+            tablesByOffset.emplace(table.offset, &table);
+        cachedData = data;
+        cachedCount = count;
+        cachedFirstOffset = firstOffset;
+        cachedLastOffset = lastOffset;
+    }
+
+    const auto found = tablesByOffset.find(offset);
+    return found == tablesByOffset.end() ? nullptr : found->second;
+}
+}
+
+int Model_FF11_GetLastCollisionTriangleCount()
+{
+	return (int)gFF11LastCollisionTriangles.size();
+}
+
+const float *Model_FF11_GetLastCollisionTrianglePoints(int index)
+{
+	if (index < 0 || index >= (int)gFF11LastCollisionTriangles.size())
+		return NULL;
+	return &gFF11LastCollisionTriangles[index].p[0][0];
+}
+
+int Model_FF11_GetLastCollisionMeshCount()
+{
+	return (int)gFF11LastCollisionMeshes.size();
+}
+
+const ff11CollisionMeshDebug_t *Model_FF11_GetLastCollisionMesh(int index)
+{
+	if (index < 0 || index >= (int)gFF11LastCollisionMeshes.size())
+		return NULL;
+	return &gFF11LastCollisionMeshes[index];
+}
+
+int Model_FF11_GetLastMapObjectCount()
+{
+	return (int)gFF11LastMapObjects.size();
+}
+
+const char *Model_FF11_GetLastMapObjectDisplayName(int index)
+{
+	if (index < 0 || index >= (int)gFF11LastMapObjects.size())
+		return "";
+	return gFF11LastMapObjects[index].displayName;
+}
+
+bool Model_FF11_GetLastMapObjectTransform(int index, float trans[3], float scale[3], float rot[3])
+{
+	if (index < 0 || index >= (int)gFF11LastMapObjects.size())
+		return false;
+
+	const ff11MapObjectDebug_t &obj = gFF11LastMapObjects[index];
+	if (trans)
+		memcpy(trans, obj.trans, sizeof(obj.trans));
+	if (scale)
+		memcpy(scale, obj.scale, sizeof(obj.scale));
+	if (rot)
+		memcpy(rot, obj.rot, sizeof(obj.rot));
+	return true;
+}
+
+bool Model_FF11_HasZoneVisibilityData()
+{
+	return !gFF11LastZoneVisibilityLeaves.empty() &&
+		!gFF11LastZoneVisibilityRecords.empty() &&
+		!gFF11LastZoneVisibilityTables.empty();
+}
+
+static void Model_FF11_FindZoneVisibilityRecords(const float point[3],
+	std::vector<unsigned int> &recordIndices)
+{
+	const float epsilon = 0.05f;
+	for (const ff11ZoneVisibilityLeaf_t &leaf : gFF11LastZoneVisibilityLeaves)
+	{
+		bool contains = true;
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			if (point[axis] < leaf.boundsMin[axis] - epsilon ||
+				point[axis] > leaf.boundsMax[axis] + epsilon)
+			{
+				contains = false;
+				break;
+			}
+		}
+		if (!contains)
+			continue;
+		for (unsigned int recordIndex : leaf.recordIndices)
+		{
+			if (std::find(recordIndices.begin(), recordIndices.end(), recordIndex) == recordIndices.end())
+				recordIndices.push_back(recordIndex);
+		}
+	}
+}
+
+bool Model_FF11_GetZoneVisibleMapObjects(const float viewerPoint[3],
+	std::vector<unsigned int> &mapObjectIndices)
+{
+	mapObjectIndices.clear();
+	if (!viewerPoint || !Model_FF11_HasZoneVisibilityData())
+		return false;
+
+	std::vector<unsigned int> viewerRecords;
+	Model_FF11_FindZoneVisibilityRecords(viewerPoint, viewerRecords);
+	if (viewerRecords.empty())
+		return false;
+
+	bool foundViewerTable = false;
+	for (unsigned int viewerRecord : viewerRecords)
+	{
+		if (viewerRecord >= gFF11LastZoneVisibilityRecords.size())
+			continue;
+		const unsigned int tableOffset =
+			gFF11LastZoneVisibilityRecords[viewerRecord].cullingTableOffset;
+		const ff11ZoneVisibilityTable_t *table = FindZoneVisibilityTable(tableOffset);
+		if (!table)
+			continue;
+		foundViewerTable = true;
+		for (unsigned int mapObjectIndex : table->visibleRecordIndices)
+		{
+			if (std::find(mapObjectIndices.begin(), mapObjectIndices.end(), mapObjectIndex) ==
+				mapObjectIndices.end())
+				mapObjectIndices.push_back(mapObjectIndex);
+		}
+	}
+	return foundViewerTable;
+}
+
+bool Model_FF11_IsZonePointVisible(const float viewerPoint[3], const float subjectPoint[3])
+{
+	if (!viewerPoint || !subjectPoint || !Model_FF11_HasZoneVisibilityData())
+		return true;
+
+	// Every NPC in a frame shares the same viewer point. Cache the leaf lookup
+	// for that point so NPC visibility does not rescan every zone leaf per NPC.
+	static const ff11ZoneVisibilityLeaf_t *cachedLeafData = nullptr;
+	static size_t cachedLeafCount = 0;
+	static float cachedViewerPoint[3] = {};
+	static std::vector<unsigned int> cachedViewerRecords;
+	std::vector<unsigned int> viewerRecords;
+	const bool sameViewer = cachedLeafData == gFF11LastZoneVisibilityLeaves.data() &&
+		cachedLeafCount == gFF11LastZoneVisibilityLeaves.size() &&
+		cachedViewerPoint[0] == viewerPoint[0] && cachedViewerPoint[1] == viewerPoint[1] &&
+		cachedViewerPoint[2] == viewerPoint[2];
+	if (sameViewer)
+		viewerRecords = cachedViewerRecords;
+	else
+	{
+		Model_FF11_FindZoneVisibilityRecords(viewerPoint, viewerRecords);
+		cachedLeafData = gFF11LastZoneVisibilityLeaves.data();
+		cachedLeafCount = gFF11LastZoneVisibilityLeaves.size();
+		memcpy(cachedViewerPoint, viewerPoint, sizeof(cachedViewerPoint));
+		cachedViewerRecords = viewerRecords;
+	}
+	std::vector<unsigned int> subjectRecords;
+	Model_FF11_FindZoneVisibilityRecords(subjectPoint, subjectRecords);
+	if (viewerRecords.empty() || subjectRecords.empty())
+		return true;
+
+	bool foundViewerTable = false;
+	for (unsigned int viewerRecord : viewerRecords)
+	{
+		if (viewerRecord >= gFF11LastZoneVisibilityRecords.size())
+			continue;
+		const unsigned int tableOffset =
+			gFF11LastZoneVisibilityRecords[viewerRecord].cullingTableOffset;
+		if (!tableOffset)
+			continue;
+		const ff11ZoneVisibilityTable_t *table = FindZoneVisibilityTable(tableOffset);
+		if (!table)
+			continue;
+		foundViewerTable = true;
+		for (unsigned int subjectRecord : subjectRecords)
+		{
+			if (std::find(table->visibleRecordIndices.begin(), table->visibleRecordIndices.end(),
+				subjectRecord) != table->visibleRecordIndices.end())
+				return true;
+		}
+	}
+
+	// Unknown or incomplete records fail open. A decoded retail table which does
+	// not include the subject cell is an explicit not-visible result.
+	return !foundViewerTable;
+}
+
+int Model_FF11_GetLastMapGeoDrawBatchCount()
+{
+	return (int)gFF11LastMapGeoDrawBatches.size();
+}
+
+const ff11MapGeoDrawBatchDebug_t *Model_FF11_GetLastMapGeoDrawBatch(int index)
+{
+	if (index < 0 || index >= (int)gFF11LastMapGeoDrawBatches.size())
+		return NULL;
+	return &gFF11LastMapGeoDrawBatches[index];
+}
+
+static void Model_FF11_TryAnnotateEffectChunk(ff11DatChunkDebug_t &chunkDebug, const unsigned char *pChunkData, const int dataSize)
+{
+	if (dataSize < 16)
+		return;
+
+	if (chunkDebug.type != CFFXIDat::skChunkType_EffectModel &&
+		chunkDebug.type != CFFXIDat::skChunkType_EffectAnimated &&
+		chunkDebug.type != CFFXIDat::skChunkType_EffectMorph)
+		return;
+
+	const int materialOfs = (chunkDebug.type == CFFXIDat::skChunkType_EffectMorph) ? 0x10 :
+		(chunkDebug.type == CFFXIDat::skChunkType_EffectModel ?
+			((pChunkData[0] == 3) ? 0x10 : 0x0E) : 0x08);
+	if (materialOfs + 16 > dataSize)
+		return;
+
+	for (int i = 0; i < 8 && (i * 2 + 2) <= dataSize; ++i)
+	{
+		unsigned short word = 0;
+		memcpy(&word, pChunkData + i * 2, sizeof(word));
+		chunkDebug.effectHeaderWords[i] = word;
+	}
+
+	memcpy(chunkDebug.effectMaterialName, pChunkData + materialOfs, 16);
+	chunkDebug.effectMaterialName[16] = 0;
+	chunkDebug.hasEffectMetadata = true;
+}
+
+static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug, const unsigned char *pChunkData, const int dataSize)
+{
+	if (chunkDebug.type != CFFXIDat::skChunkType_Generator || dataSize < 0x80)
+		return;
+
+	ff11GeneratorRecord_t generator = {};
+	strcpy_s(generator.name, chunkDebug.name);
+	strcpy_s(generator.directoryPath, chunkDebug.directoryPath);
+	generator.sourceDataOffset = (unsigned int)chunkDebug.dataOffset;
+	auto readU16 = [&](const int offset) -> unsigned short
+	{
+		unsigned short value = 0;
+		if (offset >= 0 && offset + 2 <= dataSize)
+			memcpy(&value, pChunkData + offset, sizeof(value));
+		return value;
+	};
+	auto readU32 = [&](const int offset) -> unsigned int
+	{
+		unsigned int value = 0;
+		if (offset >= 0 && offset + 4 <= dataSize)
+			memcpy(&value, pChunkData + offset, sizeof(value));
+		return value;
+	};
+	auto readF32 = [&](const int offset) -> float
+	{
+		float value = 0.0f;
+		if (offset >= 0 && offset + 4 <= dataSize)
+			memcpy(&value, pChunkData + offset, sizeof(value));
+		return value;
+	};
+
+	generator.attachFlags = readU16(0x00);
+	generator.emissionVariance = readU16(0x64);
+	generator.framesPerEmission = readU16(0x66);
+	generator.particlesPerEmission = pChunkData[0x68];
+	generator.generatorFlags = pChunkData[0x69];
+	generator.moreFlags = pChunkData[0x6b];
+	memcpy(generator.environmentId, pChunkData + 0x54, 4);
+	generator.environmentId[4] = 0;
+
+	unsigned int streamOffsets[4] = {};
+	unsigned int previousStart = 0x80;
+	for (int i = 0; i < 4; ++i)
+	{
+		const unsigned int sectionStart = readU32(0x70 + i * 4);
+		// The table is relative to the complete section, while pChunkData begins
+		// after its 0x10-byte header.
+		if (sectionStart < previousStart || sectionStart > (unsigned int)dataSize + 0x10)
+			return;
+		streamOffsets[i] = sectionStart;
+		chunkDebug.generatorSectionOffsets[i] = sectionStart;
+		previousStart = sectionStart;
+	}
+
+	// Several generator commands communicate through one of 64 scratch slots.
+	// In particular, setup opcode 0x0B supplies an angular velocity vector and
+	// update opcode 0x05 applies that slot to the element's authored rotation.
+	// Keep the slot association instead of treating every float3 setup as the
+	// same property.
+	float generatorVectors[64][3] = {};
+	bool generatorVectorPresent[64] = {};
+
+	for (int streamIndex = 0; streamIndex < 4; ++streamIndex)
+	{
+		const int streamStart = (int)streamOffsets[streamIndex] - 0x10;
+		const int streamEnd = (streamIndex + 1 < 4) ?
+			(int)streamOffsets[streamIndex + 1] - 0x10 : dataSize;
+		int cursor = streamStart;
+		while (cursor >= 0 && cursor + 4 <= streamEnd)
+		{
+			const unsigned int config = readU32(cursor);
+			const unsigned char opcode = (unsigned char)(config & 0xff);
+			const int wordCount = (int)((config >> 8) & 0x1f);
+			const int entrySize = std::max(1, wordCount) * 4;
+			if (cursor + entrySize > streamEnd)
+				break;
+
+			if (streamIndex == 0 && opcode == 0x0a && entrySize >= 8)
+			{
+				generator.hasCullDistance = true;
+				generator.cullDistance = readF32(cursor + 4);
+			}
+			else if (streamIndex == 1 && opcode == 0x01 && entrySize >= 34)
+			{
+				generator.hasStandardParticleSetup = true;
+				generator.standardParticleFlags = readU32(cursor + 4);
+				memcpy(generator.linkedResource, pChunkData + cursor + 12, 4);
+				generator.linkedResource[4] = 0;
+				if (FF11Water::EffectRootLength(generator.directoryPath))
+					for (int last = 3; last >= 0 && generator.linkedResource[last] == ' '; --last)
+						generator.linkedResource[last] = 0;
+				generator.hasSpawnPosition = true;
+				for (int axis = 0; axis < 3; ++axis)
+					generator.spawnPosition[axis] = readF32(cursor + 20 + axis * 4);
+				generator.linkedDataType = pChunkData[cursor + 33];
+				if (entrySize >= 36)
+					generator.particleLifetimeFrames = readU16(cursor + 34);
+			}
+			else if (streamIndex == 1 && opcode == 0x0f && entrySize >= 16)
+			{
+				generator.hasScale = true;
+				for (int axis = 0; axis < 3; ++axis)
+					generator.scale[axis] = readF32(cursor + 4 + axis * 4);
+			}
+			else if (streamIndex == 1 && (opcode == 0x06 || opcode == 0x07) && entrySize >= 12)
+			{
+				generator.hasPositionVariance = true;
+				generator.spawnRadius = readF32(cursor + 4) + readF32(cursor + 8);
+				for (int axis = 0; axis < 3; ++axis)
+					generator.spawnAxisScale[axis] = opcode == 0x07 && entrySize >= 24 ? readF32(cursor + 12 + axis * 4) : 1.0f;
+			}
+			else if (streamIndex == 1 && opcode == 0x03 && entrySize >= 16)
+			{
+				generator.hasVelocityVariance = true;
+				for (int axis = 0; axis < 3; ++axis)
+					generator.velocityVariance[axis] = readF32(cursor + 4 + axis * 4);
+			}
+			else if (streamIndex == 1 && opcode == 0x2d && entrySize >= 12)
+			{
+				memcpy(generator.lifetimeAlphaKeyframe, pChunkData + cursor + 8, 4);
+			}
+			else if (streamIndex == 2 && opcode == 0x0d)
+			{
+				generator.animateSprite = true;
+			}
+			else if (streamIndex == 2 && opcode == 0x2e && entrySize >= 12)
+			{
+				generator.hasParticleDistanceFade = true;
+				generator.particleFadeNear = readF32(cursor + 4);
+				generator.particleFadeFar = readF32(cursor + 8);
+			}
+			else if (streamIndex == 2 && opcode == 0x1b)
+			{
+				generator.updateLifetimeAlpha = true;
+			}
+			else if (streamIndex == 1 && opcode == 0x09 && entrySize >= 16)
+			{
+				generator.hasRotation = true;
+				for (int axis = 0; axis < 3; ++axis)
+					generator.rotation[axis] = readF32(cursor + 4 + axis * 4);
+			}
+			else if (streamIndex == 1 &&
+				(opcode == 0x02 || opcode == 0x0b || opcode == 0x12) && entrySize >= 16)
+			{
+				const int slot = (int)((config >> 13) & 0x3f);
+				generatorVectorPresent[slot] = true;
+				for (int axis = 0; axis < 3; ++axis)
+					generatorVectors[slot][axis] = readF32(cursor + 4 + axis * 4);
+			}
+			else if (streamIndex == 1 && opcode == 0x16 && entrySize >= 8)
+			{
+				generator.hasColor = true;
+				generator.colorBgra = readU32(cursor + 4);
+			}
+			else if (streamIndex == 1 && opcode == 0x1e && entrySize >= 8)
+			{
+				// CMoElem::PrepDX consumes this byte-sized render mode. Cloud
+				// stacks commonly mix ordinary alpha (0x44) with an additive
+				// secondary layer (0x48), so flattening both to one blend state
+				// exposes the UV-island boundaries as dark sky sectors.
+				generator.hasBlendMode = true;
+				generator.blendMode = readU16(cursor + 4);
+			}
+			else if (streamIndex == 1 && opcode >= 0x60 && opcode <= 0x63 && entrySize >= 8)
+			{
+				char *keyframeName = opcode == 0x60 ? generator.redKeyframe :
+					opcode == 0x61 ? generator.greenKeyframe :
+					opcode == 0x62 ? generator.blueKeyframe : generator.alphaKeyframe;
+				// Extended color-curve setup carries a flags word before its
+				// resource id, in weather generators as well as world effects.
+				// Reading the flags as a name drops the cloud tint/night-star curves.
+				const int nameOffset = entrySize >= 12 ? 8 : 4;
+				memcpy(keyframeName, pChunkData + cursor + nameOffset, 4);
+				keyframeName[4] = 0;
+				if (nameOffset == 8)
+					for (int last = 3; last >= 0 && keyframeName[last] == ' '; --last)
+						keyframeName[last] = 0;
+			}
+			else if (streamIndex == 1 && opcode >= 0x27 && opcode <= 0x29 && entrySize >= 12)
+			{
+				generator.hasAnimatedScale = true;
+			}
+			else if (streamIndex == 2 && opcode == 0x27 && entrySize >= 8)
+			{
+				generator.hasUvScrollU = true;
+				generator.uvScrollU = readF32(cursor + 4);
+			}
+			else if (streamIndex == 2 && opcode == 0x28 && entrySize >= 8)
+			{
+				generator.hasUvScrollV = true;
+				generator.uvScrollV = readF32(cursor + 4);
+			}
+			else if (streamIndex == 2 && opcode == 0x05)
+			{
+				const int slot = (int)((config >> 13) & 0x3f);
+				if (generatorVectorPresent[slot])
+				{
+					generator.hasRotationVelocity = true;
+					for (int axis = 0; axis < 3; ++axis)
+						generator.rotationVelocity[axis] = generatorVectors[slot][axis];
+				}
+			}
+			else if (streamIndex == 2 && opcode == 0x02)
+			{
+				const int slot = (int)((config >> 13) & 0x3f);
+				if (generatorVectorPresent[slot])
+				{
+					generator.hasLinearVelocity = true;
+					for (int axis = 0; axis < 3; ++axis)
+						generator.linearVelocity[axis] = generatorVectors[slot][axis];
+				}
+			}
+			else if (streamIndex == 2 && opcode == 0x03 && entrySize >= 16)
+			{
+				generator.hasLinearAcceleration = true;
+				for (int axis = 0; axis < 3; ++axis)
+					generator.linearAcceleration[axis] = readF32(cursor + 4 + axis * 4);
+			}
+
+			cursor += entrySize;
+			if (opcode == 0)
+				break;
+		}
+	}
+
+	chunkDebug.generatorAttachFlags = generator.attachFlags;
+	chunkDebug.generatorEmissionVariance = generator.emissionVariance;
+	chunkDebug.generatorFramesPerEmission = generator.framesPerEmission;
+	chunkDebug.generatorParticlesPerEmission = generator.particlesPerEmission;
+	chunkDebug.generatorFlags = generator.generatorFlags;
+	chunkDebug.generatorMoreFlags = generator.moreFlags;
+	strcpy_s(chunkDebug.generatorEnvironmentId, generator.environmentId);
+	strcpy_s(chunkDebug.generatorLinkedResource, generator.linkedResource);
+	chunkDebug.generatorLinkedDataType = generator.linkedDataType;
+	chunkDebug.hasGeneratorMetadata = true;
+	gFF11LastGeneratorRecords.push_back(generator);
+}
+
+static void Model_FF11_TryAnnotateKeyframeChunk(ff11DatChunkDebug_t &chunkDebug, const unsigned char *pChunkData, const int dataSize)
+{
+	if (chunkDebug.type != CFFXIDat::skChunkType_Keyframe || dataSize < 16 || (dataSize & 7) != 0)
+		return;
+
+	ff11KeyframeRecord_t keyframe = {};
+	strcpy_s(keyframe.name, chunkDebug.name);
+	strcpy_s(keyframe.directoryPath, chunkDebug.directoryPath);
+	keyframe.pairCount = std::min(dataSize / 8, ff11KeyframeRecord_t::skMaxPairs);
+	for (int pairIndex = 0; pairIndex < keyframe.pairCount; ++pairIndex)
+	{
+		memcpy(&keyframe.times[pairIndex], pChunkData + pairIndex * 8, sizeof(float));
+		memcpy(&keyframe.values[pairIndex], pChunkData + pairIndex * 8 + 4, sizeof(float));
+	}
+	gFF11LastKeyframeRecords.push_back(keyframe);
+	chunkDebug.keyframePairCount = keyframe.pairCount;
+	chunkDebug.hasKeyframeMetadata = true;
+}
+
+static void Model_FF11_TrimChunkName(char *dst, const int dstSize, const char *src)
+{
+	if (!dst || dstSize <= 0)
+		return;
+
+	int writeOfs = 0;
+	for (int i = 0; i < 4 && writeOfs < dstSize - 1; ++i)
+	{
+		const char c = src[i];
+		if (c == 0)
+			break;
+		dst[writeOfs++] = c;
+	}
+
+	while (writeOfs > 0 && dst[writeOfs - 1] == ' ')
+		--writeOfs;
+	dst[writeOfs] = 0;
+}
+
+static void Model_FF11_BuildChunkDirectoryPath(char *dst, const int dstSize, const std::vector<std::string> &dirStack)
+{
+	if (!dst || dstSize <= 0)
+		return;
+
+	dst[0] = 0;
+	size_t used = 0;
+	for (size_t i = 0; i < dirStack.size(); ++i)
+	{
+		const char *part = dirStack[i].c_str();
+		const size_t partLen = strlen(part);
+		const size_t needed = partLen + (i ? 1 : 0);
+		if (used + needed >= (size_t)dstSize)
+			break;
+		if (i)
+			dst[used++] = '/';
+		memcpy(dst + used, part, partLen);
+		used += partLen;
+		dst[used] = 0;
+	}
+}
+
+static void Model_FF11_TryAnnotateEnvironmentChunk(ff11DatChunkDebug_t &chunkDebug, const unsigned char *pChunkData, const int dataSize)
+{
+	if (chunkDebug.type != CFFXIDat::skChunkType_Environment || dataSize < 16)
+		return;
+
+	for (int i = 0; i < 8 && (i * 2 + 2) <= dataSize; ++i)
+	{
+		unsigned short word = 0;
+		memcpy(&word, pChunkData + i * 2, sizeof(word));
+		chunkDebug.environmentHeaderWords[i] = word;
+	}
+	chunkDebug.hasEnvironmentMetadata = true;
+
+	// Retain the authored environment after the DAT buffer is released. These
+	// fields drive the runtime sky dome, clear color, and linear terrain fog.
+	if (dataSize < 0x6c)
+		return;
+
+	ff11EnvironmentRecord_t env = {};
+	strcpy_s(env.name, chunkDebug.name);
+	strcpy_s(env.directoryPath, chunkDebug.directoryPath);
+	auto readU16 = [&](int offset) -> unsigned short
+	{
+		unsigned short value = 0;
+		if (offset >= 0 && offset + (int)sizeof(value) <= dataSize)
+			memcpy(&value, pChunkData + offset, sizeof(value));
+		return value;
+	};
+	auto readU32 = [&](int offset) -> unsigned int
+	{
+		unsigned int value = 0;
+		if (offset >= 0 && offset + (int)sizeof(value) <= dataSize)
+			memcpy(&value, pChunkData + offset, sizeof(value));
+		return value;
+	};
+	auto readF32 = [&](int offset) -> float
+	{
+		float value = 0.0f;
+		if (offset >= 0 && offset + (int)sizeof(value) <= dataSize)
+			memcpy(&value, pChunkData + offset, sizeof(value));
+		return value;
+	};
+	auto readLight = [&](int offset, ff11EnvironmentLightConfig_t &light)
+	{
+		light.sunColor = readU32(offset + 0x00);
+		light.moonColor = readU32(offset + 0x04);
+		light.ambientColor = readU32(offset + 0x08);
+		light.fogColor = readU32(offset + 0x0c);
+		light.fogFar = readF32(offset + 0x10);
+		light.fogNear = readF32(offset + 0x14);
+		light.diffuseMultiplier = readF32(offset + 0x18);
+	};
+
+	// Published 0x2F offsets are relative to the record at +8; pChunkData has
+	// already advanced past that prefix, so fields below are shifted back by 8.
+	env.indoorFlag = readU32(0x00);
+	readLight(0x0c, env.modelLight);
+	readLight(0x2c, env.terrainLight);
+	env.clearColor = readU32(0x4c);
+	env.drawDistance = readF32(0x58);
+	env.selector = readU16(0x5c);
+	env.sphereSpokeCount = readU16(0x5e);
+	env.horizonColor = readU32(0x60);
+	env.skyBoxRadius = readF32(0x68);
+	for (int ring = 0; ring < 8; ++ring)
+	{
+		const int colorOffset = 0x6c + ring * 4;
+		const int elevationOffset = 0x8c + ring * 4;
+		if (colorOffset + 4 > dataSize || elevationOffset + 4 > dataSize)
+			break;
+		env.skyDomeRingColors[ring] = readU32(colorOffset);
+		env.skyDomeElevations[ring] = readF32(elevationOffset);
+		++env.skyDomeRingCount;
+	}
+
+	env.minuteOfDay = -1;
+	if (strlen(env.name) == 4 &&
+		env.name[0] >= '0' && env.name[0] <= '9' &&
+		env.name[1] >= '0' && env.name[1] <= '9' &&
+		env.name[2] >= '0' && env.name[2] <= '9' &&
+		env.name[3] >= '0' && env.name[3] <= '9')
+	{
+		const int hour = (env.name[0] - '0') * 10 + env.name[1] - '0';
+		const int minute = (env.name[2] - '0') * 10 + env.name[3] - '0';
+		if (hour < 24 && minute < 60)
+			env.minuteOfDay = hour * 60 + minute;
+	}
+	gFF11LastEnvironmentRecords.push_back(env);
+}
+
+static void Model_FF11_TryAnnotateSoundPointerChunk(ff11DatChunkDebug_t &chunkDebug, const unsigned char *pChunkData, const int dataSize)
+{
+	if (chunkDebug.type != CFFXIDat::skChunkType_SoundPointer || dataSize < 12)
+		return;
+
+	unsigned int soundId = 0;
+	memcpy(&soundId, pChunkData + 8, sizeof(soundId));
+	chunkDebug.soundId = soundId;
+	sprintf_s(chunkDebug.soundPath, "se/se%03u/se%06u.spw", soundId / 1000, soundId);
+	chunkDebug.hasSoundPointer = true;
+}
+
+#define FF11_LOCAL_DECL_OPTS(argRequired) \
+	ff11Opts_t *pOpts = (ff11Opts_t *)store; \
+	NoeAssert(storeSize == sizeof(ff11Opts_t)); \
+	if (argRequired && !arg) \
+	{ \
+		return false; \
+	}
+
+bool Model_FF11_ShiftColorHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(true);
-	pOpts-fixColorShift = atoi(arg);
-	pOpts-explicitColorShift = true;
+	pOpts->fixColorShift = atoi(arg);
+	pOpts->explicitColorShift = true;
 	return true;
 }
 
-bool Model_FF11_ShiftAlphaHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_ShiftAlphaHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(true);
-	pOpts-fixAlphaShift = atoi(arg);
-	pOpts-explicitAlphaShift = true;
+	pOpts->fixAlphaShift = atoi(arg);
+	pOpts->explicitAlphaShift = true;
 	return true;
 }
 
-bool Model_FF11_ShiftVertColorHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_ShiftVertColorHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(true);
-	pOpts-fixVertColorShift = atoi(arg);
-	pOpts-explicitVertColorShift = true;
+	pOpts->fixVertColorShift = atoi(arg);
+	pOpts->explicitVertColorShift = true;
 	return true;
 }
 
-bool Model_FF11_ShiftVertAlphaHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_ShiftVertAlphaHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(true);
-	pOpts-fixVertAlphaShift = atoi(arg);
-	pOpts-explicitVertAlphaShift = true;
+	pOpts->fixVertAlphaShift = atoi(arg);
+	pOpts->explicitVertAlphaShift = true;
 	return true;
 }
 
-bool Model_FF11_NoShinyHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_NoShinyHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(false);
-	pOpts-noShinyMaterials = true;
+	pOpts->noShinyMaterials = true;
 	return true;
 }
 
-bool Model_FF11_NoVertColorHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_NoVertColorHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(false);
-	pOpts-noVertColors = true;
+	pOpts->noVertColors = true;
 	return true;
 }
 
-bool Model_FF11_ForceCullHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_ForceCullHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(false);
-	pOpts-forceCull = true;
+	pOpts->forceCull = true;
 	return true;
 }
 
-bool Model_FF11_RenderUnreferencedHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_RenderUnreferencedHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(false);
-	pOpts-renderUnreferenced = true;
+	pOpts->renderUnreferenced = true;
 	return true;
 }
 
-bool Model_FF11_KeepNamesHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_KeepNamesHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(false);
-	pOpts-keepNames = true;
+	pOpts->keepNames = true;
 	return true;
 }
 
-bool Model_FF11_OptimizeGeoHandler(const char arg, unsigned char store, int storeSize)
+bool Model_FF11_OptimizeGeoHandler(const char *arg, unsigned char *store, int storeSize)
 {
 	FF11_LOCAL_DECL_OPTS(false);
-	pOpts-optimizeGeo = true;
+	pOpts->optimizeGeo = true;
 	return true;
 }
 
-static const char skpDatSetHeader = NOESIS_FF11_DAT_SET;
+static const char *skpDatSetHeader = NOESIS_FF11_DAT_SET;
 static const int skDatSetHeaderSize = strlen(skpDatSetHeader);
 
-bool Model_FF11_CheckDATSet(BYTE fileBuffer, int bufferLen, noeRAPI_t rapi)
+bool Model_FF11_CheckDATSet(BYTE *fileBuffer, int bufferLen, noeRAPI_t *rapi)
 {
-	if (bufferLen = skDatSetHeaderSize  memcmp(fileBuffer, skpDatSetHeader, skDatSetHeaderSize) != 0)
+	if (bufferLen < skDatSetHeaderSize || memcmp(fileBuffer, skpDatSetHeader, skDatSetHeaderSize) != 0)
 	{
 		return false;
 	}
 	return true;
 }
 
-noesisModel_t Model_FF11_LoadDATSet(BYTE fileBuffer, int bufferLen, int &numMdl, noeRAPI_t rapi)
+noesisModel_t *Model_FF11_LoadDATSet(BYTE *fileBuffer, int bufferLen, int &numMdl, noeRAPI_t *rapi)
 {
-	stdvectorCFFXIDat  dats;
+	std::vector<CFFXIDat *> dats;
 	CFFXIDefaultHandlerSet datHandlers;
 
 	char basePath[MAX_NOESIS_PATH];
-	rapi-Noesis_GetDirForFilePath(basePath, rapi-Noesis_GetLastCheckedName());
+	rapi->Noesis_GetDirForFilePath(basePath, rapi->Noesis_GetLastCheckedName());
 	char loadPath[MAX_NOESIS_PATH];
 	strcpy_s(loadPath, basePath);
 
 	char currentDatName[MAX_NOESIS_PATH];
 	char currentDatFilename[MAX_NOESIS_PATH];
 
-	textParser_t pParser = rapi-Parse_InitParser((char )fileBuffer);
+	textParser_t *pParser = rapi->Parse_InitParser((char *)fileBuffer);
 	parseToken_t tok;
-	while (rapi-Parse_GetNextToken(pParser, &tok))
+	while (rapi->Parse_GetNextToken(pParser, &tok))
 	{
-		if (!stricmp(tok.text, setPathKey))
+		if (!stricmp(tok.text, "setPathKey"))
 		{
 			HKEY baseKey;
-			rapi-Parse_GetNextToken(pParser, &tok);
-			if (!stricmp(tok.text, HKEY_LOCAL_MACHINE))
+			rapi->Parse_GetNextToken(pParser, &tok);
+			if (!stricmp(tok.text, "HKEY_LOCAL_MACHINE"))
 			{
 				baseKey = HKEY_LOCAL_MACHINE;
 			}
-			else if (!stricmp(tok.text, HKEY_CURRENT_USER))
+			else if (!stricmp(tok.text, "HKEY_CURRENT_USER"))
 			{
 				baseKey = HKEY_CURRENT_USER;
 			}
-			else if (!stricmp(tok.text, HKEY_CURRENT_CONFIG))
+			else if (!stricmp(tok.text, "HKEY_CURRENT_CONFIG"))
 			{
 				baseKey = HKEY_CURRENT_CONFIG;
 			}
-			else if (!stricmp(tok.text, HKEY_USERS))
+			else if (!stricmp(tok.text, "HKEY_USERS"))
 			{
 				baseKey = HKEY_USERS;
 			}
-			else if (!stricmp(tok.text, HKEY_CLASSES_ROOT))
+			else if (!stricmp(tok.text, "HKEY_CLASSES_ROOT"))
 			{
 				baseKey = HKEY_CLASSES_ROOT;
 			}
 			else
-			{ default to local machine
+			{ //default to local machine
 				baseKey = HKEY_LOCAL_MACHINE;
 			}
 
-			grab the key name
-			rapi-Parse_GetNextToken(pParser, &tok);
+			//grab the key name
+			rapi->Parse_GetNextToken(pParser, &tok);
 			HKEY key;
 			if (RegOpenKeyExA(baseKey, tok.text, 0, KEY_READ, &key) == ERROR_SUCCESS)
 			{
-				grab the value name
-				rapi-Parse_GetNextToken(pParser, &tok);
+				//grab the value name
+				rapi->Parse_GetNextToken(pParser, &tok);
 				char keyData[MAX_NOESIS_PATH];
 				DWORD keyDataSize = MAX_NOESIS_PATH;
 				DWORD keyType;
@@ -1864,149 +1337,197 @@ noesisModel_t Model_FF11_LoadDATSet(BYTE fileBuffer, int bufferLen, int &numMdl,
 				RegCloseKey(key);
 			}
 		}
-		else if (!stricmp(tok.text, setPathRel))
+		else if (!stricmp(tok.text, "setPathRel"))
 		{
-			set the path relative to this file's location
-			rapi-Parse_GetNextToken(pParser, &tok);
-			sprintf_s(loadPath, %s%s, basePath, tok.text);
+			//set the path relative to this file's location
+			rapi->Parse_GetNextToken(pParser, &tok);
+			sprintf_s(loadPath, "%s%s", basePath, tok.text);
 		}
-		else if (!stricmp(tok.text, setPathAbs))
+		else if (!stricmp(tok.text, "setPathAbs"))
 		{
-			set an absolute path
-			rapi-Parse_GetNextToken(pParser, &tok);
+			//set an absolute path
+			rapi->Parse_GetNextToken(pParser, &tok);
 			strcpy_s(loadPath, tok.text);
 		}
-		else if (!stricmp(tok.text, dat))
+		else if (!stricmp(tok.text, "dat"))
 		{
-			rapi-Parse_GetNextToken(pParser, &tok);
+			rapi->Parse_GetNextToken(pParser, &tok);
 			strcpy_s(currentDatName, tok.text);
-			grab the filename
-			rapi-Parse_GetNextToken(pParser, &tok);
-			sprintf_s(currentDatFilename, %s%s, loadPath, tok.text);
+			//grab the filename
+			rapi->Parse_GetNextToken(pParser, &tok);
+			sprintf_s(currentDatFilename, "%s%s", loadPath, tok.text);
 
 			int datBufferSize;
-			unsigned char pDatBuffer = rapi-Noesis_ReadFile(currentDatFilename, &datBufferSize);
+			unsigned char *pDatBuffer = rapi->Noesis_ReadFile(currentDatFilename, &datBufferSize);
 			if (pDatBuffer)
 			{
-				CFFXIDat pDat = new CFFXIDat(pDatBuffer, datBufferSize, rapi);
+				CFFXIDat *pDat = new CFFXIDat(pDatBuffer, datBufferSize, rapi);
 				datHandlers.RegisterHandlersWithDat(pDat);
-				pDat-ParseChunksOfInterest();
+				pDat->ParseChunksOfInterest();
 
 				dats.push_back(pDat);
-				if (!stricmp(currentDatName, __skeleton))
+				if (!stricmp(currentDatName, "__skeleton"))
 				{
-					pDat-RunChunkHandlersForChunksOfInterest(CFFXIDatskChunkType_Skeleton);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Skeleton);
+					// Character skeleton DATs also contain the lower-body motion
+					// tracks paired with the upper-body tracks in animation banks.
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Animation);
 				}
-				else if (!stricmp(currentDatName, __animation))
+				else if (!stricmp(currentDatName, "__animation"))
 				{
-					pDat-RunChunkHandlersForChunksOfInterest(CFFXIDatskChunkType_Animation);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Animation);
 				}
 				else
 				{
-					else, name is currently unused. might be useful for future functionality.
-					pDat-RunChunkHandlersForChunksOfInterest(CFFXIDatskChunkType_Texture);
-					pDat-RunChunkHandlersForChunksOfInterest(CFFXIDatskChunkType_Geo);
-					pDat-RunChunkHandlersForChunksOfInterest(CFFXIDatskChunkType_Map);
-					pDat-RunChunkHandlersForChunksOfInterest(CFFXIDatskChunkType_MapGeo);
+					//else, name is currently unused. might be useful for future functionality.
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Texture);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Geo);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Map);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_MapGeo);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectModel);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectAnimated);
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectMorph);
 				}
 			}
 			else
 			{
-				rapi-LogOutput(Failed to load file '%s'n, currentDatFilename);
+				rapi->LogOutput("Failed to load file '%s'\n", currentDatFilename);
 			}
 		}
 	}
-	rapi-Parse_FreeParser(pParser);
+	rapi->Parse_FreeParser(pParser);
 
 	if (!datHandlers.TextureHandler())
 	{
-		if any of the handlers are null, we didn't encouner a single loadable dat.
-		rapi-LogOutput(Error No relevant data was loaded.n);
+		//if any of the handlers are null, we didn't encounter a single loadable dat.
+		rapi->LogOutput("Error: No relevant data was loaded.\n");
 		return NULL;
 	}
 
-	noesisModel_t pMdl = Model_FF11_ConstructModelFromHandlerSet(rapi, datHandlers, false);
+	noesisModel_t *pMdl = Model_FF11_ConstructModelFromHandlerSet(rapi, datHandlers, false);
 
 	Model_FF11_SetPreviewOffset(rapi);
 
-	for (stdvectorCFFXIDat iterator it = dats.begin(); it != dats.end(); ++it)
+	for (std::vector<CFFXIDat *>::iterator it = dats.begin(); it != dats.end(); ++it)
 	{
-		CFFXIDat pDat = it;
-		rapi-Noesis_UnpooledFree((void )pDat-GetData());
+		CFFXIDat *pDat = *it;
+		rapi->Noesis_UnpooledFree((void *)pDat->GetData());
 		delete pDat;
 	}
 
-	numMdl = (pMdl)  1  0;
+	numMdl = (pMdl) ? 1 : 0;
 	return pMdl;
 }
 
 //========================================================================================
 
-CFFXIDatEValidateChunkResult CFFXIDatValidateChunk(const CFFXIDatSChunk &chunk) const
+CFFXIDat::EValidateChunkResult CFFXIDat::ValidateChunk(const CFFXIDat::SChunk &chunk) const
 {
-	TChunkHandlerContainerconst_iterator it = mChunkHandlers.find(chunk.mType);
+	TChunkHandlerContainer::const_iterator it = mChunkHandlers.find(chunk.mType);
 	if (it == mChunkHandlers.end())
 	{
 		return kVCR_NotSupported;
 	}
 
 	const int dataSize = chunk.mSize - skBinaryChunkSize;
-	return it-second-ValidateChunk(this, chunk, mpData + chunk.mDataOffset, dataSize);
+	return it->second->ValidateChunk(*this, chunk, mpData + chunk.mDataOffset, dataSize);
 }
 
-bool CFFXIDatParseChunksOfInterest()
+bool CFFXIDat::ParseChunksOfInterest()
 {
 	mChunks.clear();
+	gFF11LastDatChunks.clear();
+	gFF11LastEnvironmentRecords.clear();
+	gFF11LastGeneratorRecords.clear();
+	gFF11LastKeyframeRecords.clear();
+	std::vector<std::string> dirStack;
 
 	int ofs = 0;
-	while (ofs = (mDataSize - skBinaryChunkSize))
+	while (ofs <= (mDataSize - skBinaryChunkSize))
 	{
 		SChunk chunk(mpData + ofs, ofs);
-		if ((ofs + chunk.mSize)  mDataSize)
+		if ((ofs + chunk.mSize) > mDataSize)
 		{
-			would run off the end of the buffer
-			return false;
+			// Chunk extends past the end of the file.
+			// Treat this as end-of-list rather than a parse error: FFXI character
+			// model DATs (ROM/63/ etc.) have no explicit zero-size terminator â€”
+			// the file just ends, and the last chunk's 'next' field naturally points
+			// past EOF.  The FFXI Tool handles this identically (NextData returns
+			// NULL on overrun).  Returning false here incorrectly rejects every
+			// character body / face / animation DAT.
+			break;
 		}
-		consider a 0-sized chunk to be a terminator
-		if (chunk.mSize = 0)
+		//consider a 0-sized chunk to be a terminator
+		if (chunk.mSize <= 0)
 		{
 			break;
 		}
 
 		const EValidateChunkResult validateChunkResult = ValidateChunk(chunk);
+		ff11DatChunkDebug_t chunkDebug = {};
+		memcpy(chunkDebug.name, chunk.mName, sizeof(chunk.mName));
+		chunkDebug.type = chunk.mType;
+		chunkDebug.dataOffset = chunk.mDataOffset;
+		chunkDebug.size = chunk.mSize;
+		chunkDebug.supported = (validateChunkResult == kVCR_Supported);
+		chunkDebug.isShadow = chunk.mIsShadow;
+		chunkDebug.isExtracted = chunk.mIsExtracted;
+		chunkDebug.version = chunk.mVersion;
+		chunkDebug.isVirtual = chunk.mIsVirtual;
+
+		char dirName[8] = {};
+		Model_FF11_TrimChunkName(dirName, sizeof(dirName), chunk.mName);
+		if (chunk.mType == skChunkType_DirectoryOpen && dirName[0])
+		{
+			dirStack.push_back(dirName);
+			chunkDebug.isDirectoryOpen = true;
+		}
+		else if (chunk.mType == skChunkType_DirectoryClose)
+		{
+			chunkDebug.isDirectoryClose = true;
+		}
+		Model_FF11_BuildChunkDirectoryPath(chunkDebug.directoryPath, sizeof(chunkDebug.directoryPath), dirStack);
+		Model_FF11_TryAnnotateEffectChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
+		Model_FF11_TryAnnotateGeneratorChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
+		Model_FF11_TryAnnotateKeyframeChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
+		Model_FF11_TryAnnotateEnvironmentChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
+		Model_FF11_TryAnnotateSoundPointerChunk(chunkDebug, mpData + chunk.mDataOffset, chunk.mSize - skBinaryChunkSize);
+		gFF11LastDatChunks.push_back(chunkDebug);
+		if (chunk.mType == skChunkType_DirectoryClose && !dirStack.empty())
+			dirStack.pop_back();
 		if (validateChunkResult == kVCR_Supported)
 		{
 			mChunks.push_back(chunk);
 		}
 		else if (validateChunkResult == kVCR_Invalid)
-		{ bad chunk data, abort parsing
+		{ //bad chunk data, abort parsing
 			return false;
 		}
 
 		ofs += chunk.mSize;
 	}
 
-	return mChunks.size()  0;
+	return mChunks.size() > 0;
 }
 
-bool CFFXIDatRunChunkHandlersForChunksOfInterest(const int forChunkType) const
+bool CFFXIDat::RunChunkHandlersForChunksOfInterest(const int forChunkType) const
 {
-	run through the pre-built chunks of interest list, and run registered handlers for them.
-	for (TChunkListconst_iterator it = mChunks.begin(); it != mChunks.end(); ++it)
+	//run through the pre-built chunks of interest list, and run registered handlers for them.
+	for (TChunkList::const_iterator it = mChunks.begin(); it != mChunks.end(); ++it)
 	{
-		const SChunk &chunk = it;
-		if (forChunkType = 0 && chunk.mType != forChunkType)
+		const SChunk &chunk = *it;
+		if (forChunkType >= 0 && chunk.mType != forChunkType)
 		{
 			continue;
 		}
 
-		TChunkHandlerContainerconst_iterator itHandler = mChunkHandlers.find(chunk.mType);
+		TChunkHandlerContainer::const_iterator itHandler = mChunkHandlers.find(chunk.mType);
 		if (itHandler != mChunkHandlers.end())
 		{
 			const int dataSize = chunk.mSize - skBinaryChunkSize;
-			if (!itHandler-second-HandleChunk(this, chunk, mpData + chunk.mDataOffset, dataSize))
+			if (!itHandler->second->HandleChunk(*this, chunk, mpData + chunk.mDataOffset, dataSize))
 			{
-				mpRapi-LogOutput(WARNING Chunk handler failed on chunk type %i at %i.n, chunk.mType, chunk.mDataOffset);
+				mpRapi->LogOutput("WARNING: Chunk handler failed on chunk type %i at %i.\n", chunk.mType, chunk.mDataOffset);
 			}
 		}
 	}
@@ -2014,36 +1535,38 @@ bool CFFXIDatRunChunkHandlersForChunksOfInterest(const int forChunkType) const
 	return true;
 }
 
-void CFFXIDatRegisterChunkHandler(CFFXIChunkHandler pChunkHandler)
+void CFFXIDat::RegisterChunkHandler(CFFXIChunkHandler *pChunkHandler)
 {
-	const int chunkType = pChunkHandler-GetChunkType();
-	TChunkHandlerContaineriterator it = mChunkHandlers.lower_bound(chunkType);
-	if (it != mChunkHandlers.end() && it-first == chunkType)
+	const int chunkType = pChunkHandler->GetChunkType();
+	TChunkHandlerContainer::iterator it = mChunkHandlers.lower_bound(chunkType);
+	if (it != mChunkHandlers.end() && it->first == chunkType)
 	{
-		NoeAssert(!Handler already registered to chunk type!);
+		NoeAssert(!"Handler already registered to chunk type!");
 		return;
 	}
-	mChunkHandlers.insert(it, TChunkHandlerContainervalue_type(chunkType, pChunkHandler));
+	mChunkHandlers.insert(it, TChunkHandlerContainer::value_type(chunkType, pChunkHandler));
 }
 
 //========================================================================================
 
-#define FFXI_CREATE_AND_REGISTER_HANDLER(dat, handlerPointer, handlerType, ...) 
-	if (!handlerPointer) 
-	{ 
-		handlerPointer = new handlerType(__VA_ARGS__); 
-	} 
+#define FFXI_CREATE_AND_REGISTER_HANDLER(dat, handlerPointer, handlerType, ...) \
+	if (!handlerPointer) \
+	{ \
+		handlerPointer = new handlerType(__VA_ARGS__); \
+	} \
 	dat.RegisterChunkHandler(handlerPointer);
 
-CFFXIDefaultHandlerSetCFFXIDefaultHandlerSet(CFFXIDat pDat)
+CFFXIDefaultHandlerSet::CFFXIDefaultHandlerSet(CFFXIDat *pDat)
 {
 	if (pDat)
 	{
-		RegisterHandlersWithDat(pDat);
+		RegisterHandlersWithDat(*pDat);
 	}
 }
 
-void CFFXIDefaultHandlerSetRegisterHandlersWithDat(CFFXIDat &dat)
+CFFXIDefaultHandlerSet::~CFFXIDefaultHandlerSet() = default;
+
+void CFFXIDefaultHandlerSet::RegisterHandlersWithDat(CFFXIDat &dat)
 {
 	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpTextureHandler, CFFXITextureHandler);
 	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpSkelHandler, CFFXISkelHandler);
@@ -2051,4 +1574,9 @@ void CFFXIDefaultHandlerSetRegisterHandlersWithDat(CFFXIDat &dat)
 	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpGeoHandler, CFFXIGeoHandler);
 	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpMapHandler, CFFXIMapHandler);
 	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpMapGeoHandler, CFFXIMapGeoHandler);
+	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpEffectModelHandler, CFFXIEffectHandler, CFFXIDat::skChunkType_EffectModel);
+	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpEffectAnimatedHandler, CFFXIEffectHandler, CFFXIDat::skChunkType_EffectAnimated);
+	FFXI_CREATE_AND_REGISTER_HANDLER(dat, mpEffectMorphHandler, CFFXIEffectHandler, CFFXIDat::skChunkType_EffectMorph);
 }
+
+#pragma pack(pop)

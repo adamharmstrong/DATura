@@ -25,6 +25,10 @@ Release/
 # Logs
 *.log
 
+# Generated renderer smoke-test output
+/artifacts/renderer-smoke-Debug/
+/artifacts/renderer-smoke-Release/
+
 # Local agent/research workspaces
 .agents/
 tools/galkareeve-ffxi-reference*/

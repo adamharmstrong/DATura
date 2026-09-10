@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<profile>
+ <version>LibreOffice v1</version>
+ <device>
+  <type>opencl</type>
+  <name>NVIDIA GeForce RTX 4070 Laptop GPU</name>
+  <driver>591.94</driver>
+  <time>16068</time>
+  <errors>false</errors>
+ </device>
+ <device>
+  <type>opencl</type>
+  <name>Intel(R) Iris(R) Xe Graphics</name>
+  <driver>31.0.101.4502</driver>
+  <time>max</time>
+  <errors>false</errors>
+ </device>
+ <device>
+  <type>native</type>
+  <time>2141184</time>
+  <errors>false</errors>
+ </device>
+</profile>

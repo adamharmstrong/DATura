@@ -1,0 +1,2330 @@
+[
+  {
+    "zone": 26,
+    "name": "Tavnazian Safehold",
+    "path": "ROM3/0/25.DAT",
+    "links": []
+  },
+  {
+    "zone": 48,
+    "name": "Al Zahbi",
+    "path": "ROM4/0/2.DAT",
+    "links": []
+  },
+  {
+    "zone": 50,
+    "name": "Aht Urhgan Whitegate",
+    "path": "ROM4/0/3.DAT",
+    "links": [
+      {
+        "subAreaId": 560,
+        "path": "ROM4/0/39.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_room_r1"
+        ]
+      },
+      {
+        "subAreaId": 561,
+        "path": "ROM4/0/40.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_room_r2"
+        ]
+      },
+      {
+        "subAreaId": 562,
+        "path": "ROM4/0/41.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_room_r3"
+        ]
+      },
+      {
+        "subAreaId": 563,
+        "path": "ROM4/0/42.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_room_r4"
+        ]
+      },
+      {
+        "subAreaId": 564,
+        "path": "ROM4/0/43.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_room_r4"
+        ]
+      },
+      {
+        "subAreaId": 565,
+        "path": "ROM4/0/44.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_cub_1ms"
+        ]
+      },
+      {
+        "subAreaId": 566,
+        "path": "ROM4/0/45.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_cub_1ms"
+        ]
+      },
+      {
+        "subAreaId": 567,
+        "path": "ROM4/0/46.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_cub_1ms"
+        ]
+      },
+      {
+        "subAreaId": 568,
+        "path": "ROM4/0/47.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_cub_1ms"
+        ]
+      },
+      {
+        "subAreaId": 569,
+        "path": "ROM4/0/48.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_ship_room"
+        ]
+      },
+      {
+        "subAreaId": 570,
+        "path": "ROM4/0/49.DAT",
+        "root": "r_2g",
+        "trigger": true,
+        "objects": [
+          "id_ship_room"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 53,
+    "name": "Nashmau",
+    "path": "ROM4/0/6.DAT",
+    "links": [
+      {
+        "subAreaId": 571,
+        "path": "ROM4/0/50.DAT",
+        "root": "r_3g",
+        "trigger": true,
+        "objects": [
+          "id_ship_room"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 80,
+    "name": "Southern San d'Oria [S]",
+    "path": "ROM5/0/0.DAT",
+    "links": []
+  },
+  {
+    "zone": 87,
+    "name": "Bastok Markets [S]",
+    "path": "ROM5/0/7.DAT",
+    "links": []
+  },
+  {
+    "zone": 94,
+    "name": "Windurst Waters [S]",
+    "path": "ROM5/0/14.DAT",
+    "links": []
+  },
+  {
+    "zone": 230,
+    "name": "Southern San d'Oria",
+    "path": "ROM/1/31.DAT",
+    "links": [
+      {
+        "subAreaId": 326,
+        "path": "ROM/1/103.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "gild_in02"
+        ]
+      },
+      {
+        "subAreaId": 327,
+        "path": "ROM/1/104.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "gild_in01"
+        ]
+      },
+      {
+        "subAreaId": 328,
+        "path": "ROM/1/105.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "chocobo_in"
+        ]
+      },
+      {
+        "subAreaId": 329,
+        "path": "ROM/1/106.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_04_in"
+        ]
+      },
+      {
+        "subAreaId": 330,
+        "path": "ROM/1/107.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_01_in"
+        ]
+      },
+      {
+        "subAreaId": 331,
+        "path": "ROM/1/108.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_03_in"
+        ]
+      },
+      {
+        "subAreaId": 332,
+        "path": "ROM/1/109.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_01_in"
+        ]
+      },
+      {
+        "subAreaId": 333,
+        "path": "ROM/1/110.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_03_in"
+        ]
+      },
+      {
+        "subAreaId": 335,
+        "path": "ROM/1/111.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_05_in"
+        ]
+      },
+      {
+        "subAreaId": 336,
+        "path": "ROM/1/112.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_00_in"
+        ]
+      },
+      {
+        "subAreaId": 337,
+        "path": "ROM/1/113.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_02_in"
+        ]
+      },
+      {
+        "subAreaId": 338,
+        "path": "ROM/1/114.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_00_in"
+        ]
+      },
+      {
+        "subAreaId": 339,
+        "path": "ROM/1/115.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_00_in"
+        ]
+      },
+      {
+        "subAreaId": 340,
+        "path": "ROM/1/116.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_00_in"
+        ]
+      },
+      {
+        "subAreaId": 341,
+        "path": "ROM/1/117.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_00_in"
+        ]
+      },
+      {
+        "subAreaId": 342,
+        "path": "ROM/1/118.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_00_in"
+        ]
+      },
+      {
+        "subAreaId": 343,
+        "path": "ROM/1/119.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_00_in"
+        ]
+      },
+      {
+        "subAreaId": 344,
+        "path": "ROM/1/120.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "house_02_in"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 231,
+    "name": "Northern San d'Oria",
+    "path": "ROM/1/32.DAT",
+    "links": [
+      {
+        "subAreaId": 349,
+        "path": "ROM/1/121.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_gild02"
+        ]
+      },
+      {
+        "subAreaId": 350,
+        "path": "ROM/1/122.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_gild01"
+        ]
+      },
+      {
+        "subAreaId": 351,
+        "path": "ROM/1/123.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_gild01"
+        ]
+      },
+      {
+        "subAreaId": 352,
+        "path": "ROM/1/124.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_gild02"
+        ]
+      },
+      {
+        "subAreaId": 353,
+        "path": "ROM/1/125.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_yadoya"
+        ]
+      },
+      {
+        "subAreaId": 354,
+        "path": "ROM/1/126.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_zatkaya"
+        ]
+      },
+      {
+        "subAreaId": 355,
+        "path": "ROM/1/127.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_zatkaya"
+        ]
+      },
+      {
+        "subAreaId": 356,
+        "path": "ROM/2/0.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_ryojikan"
+        ]
+      },
+      {
+        "subAreaId": 357,
+        "path": "ROM/2/1.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_ryojikan"
+        ]
+      },
+      {
+        "subAreaId": 358,
+        "path": "ROM/2/2.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_ryojikan"
+        ]
+      },
+      {
+        "subAreaId": 359,
+        "path": "ROM/2/3.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_f1"
+        ]
+      },
+      {
+        "subAreaId": 360,
+        "path": "ROM/2/4.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_b1"
+        ]
+      },
+      {
+        "subAreaId": 361,
+        "path": "ROM/2/5.DAT",
+        "root": "r_2s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_f3"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 232,
+    "name": "Port San d'Oria",
+    "path": "ROM/0/113.DAT",
+    "links": [
+      {
+        "subAreaId": 364,
+        "path": "ROM/2/6.DAT",
+        "root": "r_3s",
+        "trigger": true,
+        "objects": [
+          "hiku_inbox"
+        ]
+      },
+      {
+        "subAreaId": 365,
+        "path": "ROM/2/7.DAT",
+        "root": "r_3s",
+        "trigger": true,
+        "objects": [
+          "bar_inbox"
+        ]
+      },
+      {
+        "subAreaId": 366,
+        "path": "ROM/2/8.DAT",
+        "root": "r_3s",
+        "trigger": true,
+        "objects": [
+          "magic_inbox"
+        ]
+      },
+      {
+        "subAreaId": 367,
+        "path": "ROM/2/9.DAT",
+        "root": "r_3s",
+        "trigger": true,
+        "objects": [
+          "wear_inbox"
+        ]
+      },
+      {
+        "subAreaId": 368,
+        "path": "ROM/2/10.DAT",
+        "root": "r_3s",
+        "trigger": true,
+        "objects": [
+          "wear_inbox"
+        ]
+      },
+      {
+        "subAreaId": 369,
+        "path": "ROM/2/11.DAT",
+        "root": "r_3s",
+        "trigger": true,
+        "objects": [
+          "ship_f_room"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 233,
+    "name": "Chateau d'Oraguille",
+    "path": "ROM/1/33.DAT",
+    "links": [
+      {
+        "subAreaId": 371,
+        "path": "ROM/2/12.DAT",
+        "root": "r_4s",
+        "trigger": true,
+        "objects": [
+          "dammy_room"
+        ]
+      },
+      {
+        "subAreaId": 372,
+        "path": "ROM/2/13.DAT",
+        "root": "r_4s",
+        "trigger": true,
+        "objects": [
+          "dammy_room"
+        ]
+      },
+      {
+        "subAreaId": 373,
+        "path": "ROM/2/14.DAT",
+        "root": "r_4s",
+        "trigger": true,
+        "objects": [
+          "dammy_room"
+        ]
+      },
+      {
+        "subAreaId": 374,
+        "path": "ROM/2/15.DAT",
+        "root": "r_4s",
+        "trigger": true,
+        "objects": [
+          "dammy_room"
+        ]
+      },
+      {
+        "subAreaId": 375,
+        "path": "ROM/2/16.DAT",
+        "root": "r_4s",
+        "trigger": true,
+        "objects": [
+          "dammy_room"
+        ]
+      },
+      {
+        "subAreaId": 376,
+        "path": "ROM/2/17.DAT",
+        "root": "r_4s",
+        "trigger": true,
+        "objects": [
+          "uwa_r_rou"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 234,
+    "name": "Bastok Mines",
+    "path": "ROM/1/34.DAT",
+    "links": [
+      {
+        "subAreaId": 259,
+        "path": "ROM/1/48.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "dummy-guild02"
+        ]
+      },
+      {
+        "subAreaId": 260,
+        "path": "ROM/1/49.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "dummy-guild01",
+          "dummy-guild01s"
+        ]
+      },
+      {
+        "subAreaId": 261,
+        "path": "ROM/1/50.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "chocoin"
+        ]
+      },
+      {
+        "subAreaId": 262,
+        "path": "ROM/1/51.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "armorin"
+        ]
+      },
+      {
+        "subAreaId": 263,
+        "path": "ROM/1/52.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "itemin"
+        ]
+      },
+      {
+        "subAreaId": 264,
+        "path": "ROM/1/53.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "room01"
+        ]
+      },
+      {
+        "subAreaId": 265,
+        "path": "ROM/1/54.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "room02"
+        ]
+      },
+      {
+        "subAreaId": 266,
+        "path": "ROM/1/55.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "room03"
+        ]
+      },
+      {
+        "subAreaId": 267,
+        "path": "ROM/1/56.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "room03"
+        ]
+      },
+      {
+        "subAreaId": 268,
+        "path": "ROM/1/57.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "broom01"
+        ]
+      },
+      {
+        "subAreaId": 269,
+        "path": "ROM/1/58.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "broom02"
+        ]
+      },
+      {
+        "subAreaId": 270,
+        "path": "ROM/1/59.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "broom03"
+        ]
+      },
+      {
+        "subAreaId": 271,
+        "path": "ROM/1/60.DAT",
+        "root": "r_1b",
+        "trigger": true,
+        "objects": [
+          "innin"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 235,
+    "name": "Bastok Markets",
+    "path": "ROM/1/35.DAT",
+    "links": [
+      {
+        "subAreaId": 274,
+        "path": "ROM/1/61.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shpin_cen",
+          "shpin_a",
+          "shpin_c"
+        ]
+      },
+      {
+        "subAreaId": 275,
+        "path": "ROM/1/62.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shop_in1f"
+        ]
+      },
+      {
+        "subAreaId": 276,
+        "path": "ROM/1/63.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shop_in1f"
+        ]
+      },
+      {
+        "subAreaId": 277,
+        "path": "ROM/1/64.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shpin_cen",
+          "shpin_b",
+          "shpin_b"
+        ]
+      },
+      {
+        "subAreaId": 278,
+        "path": "ROM/1/65.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shpin_cen",
+          "shpin_b",
+          "shpin_a"
+        ]
+      },
+      {
+        "subAreaId": 279,
+        "path": "ROM/1/66.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shop_in1f"
+        ]
+      },
+      {
+        "subAreaId": 280,
+        "path": "ROM/1/67.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shpin_cen",
+          "shpin_c",
+          "shpin_b"
+        ]
+      },
+      {
+        "subAreaId": 281,
+        "path": "ROM/1/68.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "room_cen",
+          "room_a",
+          "room_c"
+        ]
+      },
+      {
+        "subAreaId": 282,
+        "path": "ROM/1/69.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "room_cen",
+          "room_c",
+          "room_c"
+        ]
+      },
+      {
+        "subAreaId": 283,
+        "path": "ROM/1/70.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "room_cen",
+          "room_b",
+          "room_b"
+        ]
+      },
+      {
+        "subAreaId": 284,
+        "path": "ROM/1/71.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "room_cen",
+          "room_a",
+          "room_b"
+        ]
+      },
+      {
+        "subAreaId": 285,
+        "path": "ROM/1/72.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shop_in2f"
+        ]
+      },
+      {
+        "subAreaId": 286,
+        "path": "ROM/1/73.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shop_in2f"
+        ]
+      },
+      {
+        "subAreaId": 287,
+        "path": "ROM/1/74.DAT",
+        "root": "r_2b",
+        "trigger": true,
+        "objects": [
+          "shop_in2f"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 236,
+    "name": "Port Bastok",
+    "path": "ROM/1/36.DAT",
+    "links": [
+      {
+        "subAreaId": 315,
+        "path": "ROM/1/94.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "ship_f_room"
+        ]
+      },
+      {
+        "subAreaId": 316,
+        "path": "ROM/1/95.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "ship_in"
+        ]
+      },
+      {
+        "subAreaId": 317,
+        "path": "ROM/1/96.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "wear_in",
+          "wear_in2",
+          "wear_in3"
+        ]
+      },
+      {
+        "subAreaId": 318,
+        "path": "ROM/1/97.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "bar_in",
+          "bar_in2"
+        ]
+      },
+      {
+        "subAreaId": 319,
+        "path": "ROM/1/98.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "shop_in"
+        ]
+      },
+      {
+        "subAreaId": 320,
+        "path": "ROM/1/99.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "wear_in",
+          "wear_in2",
+          "wear_in3"
+        ]
+      },
+      {
+        "subAreaId": 321,
+        "path": "ROM/1/100.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "shop_in"
+        ]
+      },
+      {
+        "subAreaId": 322,
+        "path": "ROM/1/101.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "shop_in"
+        ]
+      },
+      {
+        "subAreaId": 323,
+        "path": "ROM/1/102.DAT",
+        "root": "r_3b",
+        "trigger": true,
+        "objects": [
+          "shop_in"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 237,
+    "name": "Metalworks",
+    "path": "ROM/1/37.DAT",
+    "links": [
+      {
+        "subAreaId": 293,
+        "path": "ROM/1/75.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 294,
+        "path": "ROM/1/76.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 295,
+        "path": "ROM/1/77.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 296,
+        "path": "ROM/1/78.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 297,
+        "path": "ROM/1/79.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "tarudai_bas",
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 298,
+        "path": "ROM/1/80.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 299,
+        "path": "ROM/1/81.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 300,
+        "path": "ROM/1/82.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 301,
+        "path": "ROM/1/83.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 302,
+        "path": "ROM/1/84.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 303,
+        "path": "ROM/1/85.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 304,
+        "path": "ROM/1/86.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 305,
+        "path": "ROM/1/87.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 306,
+        "path": "ROM/1/88.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 307,
+        "path": "ROM/1/89.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 308,
+        "path": "ROM/1/90.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 309,
+        "path": "ROM/1/91.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 310,
+        "path": "ROM/1/92.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "underroom",
+          "dummy_box"
+        ]
+      },
+      {
+        "subAreaId": 311,
+        "path": "ROM/1/93.DAT",
+        "root": "r_4b",
+        "trigger": true,
+        "objects": [
+          "dummy_box"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 238,
+    "name": "Windurst Waters",
+    "path": "ROM/0/78.DAT",
+    "links": [
+      {
+        "subAreaId": 379,
+        "path": "ROM/2/18.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_shop"
+        ]
+      },
+      {
+        "subAreaId": 380,
+        "path": "ROM/2/19.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_chori"
+        ]
+      },
+      {
+        "subAreaId": 381,
+        "path": "ROM/2/20.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_shop"
+        ]
+      },
+      {
+        "subAreaId": 382,
+        "path": "ROM/2/21.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_shop"
+        ]
+      },
+      {
+        "subAreaId": 383,
+        "path": "ROM/2/22.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_shop"
+        ]
+      },
+      {
+        "subAreaId": 384,
+        "path": "ROM/2/23.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_s_room"
+        ]
+      },
+      {
+        "subAreaId": 385,
+        "path": "ROM/2/24.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_s_room01"
+        ]
+      },
+      {
+        "subAreaId": 386,
+        "path": "ROM/2/25.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_s_room02"
+        ]
+      },
+      {
+        "subAreaId": 387,
+        "path": "ROM/2/26.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_s_room02"
+        ]
+      },
+      {
+        "subAreaId": 388,
+        "path": "ROM/2/27.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_s_room02"
+        ]
+      },
+      {
+        "subAreaId": 389,
+        "path": "ROM/2/28.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_taru",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu"
+        ]
+      },
+      {
+        "subAreaId": 390,
+        "path": "ROM/2/29.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_taru",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu"
+        ]
+      },
+      {
+        "subAreaId": 391,
+        "path": "ROM/2/30.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_taru",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu"
+        ]
+      },
+      {
+        "subAreaId": 392,
+        "path": "ROM/2/31.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_taru",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu"
+        ]
+      },
+      {
+        "subAreaId": 393,
+        "path": "ROM/2/32.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_taru",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu",
+          "wi_cu"
+        ]
+      },
+      {
+        "subAreaId": 394,
+        "path": "ROM/2/33.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_inf1"
+        ]
+      },
+      {
+        "subAreaId": 395,
+        "path": "ROM/2/34.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_inf1",
+          "wi_boo",
+          "wi_boo",
+          "wi_boo",
+          "wi_boo",
+          "wi_boo"
+        ]
+      },
+      {
+        "subAreaId": 396,
+        "path": "ROM/2/35.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_inf1",
+          "wi_i_no2"
+        ]
+      },
+      {
+        "subAreaId": 397,
+        "path": "ROM/2/36.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_inf1",
+          "wi_i_no1"
+        ]
+      },
+      {
+        "subAreaId": 398,
+        "path": "ROM/2/37.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_inf1"
+        ]
+      },
+      {
+        "subAreaId": 399,
+        "path": "ROM/2/38.DAT",
+        "root": "r_1w",
+        "trigger": true,
+        "objects": [
+          "wi_i_inf1"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 239,
+    "name": "Windurst Walls",
+    "path": "ROM/0/79.DAT",
+    "links": [
+      {
+        "subAreaId": 401,
+        "path": "ROM/2/39.DAT",
+        "root": "r_2w",
+        "trigger": true,
+        "objects": [
+          "wi_i_cho00"
+        ]
+      },
+      {
+        "subAreaId": 402,
+        "path": "ROM/2/40.DAT",
+        "root": "r_2w",
+        "trigger": true,
+        "objects": [
+          "wi_i_cho00"
+        ]
+      },
+      {
+        "subAreaId": 403,
+        "path": "ROM/2/41.DAT",
+        "root": "r_2w",
+        "trigger": true,
+        "objects": [
+          "wi_i_cho00"
+        ]
+      },
+      {
+        "subAreaId": 404,
+        "path": "ROM/2/42.DAT",
+        "root": "r_2w",
+        "trigger": true,
+        "objects": [
+          "wi_i_cho00"
+        ]
+      },
+      {
+        "subAreaId": 405,
+        "path": "ROM/2/43.DAT",
+        "root": "r_2w",
+        "trigger": true,
+        "objects": [
+          "wi_i_cho00"
+        ]
+      },
+      {
+        "subAreaId": 406,
+        "path": "ROM/2/44.DAT",
+        "root": "r_2w",
+        "trigger": true,
+        "objects": [
+          "wi_i_ryj00"
+        ]
+      },
+      {
+        "subAreaId": 407,
+        "path": "ROM/2/45.DAT",
+        "root": "r_2w",
+        "trigger": true,
+        "objects": []
+      }
+    ]
+  },
+  {
+    "zone": 240,
+    "name": "Port Windurst",
+    "path": "ROM/0/80.DAT",
+    "links": [
+      {
+        "subAreaId": 408,
+        "path": "ROM/2/46.DAT",
+        "root": "r_3w",
+        "trigger": true,
+        "objects": [
+          "wi_i_air"
+        ]
+      },
+      {
+        "subAreaId": 409,
+        "path": "ROM/2/47.DAT",
+        "root": "r_3w",
+        "trigger": true,
+        "objects": [
+          "wi_i_air"
+        ]
+      },
+      {
+        "subAreaId": 410,
+        "path": "ROM/2/48.DAT",
+        "root": "r_3w",
+        "trigger": true,
+        "objects": [
+          "wi_i_ryj00"
+        ]
+      },
+      {
+        "subAreaId": 411,
+        "path": "ROM/2/49.DAT",
+        "root": "r_3w",
+        "trigger": true,
+        "objects": [
+          "wi_i_mouse",
+          "wi_i_mouse"
+        ]
+      },
+      {
+        "subAreaId": 412,
+        "path": "ROM/2/50.DAT",
+        "root": "r_3w",
+        "trigger": true,
+        "objects": []
+      },
+      {
+        "subAreaId": 413,
+        "path": "ROM/2/51.DAT",
+        "root": "r_3w",
+        "trigger": true,
+        "objects": []
+      },
+      {
+        "subAreaId": 416,
+        "path": "ROM/2/52.DAT",
+        "root": "r_3w",
+        "trigger": true,
+        "objects": [
+          "ship_f_room"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 241,
+    "name": "Windurst Woods",
+    "path": "ROM/0/81.DAT",
+    "links": [
+      {
+        "subAreaId": 417,
+        "path": "ROM/2/53.DAT",
+        "root": "r_4w",
+        "trigger": true,
+        "objects": [
+          "wi_i_gild00"
+        ]
+      },
+      {
+        "subAreaId": 418,
+        "path": "ROM/2/54.DAT",
+        "root": "r_4w",
+        "trigger": true,
+        "objects": [
+          "wi_i_gild01",
+          "wi_i_arai01"
+        ]
+      },
+      {
+        "subAreaId": 419,
+        "path": "ROM/2/55.DAT",
+        "root": "r_4w",
+        "trigger": true,
+        "objects": [
+          "wi_i_gild00"
+        ]
+      },
+      {
+        "subAreaId": 420,
+        "path": "ROM/2/56.DAT",
+        "root": "r_4w",
+        "trigger": true,
+        "objects": [
+          "wi_i_ryj00"
+        ]
+      },
+      {
+        "subAreaId": 421,
+        "path": "ROM/2/57.DAT",
+        "root": "r_4w",
+        "trigger": true,
+        "objects": [
+          "wi_i_choco"
+        ]
+      },
+      {
+        "subAreaId": 422,
+        "path": "ROM/2/58.DAT",
+        "root": "r_4w",
+        "trigger": true,
+        "objects": [
+          "wi_i_inf1",
+          "wi_i_table"
+        ]
+      },
+      {
+        "subAreaId": 423,
+        "path": "ROM/2/59.DAT",
+        "root": "r_4w",
+        "trigger": true,
+        "objects": [
+          "wi_i_inf0"
+        ]
+      },
+      {
+        "subAreaId": 424,
+        "path": "ROM/2/60.DAT",
+        "root": "r_4w",
+        "trigger": true,
+        "objects": [
+          "wi_i_gild"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 242,
+    "name": "Heavens Tower",
+    "path": "ROM/1/38.DAT",
+    "links": [
+      {
+        "subAreaId": 425,
+        "path": "ROM/2/61.DAT",
+        "root": "r_5w",
+        "trigger": true,
+        "objects": []
+      },
+      {
+        "subAreaId": 426,
+        "path": "ROM/2/62.DAT",
+        "root": "r_5w",
+        "trigger": true,
+        "objects": [
+          "wi_i_shoki"
+        ]
+      },
+      {
+        "subAreaId": 427,
+        "path": "ROM/2/63.DAT",
+        "root": "r_5w",
+        "trigger": true,
+        "objects": []
+      },
+      {
+        "subAreaId": 428,
+        "path": "ROM/2/64.DAT",
+        "root": "r_5w",
+        "trigger": true,
+        "objects": [
+          "wi_t_dai02"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 243,
+    "name": "Ru'Lude Gardens",
+    "path": "ROM/1/39.DAT",
+    "links": [
+      {
+        "subAreaId": 431,
+        "path": "ROM/2/65.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "saku",
+          "dammy_01"
+        ]
+      },
+      {
+        "subAreaId": 432,
+        "path": "ROM/2/66.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_02"
+        ]
+      },
+      {
+        "subAreaId": 433,
+        "path": "ROM/2/67.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_03"
+        ]
+      },
+      {
+        "subAreaId": 434,
+        "path": "ROM/2/68.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_04"
+        ]
+      },
+      {
+        "subAreaId": 435,
+        "path": "ROM/2/69.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_05"
+        ]
+      },
+      {
+        "subAreaId": 436,
+        "path": "ROM/2/70.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_06"
+        ]
+      },
+      {
+        "subAreaId": 438,
+        "path": "ROM/2/72.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_08"
+        ]
+      },
+      {
+        "subAreaId": 439,
+        "path": "ROM/2/73.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_09"
+        ]
+      },
+      {
+        "subAreaId": 440,
+        "path": "ROM/2/74.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_10"
+        ]
+      },
+      {
+        "subAreaId": 441,
+        "path": "ROM/2/75.DAT",
+        "root": "r_1j",
+        "trigger": true,
+        "objects": [
+          "dammy_11"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 244,
+    "name": "Upper Jeuno",
+    "path": "ROM/1/40.DAT",
+    "links": [
+      {
+        "subAreaId": 443,
+        "path": "ROM/2/76.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_chok"
+        ]
+      },
+      {
+        "subAreaId": 444,
+        "path": "ROM/2/77.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_shop"
+        ]
+      },
+      {
+        "subAreaId": 445,
+        "path": "ROM/2/78.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_shop"
+        ]
+      },
+      {
+        "subAreaId": 446,
+        "path": "ROM/2/79.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_kusuri"
+        ]
+      },
+      {
+        "subAreaId": 447,
+        "path": "ROM/2/80.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_zakka"
+        ]
+      },
+      {
+        "subAreaId": 448,
+        "path": "ROM/2/81.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_syoku"
+        ]
+      },
+      {
+        "subAreaId": 449,
+        "path": "ROM/2/82.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_seido"
+        ]
+      },
+      {
+        "subAreaId": 450,
+        "path": "ROM/2/83.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_minka"
+        ]
+      },
+      {
+        "subAreaId": 451,
+        "path": "ROM/2/84.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_minka"
+        ]
+      },
+      {
+        "subAreaId": 452,
+        "path": "ROM/2/85.DAT",
+        "root": "r_2j",
+        "trigger": true,
+        "objects": [
+          "r_minka"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 245,
+    "name": "Lower Jeuno",
+    "path": "ROM/1/41.DAT",
+    "links": [
+      {
+        "subAreaId": 454,
+        "path": "ROM/2/86.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_choko"
+        ]
+      },
+      {
+        "subAreaId": 455,
+        "path": "ROM/2/87.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_yado"
+        ]
+      },
+      {
+        "subAreaId": 456,
+        "path": "ROM/2/88.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_honbu"
+        ]
+      },
+      {
+        "subAreaId": 457,
+        "path": "ROM/2/89.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_syuryo"
+        ]
+      },
+      {
+        "subAreaId": 458,
+        "path": "ROM/2/90.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_shop"
+        ]
+      },
+      {
+        "subAreaId": 459,
+        "path": "ROM/2/91.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_shop"
+        ]
+      },
+      {
+        "subAreaId": 460,
+        "path": "ROM/2/92.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_g_zaka"
+        ]
+      },
+      {
+        "subAreaId": 461,
+        "path": "ROM/2/93.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_shop"
+        ]
+      },
+      {
+        "subAreaId": 462,
+        "path": "ROM/2/94.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_syoku"
+        ]
+      },
+      {
+        "subAreaId": 463,
+        "path": "ROM/2/95.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_g_sake"
+        ]
+      },
+      {
+        "subAreaId": 464,
+        "path": "ROM/2/96.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_syouko"
+        ]
+      },
+      {
+        "subAreaId": 465,
+        "path": "ROM/2/97.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_min2"
+        ]
+      },
+      {
+        "subAreaId": 466,
+        "path": "ROM/2/98.DAT",
+        "root": "r_3j",
+        "trigger": true,
+        "objects": [
+          "r_min2"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 246,
+    "name": "Port Jeuno",
+    "path": "ROM/1/42.DAT",
+    "links": [
+      {
+        "subAreaId": 468,
+        "path": "ROM/2/99.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "r_chok",
+          "iriguti4a"
+        ]
+      },
+      {
+        "subAreaId": 469,
+        "path": "ROM/2/100.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "r_shop"
+        ]
+      },
+      {
+        "subAreaId": 470,
+        "path": "ROM/2/101.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ryo_box"
+        ]
+      },
+      {
+        "subAreaId": 471,
+        "path": "ROM/2/102.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ryo_box"
+        ]
+      },
+      {
+        "subAreaId": 472,
+        "path": "ROM/2/103.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ryo_box"
+        ]
+      },
+      {
+        "subAreaId": 473,
+        "path": "ROM/2/104.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ryo_box"
+        ]
+      },
+      {
+        "subAreaId": 474,
+        "path": "ROM/2/105.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ship_f_room"
+        ]
+      },
+      {
+        "subAreaId": 475,
+        "path": "ROM/2/106.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ship_f_room"
+        ]
+      },
+      {
+        "subAreaId": 476,
+        "path": "ROM/2/107.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ship_f_room"
+        ]
+      },
+      {
+        "subAreaId": 477,
+        "path": "ROM/2/108.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ship_f_room"
+        ]
+      },
+      {
+        "subAreaId": 495,
+        "path": "ROM/2/122.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ryo_box"
+        ]
+      },
+      {
+        "subAreaId": 496,
+        "path": "ROM/2/123.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ryo_box"
+        ]
+      },
+      {
+        "subAreaId": 497,
+        "path": "ROM/2/124.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ryo_box"
+        ]
+      },
+      {
+        "subAreaId": 498,
+        "path": "ROM/2/125.DAT",
+        "root": "r_4j",
+        "trigger": true,
+        "objects": [
+          "ryo_box"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 247,
+    "name": "Rabao",
+    "path": "ROM2/12/123.DAT",
+    "links": []
+  },
+  {
+    "zone": 248,
+    "name": "Selbina",
+    "path": "ROM/1/43.DAT",
+    "links": [
+      {
+        "subAreaId": 480,
+        "path": "ROM/2/109.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "dammyroom"
+        ]
+      },
+      {
+        "subAreaId": 481,
+        "path": "ROM/2/110.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "dammyroom"
+        ]
+      },
+      {
+        "subAreaId": 482,
+        "path": "ROM/2/111.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "dammyroom02"
+        ]
+      },
+      {
+        "subAreaId": 484,
+        "path": "ROM/2/113.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "dammyroom"
+        ]
+      },
+      {
+        "subAreaId": 485,
+        "path": "ROM/2/114.DAT",
+        "root": "r_1s",
+        "trigger": true,
+        "objects": [
+          "ship_room"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 249,
+    "name": "Mhaura",
+    "path": "ROM/1/44.DAT",
+    "links": [
+      {
+        "subAreaId": 487,
+        "path": "ROM/2/115.DAT",
+        "root": "r_1m",
+        "trigger": true,
+        "objects": [
+          "room-hanyou"
+        ]
+      },
+      {
+        "subAreaId": 488,
+        "path": "ROM/2/116.DAT",
+        "root": "r_1m",
+        "trigger": true,
+        "objects": [
+          "room-hanyou"
+        ]
+      },
+      {
+        "subAreaId": 489,
+        "path": "ROM/2/117.DAT",
+        "root": "r_1m",
+        "trigger": true,
+        "objects": [
+          "room-hanyou"
+        ]
+      },
+      {
+        "subAreaId": 490,
+        "path": "ROM/2/118.DAT",
+        "root": "r_1m",
+        "trigger": true,
+        "objects": [
+          "room-hanyou"
+        ]
+      },
+      {
+        "subAreaId": 491,
+        "path": "ROM/2/119.DAT",
+        "root": "r_1m",
+        "trigger": true,
+        "objects": [
+          "yadoya-1f",
+          "yadoya-2f",
+          "yadoya-step",
+          "yadoya-step",
+          "yadoya-room",
+          "yadoya-room2"
+        ]
+      },
+      {
+        "subAreaId": 493,
+        "path": "ROM/2/121.DAT",
+        "root": "r_1m",
+        "trigger": true,
+        "objects": [
+          "ship_room"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 250,
+    "name": "Kazham",
+    "path": "ROM2/0/25.DAT",
+    "links": [
+      {
+        "subAreaId": 505,
+        "path": "ROM2/0/28.DAT",
+        "root": "r_1k",
+        "trigger": true,
+        "objects": [
+          "r_1ka01"
+        ]
+      },
+      {
+        "subAreaId": 506,
+        "path": "ROM2/0/29.DAT",
+        "root": "r_1k",
+        "trigger": true,
+        "objects": [
+          "r_1ka01"
+        ]
+      },
+      {
+        "subAreaId": 507,
+        "path": "ROM2/0/30.DAT",
+        "root": "r_1k",
+        "trigger": true,
+        "objects": [
+          "r_1ka03"
+        ]
+      },
+      {
+        "subAreaId": 508,
+        "path": "ROM2/0/31.DAT",
+        "root": "r_1k",
+        "trigger": true,
+        "objects": [
+          "r_1ka04"
+        ]
+      },
+      {
+        "subAreaId": 509,
+        "path": "ROM2/0/32.DAT",
+        "root": "r_1k",
+        "trigger": true,
+        "objects": [
+          "r_1ka04"
+        ]
+      },
+      {
+        "subAreaId": 510,
+        "path": "ROM2/0/33.DAT",
+        "root": "r_1k",
+        "trigger": true,
+        "objects": [
+          "r_1ka06"
+        ]
+      },
+      {
+        "subAreaId": 511,
+        "path": "ROM2/0/34.DAT",
+        "root": "r_1k",
+        "trigger": true,
+        "objects": [
+          "r_1ka06"
+        ]
+      },
+      {
+        "subAreaId": 512,
+        "path": "ROM2/0/35.DAT",
+        "root": "r_1k",
+        "trigger": true,
+        "objects": [
+          "ship_f_room"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 252,
+    "name": "Norg",
+    "path": "ROM2/0/27.DAT",
+    "links": [
+      {
+        "subAreaId": 514,
+        "path": "ROM2/0/36.DAT",
+        "root": "r_1n",
+        "trigger": true,
+        "objects": [
+          "gillroom"
+        ]
+      },
+      {
+        "subAreaId": 515,
+        "path": "ROM2/0/37.DAT",
+        "root": "r_1n",
+        "trigger": true,
+        "objects": [
+          "tumesyo"
+        ]
+      }
+    ]
+  },
+  {
+    "zone": 256,
+    "name": "Western Adoulin",
+    "path": "ROM9/0/3.DAT",
+    "links": [
+      {
+        "subAreaId": 585,
+        "path": "ROM9/5/49.DAT",
+        "root": "r_1a",
+        "trigger": true,
+        "objects": []
+      },
+      {
+        "subAreaId": 586,
+        "path": "ROM9/5/50.DAT",
+        "root": "r_1a",
+        "trigger": true,
+        "objects": []
+      },
+      {
+        "subAreaId": 587,
+        "path": "ROM9/5/51.DAT",
+        "root": "r_1a",
+        "trigger": true,
+        "objects": []
+      },
+      {
+        "subAreaId": 588,
+        "path": "ROM9/5/52.DAT",
+        "root": "r_1a",
+        "trigger": true,
+        "objects": []
+      }
+    ]
+  },
+  {
+    "zone": 257,
+    "name": "Eastern Adoulin",
+    "path": "ROM9/0/4.DAT",
+    "links": [
+      {
+        "subAreaId": 589,
+        "path": "ROM9/3/84.DAT",
+        "root": "r_2a",
+        "trigger": true,
+        "objects": []
+      },
+      {
+        "subAreaId": 590,
+        "path": "ROM9/3/85.DAT",
+        "root": "r_2a",
+        "trigger": true,
+        "objects": []
+      }
+    ]
+  }
+]

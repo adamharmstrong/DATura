@@ -59,7 +59,7 @@ def decrypt_object_map(buf):
         pos += xor_len
 
     node_count = u24le(out, 4)
-    node_stride = 96
+    node_stride = 100
     max_nodes = max(0, (len(out) - 32) // node_stride)
     for i in range(min(node_count, max_nodes)):
         off = 32 + i * node_stride
@@ -132,8 +132,9 @@ def parse_map_objects(payload):
         return []
     count = u24le(payload, 4)
     out = []
-    for i in range(min(count, max(0, (len(payload) - 32) // 96))):
-        off = 32 + i * 96
+    node_stride = 100
+    for i in range(min(count, max(0, (len(payload) - 32) // node_stride))):
+        off = 32 + i * node_stride
         name = c_name(payload[off:off + NAME_LEN])
         trans = struct.unpack_from("<fff", payload, off + 16)
         scale = struct.unpack_from("<fff", payload, off + 40)

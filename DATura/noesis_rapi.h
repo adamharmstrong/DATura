@@ -1,6 +1,6 @@
 /*========================================================================================
  Noesis SDK shim — standalone D3D9 replacement for pluginshare.h
- Declares every type and function that model_ff11_fixed.cpp pulls from the Noesis API.
+ Declares every type and function used by the model_ff11 parser modules.
 ========================================================================================*/
 
 #pragma once
@@ -13,7 +13,12 @@
 #include <cassert>
 #include <string>
 #include <vector>
+#include <array>
 #include <map>
+#include <memory>
+#include <unordered_map>
+#include "zone_lod.h"
+#include "zone_water_data.h"
 
 //========================================================================================
 // Utility
@@ -516,10 +521,20 @@ struct noesisAnim_t
     int    frameCount;
     float  fps;
     int    boneCount;
+    bool   allowExtendedPoseBounds;
+    bool   looping = true;
     std::vector<RichMat43> frameWorldMats;
+    // Non-owning clip list; the parser owns all animation allocations.
+    std::vector<noesisAnim_t *> sequences;
+    // Optional model-space trajectory extracted from a skeletal root. Keeping
+    // it separate lets scene code move the whole actor through the world while
+    // CPU skinning evaluates a stable, root-relative pose.
+    std::vector<RichVec3> frameRootMotion;
+    RichVec3 rootMotionOrigin;
 
     noesisAnim_t()
         : filename(nullptr), flags(0), frameCount(0), fps(30.0f), boneCount(0)
+        , allowExtendedPoseBounds(false)
     {}
 };
 
@@ -542,13 +557,14 @@ struct FFXIVertex
 
 struct FFXISkinVertex
 {
+    static const int kMaxWeights = 8;
     bool  skinned;
     int   weightCount;
-    int   boneIdx[2];
-    int   mirrorAxis[2];
-    float boneWt[2];
-    float pos[2][3];
-    float nrm[2][3];
+    int   boneIdx[kMaxWeights];
+    int   mirrorAxis[kMaxWeights];
+    float boneWt[kMaxWeights];
+    float pos[kMaxWeights][3];
+    float nrm[kMaxWeights][3];
 
     FFXISkinVertex() { Reset(); }
     void Reset()
@@ -563,12 +579,72 @@ struct FFXISkinVertex
     }
 };
 
+// SQLE creation models describe their animation layout in the skeleton itself.
+// The five counts are, in order, translation, quaternion, scale, and two
+// currently-unused channel groups.  Keeping the parent-relative bind transform
+// here lets the character-creation viewer build FrameChannel clips after the
+// mesh and its separate head skeleton have been combined.
+struct FFXISqleBoneInfo
+{
+    int parentIndex;
+    int fileIndex;
+    int sourceBoneIndex;
+    int channelCounts[5];
+    float bindTranslation[3];
+    float bindQuaternion[4];
+    float bindScale[3];
+    float rootOffset[3];
+};
+
 struct noesisModel_t
 {
+    struct StaticBufferGroup
+    {
+        IDirect3DVertexBuffer9 *pVB;
+        IDirect3DIndexBuffer9  *pIB;
+        IDirect3DIndexBuffer9  *pOpaqueBatchIB;
+        int                     vertCount;
+        int                     indexCount;
+
+        StaticBufferGroup()
+            : pVB(nullptr), pIB(nullptr), pOpaqueBatchIB(nullptr)
+            , vertCount(0), indexCount(0)
+        {}
+    };
+
+    struct OpaqueBatch
+    {
+        noesisMaterial_t *pMaterial;
+        noesisTex_t      *pTexture;
+        int               bufferGroupIndex;
+        int               startIndex;
+        int               triCount;
+        int               minVertexIndex;
+        int               vertexCount;
+        float             boundsMin[3];
+        float             boundsMax[3];
+        bool              animatedWater;
+        bool              hasBounds;
+
+        OpaqueBatch()
+            : pMaterial(nullptr), pTexture(nullptr), bufferGroupIndex(-1)
+            , startIndex(0), triCount(0), minVertexIndex(0), vertexCount(0)
+            , animatedWater(false), hasBounds(false)
+        {
+            memset(boundsMin, 0, sizeof(boundsMin));
+            memset(boundsMax, 0, sizeof(boundsMax));
+        }
+    };
+
     struct Submesh
     {
+        ZoneLod::Data zoneLod;
+        std::shared_ptr<ZoneWater::Surface> water;
         std::vector<FFXIVertex> cpuVerts;
         std::vector<FFXIVertex> cpuBindVerts;
+        // Immutable, transformed DAT displacement vectors; empty for static meshes.
+        std::vector<std::array<float, 3>> windDisplacements;
+        float uploadedWindWeight = 0.0f;
         std::vector<FFXISkinVertex> cpuSkinVerts;
         std::vector<DWORD>      cpuIndices;
         std::string             materialName;
@@ -578,24 +654,68 @@ struct noesisModel_t
         IDirect3DIndexBuffer9  *pIB;
         int                     vertCount;
         int                     triCount;
+        int                     staticBufferGroupIndex;
+        int                     staticVertexOffset;
+        int                     staticStartIndex;
 
-        Submesh() : pVB(nullptr), pIB(nullptr), vertCount(0), triCount(0) {}
+        // Immutable render metadata. DATura resolves this once after loading;
+        // rendering never has to rescan material or object-name strings.
+        noesisMaterial_t       *pResolvedMaterial;
+        noesisTex_t            *pResolvedTexture;
+        float                   boundsMin[3];
+        float                   boundsMax[3];
+        float                   boundsCenter[3];
+        bool                    hasBounds;
+        bool                    environmentObject;
+        bool                    animatedWater;
+        bool                    softBlend;
+
+        Submesh()
+            : pVB(nullptr), pIB(nullptr), vertCount(0), triCount(0)
+            , staticBufferGroupIndex(-1), staticVertexOffset(0), staticStartIndex(0)
+            , pResolvedMaterial(nullptr), pResolvedTexture(nullptr)
+            , hasBounds(false), environmentObject(false), animatedWater(false)
+            , softBlend(false)
+        {
+            memset(boundsMin, 0, sizeof(boundsMin));
+            memset(boundsMax, 0, sizeof(boundsMax));
+            memset(boundsCenter, 0, sizeof(boundsCenter));
+        }
     };
 
+    struct WeatherSprite
+    {
+        std::string resourceName;
+        std::string directoryPath;
+        std::string textureName;
+        std::vector<FFXIVertex> vertices; // six vertices per authored sprite frame
+    };
+    std::vector<WeatherSprite> weatherSprites;
     std::vector<Submesh>  submeshes;
+    std::vector<StaticBufferGroup> staticBufferGroups;
+    std::vector<OpaqueBatch> opaqueBatches;
+    std::vector<size_t> opaqueSubmeshOrder;
+    std::vector<size_t> softBlendSubmeshOrder;
     noesisMatData_t      *pMatData;
     noesisAnim_t         *pAnim;
+    std::vector<noesisAnim_t *> animationClips;
     modelBone_t          *pBones;
     int                   boneCount;
+    std::vector<FFXISqleBoneInfo> sqleBones;
+    bool                  renderMetadataPrepared;
+    bool                  hasZoneLod = false;
 
     noesisModel_t()
         : pMatData(nullptr), pAnim(nullptr), pBones(nullptr), boneCount(0)
+        , renderMetadataPrepared(false)
     {}
 
     // Upload all submesh CPU data to D3D9 vertex/index buffers.
     void BuildD3DBuffers(IDirect3DDevice9 *pDevice);
+    void UpdateSubmeshBounds();
     void RestoreBindPose(IDirect3DDevice9 *pDevice);
     void UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice);
+    noesisAnim_t *FindAnimation(const char *name) const;
 
     // Release all D3D9 resources (call before destruction or device reset).
     void ReleaseD3DBuffers();
@@ -658,6 +778,7 @@ public:
     // ---- D3D9 device binding -------------------------------------------------------
     void SetDevice(IDirect3DDevice9 *pDevice) { mpDevice = pDevice; }
     IDirect3DDevice9 *GetDevice() const       { return mpDevice; }
+    void SetTextureCompressionEnabled(bool enabled);
 
     // ---- Current-file tracking (for paired file and DAT-set loading) ---------------
     void        SetCurrentFilePath(const char *path);
@@ -737,6 +858,7 @@ public:
     // and material match an earlier primitive. Transparent zone records need
     // this so their original layer boundaries survive until render sorting.
     void  rpgForceNextSubmesh();
+    void  rpgSetZoneLod(const ZoneLod::Data& data) { mZoneLod = data; }
     void  rpgSetTransform(modelMatrix_t *pMat); // NULL = identity
 
     // Per-vertex attribute setters.  Call any combination, then rpgVertex3f to commit.
@@ -747,6 +869,7 @@ public:
     void rpgVertColor4ub  (unsigned char *rgba);
     void rpgVertColor4f   (float *rgba);
     void rpgSetPendingSkinData(const FFXISkinVertex *pSkin); // NULL = no CPU animation skin data
+    void rpgVertWind3f(const float* displacement);
     void rpgVertex3f      (float *pos);     // commits the current pending vertex
 
     void rpgBegin(rpgeoPrimType_e primType);
@@ -781,6 +904,7 @@ private:
     // Pending per-vertex attributes (reset after each rpgVertex3f)
     struct PendingVertex
     {
+        std::array<float, 3> wind = {};
         float        pos[3];
         float        nrm[3];
         float        uv[2];
@@ -793,6 +917,7 @@ private:
         PendingVertex() { Reset(); }
         void Reset()
         {
+            wind = {};
             memset(pos,  0, sizeof(pos));
             memset(nrm,  0, sizeof(nrm));
             memset(uv,   0, sizeof(uv));
@@ -816,22 +941,48 @@ private:
     // A submesh under construction: a specific material + accumulated triangles
     struct ActiveSubmesh
     {
+        ZoneLod::Data zoneLod;
         std::string              materialName;
         std::string              objectName;
         std::vector<FFXIVertex>  verts;
+        std::vector<std::array<float, 3>> windDisplacements;
         std::vector<FFXISkinVertex> skinVerts;
         std::vector<DWORD>       indices;
+        bool                     hasSkinning;
         // Maps a vertex fingerprint → index for de-duplication (optional future work)
+
+        ActiveSubmesh() : hasSkinning(false) {}
 
         void AddTriangle(const PendingVertex &v0, const PendingVertex &v1, const PendingVertex &v2)
         {
+            const size_t previousVertCount = verts.size();
+            const bool triangleHasSkinning =
+                v0.hasBones || v1.hasBones || v2.hasBones ||
+                v0.skin.skinned || v1.skin.skinned || v2.skin.skinned;
+            if (triangleHasSkinning && !hasSkinning)
+            {
+                skinVerts.resize(previousVertCount);
+                hasSkinning = true;
+            }
+
+            const std::array<float, 3> zero = {};
+            if (!windDisplacements.empty() || v0.wind != zero || v1.wind != zero || v2.wind != zero)
+            {
+                windDisplacements.resize(previousVertCount);
+                windDisplacements.push_back(v0.wind);
+                windDisplacements.push_back(v1.wind);
+                windDisplacements.push_back(v2.wind);
+            }
             DWORD base = (DWORD)verts.size();
             verts.push_back(v0.ToFFXIVertex());
             verts.push_back(v1.ToFFXIVertex());
             verts.push_back(v2.ToFFXIVertex());
-            skinVerts.push_back(v0.skin);
-            skinVerts.push_back(v1.skin);
-            skinVerts.push_back(v2.skin);
+            if (hasSkinning)
+            {
+                skinVerts.push_back(v0.skin);
+                skinVerts.push_back(v1.skin);
+                skinVerts.push_back(v2.skin);
+            }
             indices.push_back(base);
             indices.push_back(base+1);
             indices.push_back(base+2);
@@ -850,9 +1001,11 @@ private:
     bool                        mInPrimitive;
     std::vector<PendingVertex>  mPrimVerts;  // vertices accumulated inside Begin/End
     std::vector<ActiveSubmesh>  mSubmeshes;
+    std::unordered_map<std::string, size_t> mSubmeshLookup;
     std::string                 mCurrentMaterial;
     std::string                 mCurrentName;
     bool                        mForceNewSubmesh;
+    ZoneLod::Data               mZoneLod;
 
     bool        mTriWindBackward; // from rpgSetOption(RPGOPT_TRIWINDBACKWARD)
     bool        mHasTransform;
@@ -866,11 +1019,13 @@ private:
 
     //---- Resource pools ------------------------------------------------------------
     IDirect3DDevice9       *mpDevice;
+    bool                    mTextureCompressionEnabled;
     std::vector<void *>     mAllocs;         // tracked for bulk free
     std::vector<char *>     mStringPool;
     std::vector<noesisTex_t *>      mTexPool;
     std::vector<noesisMaterial_t *> mMatPool;
     std::vector<noesisModel_t *>    mModelPool;
+    std::vector<noesisAnim_t *>     mAnimPool;
 
     char mCurrentFilePath[MAX_NOESIS_PATH];
 };

@@ -1,0 +1,70 @@
+234|Tami|Groceries
+234|Elki|Hearts of Mythril
+234|Gerbaum|Minesweeper
+234|Wahid|The Siren's Tear
+234|Titus|Fully Mental Alchemist
+235|Aquillina|A Flash in the Pan
+235|Offa|A Proper Burial
+235|Degenhard|The Bare Bones
+235|Brygid|Brygid the Stylist
+235|Foss|Buckets of Gold
+235|Malene|The Cold Light of Day
+235|Michea|The Elvaan Goldsmith
+235|Salimah|Gourmet
+235|Nbu Latteh|Mom, the Adventurer?
+235|Arawn|Stamp Hunt
+236|Gudav|A Foreman's Best Friend
+236|Valah Molkot|A Lady's Heart
+236|Talib|Beauty and the Galka
+236|Raifa|Eco-Warrior (Bastok)
+236|Alib-Mufalib|Lure of the Wildcat (Bastok)
+236|Corann|The Quadav's Curse
+236|Powhatan|Welcome to Bastok
+236|Benita|The Wisdom of Elders
+237|Izabele|The Gustaberg Tour
+237|Hungry Wolf|Smoke on the Mountain
+230|Glenne|A Sentry's Peril
+230|Norejaie|Eco-Warrior (San d'Oria)
+230|Andecia|Grave Concerns
+230|Amutiyaal|Lure of the Wildcat (San d'Oria)
+230|Parvipon|The Merchant's Bidding
+230|Rosel|Rosel the Armorer
+230|Hanaa Punaa|The Seamstress
+230|Legata|Starting a Flame
+231|Aurege|Exit the Gambler
+231|Guilberdrier|Exit the Gambler
+231|Ailbeche|Father and Son
+231|Secodiand|Fear of the Dark
+231|Kuu Mohzolhi|Growing Flowers
+231|Abeaule|The Trader in the Forest
+231|Miageau|Waters of the Cheval
+232|Antreneau|A Taste for Meat
+232|Fontoumant|The Brugaire Consortium
+232|Regine|Flyers for Regine
+232|Nogelle|Lufet's Lake Salt
+232|Miene|The Pickpocket
+232|Joulet|The Rivalry
+232|Gallijaux|The Competition
+238|Angelica|A Pose by Any Other Name
+238|Khoto Rokkorah|Babban Ny Mheillea (Quest)
+238|Lumomo|Eco-Warrior (Windurst)
+238|Kerutoto|Food for Thought
+238|Hariga-Origa|Glyph Hanger
+238|Baren-Moren|Hat in Hand
+238|Chamama|In a Pickle
+238|Naiko-Paneiko|Making Headlines
+238|Mashuu-Ajuu|Reap What You Sow
+238|Moreno-Toeno|Teacher's Pet
+239|Shantotto|Curses, Foiled Again!
+239|Ojha Rhawash|Flower Child
+239|Yoran-Oran|Mandragora-Mad
+239|Ambrosius|The Postman Always K.O.s Twice
+239|Koru-Moru|Star Struck
+240|Tokaka|Something Fishy
+240|Sigismund|To Catch a Falling Star
+240|Kohlo-Lakolo|Truth, Justice, and the Onion Way!
+241|Kopuro-Popuro|The All-New C-2000
+241|Illu Bohjaa|Creepy Crawlies
+241|Ibwam|Lure of the Wildcat (Windurst)
+241|Tapoh Lihzeh|Paying Lip Service
+241|Nanaa Mihgo|Mihgo's Amigo

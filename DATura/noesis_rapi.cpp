@@ -4,9 +4,11 @@
 ========================================================================================*/
 
 #include "stdafx.h"
+#include "ffxi_dat_resolver.h"
 #include "noesis_rapi.h"
 #include <stdarg.h>
 #include <algorithm>
+#include <array>
 
 //========================================================================================
 // Construction / destruction
@@ -14,6 +16,7 @@
 
 noeRAPI_t::noeRAPI_t(IDirect3DDevice9 *pDevice)
     : mpDevice(pDevice)
+    , mTextureCompressionEnabled(true)
     , mPrimType(RPGEO_TRIANGLE)
     , mInPrimitive(false)
     , mTriWindBackward(false)
@@ -28,6 +31,32 @@ noeRAPI_t::noeRAPI_t(IDirect3DDevice9 *pDevice)
 
 noeRAPI_t::~noeRAPI_t()
 {
+    // Models and material-data containers are allocated by this RAPI and share
+    // the texture/material objects owned by the pools below. Release the model
+    // shells and pointer arrays first, while those referenced objects still live.
+    std::vector<noesisMatData_t *> matDataPool;
+    for (noesisModel_t *model : mModelPool)
+    {
+        if (!model)
+            continue;
+        model->ReleaseD3DBuffers();
+        if (model->pMatData &&
+            std::find(matDataPool.begin(), matDataPool.end(), model->pMatData) == matDataPool.end())
+        {
+            matDataPool.push_back(model->pMatData);
+        }
+        delete model;
+    }
+    for (noesisMatData_t *matData : matDataPool)
+    {
+        delete[] matData->mats;
+        delete[] matData->textures;
+        delete matData;
+    }
+
+    for (noesisAnim_t *animation : mAnimPool)
+        delete animation;
+
     // Free unmanaged allocations
     for (void *p : mAllocs)
         free(p);
@@ -274,19 +303,22 @@ static void UnpackDXT5Block(const unsigned char *pBlock,
             const unsigned int a = alphaTable[aIdx];
             const unsigned int c = colBuf[idx] & 0x00FFFFFF;
             pOut[dstY*imageW+dstX] = (a << 24) | c;
-        }
+    }
 }
 
-unsigned char *noeRAPI_t::Noesis_ConvertDXT(int w, int h, unsigned char *data,
-                                              noesisTexType_e texType)
+static bool DecompressDXTToBuffer(int w, int h, const unsigned char *data,
+                                  noesisTexType_e texType, unsigned int *pOut)
 {
-    unsigned int *pOut = (unsigned int *)malloc(w * h * 4);
-    mAllocs.push_back(pOut);
-    memset(pOut, 0, w * h * 4);
+    if (!data || !pOut || w <= 0 || h <= 0 ||
+        (texType != NOESISTEX_DXT1 && texType != NOESISTEX_DXT3 &&
+         texType != NOESISTEX_DXT5))
+    {
+        return false;
+    }
 
+    memset(pOut, 0, (size_t)w * (size_t)h * 4);
     const int blockSize = (texType == NOESISTEX_DXT1) ? 8 : 16;
     const unsigned char *pSrc = data;
-
     for (int by = 0; by < h; by += 4)
     {
         for (int bx = 0; bx < w; bx += 4)
@@ -301,7 +333,27 @@ unsigned char *noeRAPI_t::Noesis_ConvertDXT(int w, int h, unsigned char *data,
             pSrc += blockSize;
         }
     }
+    return true;
+}
 
+unsigned char *noeRAPI_t::Noesis_ConvertDXT(int w, int h, unsigned char *data,
+                                              noesisTexType_e texType)
+{
+    if (!data || w <= 0 || h <= 0 ||
+        (texType != NOESISTEX_DXT1 && texType != NOESISTEX_DXT3 && texType != NOESISTEX_DXT5))
+    {
+        return nullptr;
+    }
+
+    const size_t pixelCount = (size_t)w * (size_t)h;
+    if (pixelCount > (size_t)INT_MAX / 4)
+        return nullptr;
+
+    unsigned int *pOut = (unsigned int *)malloc(pixelCount * 4);
+    if (!pOut)
+        return nullptr;
+    mAllocs.push_back(pOut);
+    DecompressDXTToBuffer(w, h, data, texType, pOut);
     return (unsigned char *)pOut;
 }
 
@@ -349,21 +401,72 @@ noesisTex_t *noeRAPI_t::Noesis_TextureAllocEx(const char *name, int w, int h,
 // Upload a noesisTex_t to a D3D9 texture.  Called lazily if no device at alloc time.
 void noeRAPI_t::UploadTexture(noesisTex_t *pTex)
 {
-    if (!mpDevice || !pTex || pTex->pD3DTex)
+    if (!mpDevice || !pTex || pTex->pD3DTex || !pTex->data ||
+        pTex->w <= 0 || pTex->h <= 0 || pTex->dataLen <= 0)
         return;
 
-    D3DFORMAT fmt = D3DFMT_A8R8G8B8;
+    D3DFORMAT sourceFmt = D3DFMT_A8R8G8B8;
     switch (pTex->texType)
     {
-    case NOESISTEX_DXT1: fmt = D3DFMT_DXT1; break;
-    case NOESISTEX_DXT3: fmt = D3DFMT_DXT3; break;
-    case NOESISTEX_DXT5: fmt = D3DFMT_DXT5; break;
-    default:              fmt = D3DFMT_A8R8G8B8; break;
+    case NOESISTEX_DXT1: sourceFmt = D3DFMT_DXT1; break;
+    case NOESISTEX_DXT3: sourceFmt = D3DFMT_DXT3; break;
+    case NOESISTEX_DXT5: sourceFmt = D3DFMT_DXT5; break;
+    default:              sourceFmt = D3DFMT_A8R8G8B8; break;
+    }
+
+    const bool sourceIsCompressed = sourceFmt != D3DFMT_A8R8G8B8;
+    const D3DFORMAT fmt =
+        (sourceIsCompressed && !mTextureCompressionEnabled) ? D3DFMT_A8R8G8B8 : sourceFmt;
+
+    size_t requiredDataSize = 0;
+    if (!sourceIsCompressed)
+    {
+        const size_t pixelCount = (size_t)pTex->w * (size_t)pTex->h;
+        if (pixelCount > (size_t)INT_MAX / 4)
+            return;
+        requiredDataSize = pixelCount * 4;
+    }
+    else
+    {
+        const size_t blockSize = (sourceFmt == D3DFMT_DXT1) ? 8 : 16;
+        requiredDataSize = (((size_t)pTex->w + 3) / 4) *
+                           (((size_t)pTex->h + 3) / 4) * blockSize;
+    }
+
+    if (requiredDataSize == 0 || requiredDataSize > (size_t)pTex->dataLen)
+    {
+        OutputDebugStringA("WARNING: Texture pixel buffer is truncated; upload skipped.\n");
+        return;
+    }
+
+    const unsigned char *uploadData = pTex->data;
+    std::vector<unsigned int> expandedPixels;
+    if (sourceIsCompressed && !mTextureCompressionEnabled)
+    {
+        const size_t pixelCount = (size_t)pTex->w * (size_t)pTex->h;
+        expandedPixels.resize(pixelCount);
+        if (!DecompressDXTToBuffer(pTex->w, pTex->h, pTex->data,
+                                   pTex->texType, expandedPixels.data()))
+        {
+            OutputDebugStringA("WARNING: DXT texture decompression failed.\n");
+            return;
+        }
+        uploadData = reinterpret_cast<const unsigned char *>(expandedPixels.data());
     }
 
     IDirect3DTexture9 *pTex9 = nullptr;
-    HRESULT hr = mpDevice->CreateTexture(pTex->w, pTex->h, 1, 0,
+    bool autoGenerateMips = true;
+    HRESULT hr = mpDevice->CreateTexture(pTex->w, pTex->h, 0,
+                                          D3DUSAGE_AUTOGENMIPMAP,
                                           fmt, D3DPOOL_MANAGED, &pTex9, nullptr);
+    if (FAILED(hr))
+    {
+        // Some older drivers reject automatic generation for compressed formats.
+        // Preserve the validated top-level texture as a one-level fallback.
+        autoGenerateMips = false;
+        hr = mpDevice->CreateTexture(pTex->w, pTex->h, 1, 0,
+                                     fmt, D3DPOOL_MANAGED, &pTex9, nullptr);
+    }
     if (FAILED(hr))
     {
         OutputDebugStringA("WARNING: CreateTexture failed\n");
@@ -371,40 +474,67 @@ void noeRAPI_t::UploadTexture(noesisTex_t *pTex)
     }
 
     D3DLOCKED_RECT lr;
-    if (SUCCEEDED(pTex9->LockRect(0, &lr, nullptr, 0)))
+    if (FAILED(pTex9->LockRect(0, &lr, nullptr, 0)))
     {
-        if (fmt == D3DFMT_A8R8G8B8)
-        {
+        OutputDebugStringA("WARNING: Texture LockRect failed\n");
+        pTex9->Release();
+        return;
+    }
+
+    if (fmt == D3DFMT_A8R8G8B8)
+    {
             // RGBA32: each texel = 4 bytes.
             // Source data from Noesis is D3DCOLOR (ARGB) — matches D3DFMT_A8R8G8B8 directly.
-            const unsigned char *pSrc = pTex->data;
-            unsigned char       *pDst = (unsigned char *)lr.pBits;
-            for (int y = 0; y < pTex->h; ++y)
-            {
-                memcpy(pDst, pSrc, pTex->w * 4);
-                pSrc += pTex->w * 4;
-                pDst += lr.Pitch;
-            }
-        }
-        else
-        {
-            // DXT: rows of 4-texel blocks, each block-row is (w/4) * blockSize bytes
-            const int blockSize = (fmt == D3DFMT_DXT1) ? 8 : 16;
-            const int rowBytes  = ((pTex->w + 3) / 4) * blockSize;
-            const unsigned char *pSrc = pTex->data;
-            unsigned char       *pDst = (unsigned char *)lr.pBits;
-            const int blockRows = (pTex->h + 3) / 4;
-            for (int by = 0; by < blockRows; ++by)
-            {
-                memcpy(pDst, pSrc, rowBytes);
-                pSrc += rowBytes;
-                pDst += lr.Pitch;
-            }
-        }
-        pTex9->UnlockRect(0);
+		const unsigned char *pSrc = uploadData;
+		unsigned char       *pDst = (unsigned char *)lr.pBits;
+		for (int y = 0; y < pTex->h; ++y)
+		{
+			memcpy(pDst, pSrc, pTex->w * 4);
+			pSrc += pTex->w * 4;
+			pDst += lr.Pitch;
+		}
+    }
+    else
+    {
+            // DXT: rows of 4-texel blocks, each row is ceil(w/4) * blockSize bytes.
+		const int blockSize = (fmt == D3DFMT_DXT1) ? 8 : 16;
+		const int rowBytes  = ((pTex->w + 3) / 4) * blockSize;
+		const unsigned char *pSrc = uploadData;
+		unsigned char       *pDst = (unsigned char *)lr.pBits;
+		const int blockRows = (pTex->h + 3) / 4;
+		for (int by = 0; by < blockRows; ++by)
+		{
+			memcpy(pDst, pSrc, rowBytes);
+			pSrc += rowBytes;
+			pDst += lr.Pitch;
+		}
+    }
+    pTex9->UnlockRect(0);
+
+    if (autoGenerateMips && pTex9->GetLevelCount() > 1)
+    {
+        pTex9->SetAutoGenFilterType(D3DTEXF_LINEAR);
+        pTex9->GenerateMipSubLevels();
     }
 
     pTex->pD3DTex = pTex9;
+}
+
+void noeRAPI_t::SetTextureCompressionEnabled(bool enabled)
+{
+    if (mTextureCompressionEnabled == enabled)
+        return;
+
+    mTextureCompressionEnabled = enabled;
+    for (noesisTex_t *pTex : mTexPool)
+    {
+        if (pTex && pTex->pD3DTex)
+        {
+            pTex->pD3DTex->Release();
+            pTex->pD3DTex = nullptr;
+        }
+    }
+    UploadPendingTextures();
 }
 
 // Upload any textures that didn't have a device at creation time.
@@ -455,6 +585,7 @@ noesisModel_t *noeRAPI_t::Noesis_AllocModelContainer(noesisMatData_t *pMd,
     noesisModel_t *pMdl = new noesisModel_t();
     pMdl->pMatData  = pMd;
     pMdl->pAnim     = pAnim;
+    if (pAnim) pMdl->animationClips = pAnim->sequences;
     mModelPool.push_back(pMdl);
     return pMdl;
 }
@@ -487,19 +618,21 @@ unsigned char *noeRAPI_t::Noesis_LoadPairedFile(const char *desc, const char *ex
 
 unsigned char *noeRAPI_t::Noesis_ReadFile(const char *path, int *outSize)
 {
-    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ,
-                                nullptr, OPEN_EXISTING, 0, nullptr);
+    if (outSize) *outSize = 0;
+    HANDLE hFile = FFXIDatResolver::OpenRead(path);
     if (hFile == INVALID_HANDLE_VALUE)
         return nullptr;
 
-    DWORD fileSize = GetFileSize(hFile, nullptr);
-    if (fileSize == INVALID_FILE_SIZE || fileSize == 0)
+    LARGE_INTEGER size = {};
+    if (!GetFileSizeEx(hFile, &size) || size.QuadPart <= 0 || size.QuadPart > 0x7fffffff)
     {
         CloseHandle(hFile);
         return nullptr;
     }
 
+    const DWORD fileSize = static_cast<DWORD>(size.QuadPart);
     unsigned char *pBuf = (unsigned char *)malloc(fileSize);
+    if (!pBuf) { CloseHandle(hFile); return nullptr; }
     DWORD bytesRead = 0;
     ReadFile(hFile, pBuf, fileSize, &bytesRead, nullptr);
     CloseHandle(hFile);
@@ -623,8 +756,10 @@ void noeRAPI_t::LogOutput(const char *fmt, ...)
 
 void *noeRAPI_t::rpgCreateContext()
 {
+    mZoneLod = {};
     // Clear any leftover state from a previous load
     mSubmeshes.clear();
+    mSubmeshLookup.clear();
     mCurrentMaterial.clear();
     mCurrentName.clear();
     mPrimVerts.clear();
@@ -644,6 +779,7 @@ void *noeRAPI_t::rpgCreateContext()
 void noeRAPI_t::rpgDestroyContext(void * /*ctx*/)
 {
     mSubmeshes.clear();
+    mSubmeshLookup.clear();
     mPrimVerts.clear();
     mInPrimitive = false;
     mForceNewSubmesh = false;
@@ -754,6 +890,14 @@ void noeRAPI_t::rpgSetPendingSkinData(const FFXISkinVertex *pSkin)
         mPending.skin.Reset();
 }
 
+void noeRAPI_t::rpgVertWind3f(const float* displacement)
+{
+    mPending.wind = {};
+    if (displacement && std::isfinite(displacement[0]) &&
+        std::isfinite(displacement[1]) && std::isfinite(displacement[2]))
+        std::copy_n(displacement, 3, mPending.wind.begin());
+}
+
 void noeRAPI_t::rpgVertex3f(float *pos)
 {
     if (!pos) return;
@@ -769,6 +913,11 @@ void noeRAPI_t::rpgVertex3f(float *pos)
         for (int j = 0; j < 3; ++j)
             tp[j] = p[0]*M.m[0].v[j] + p[1]*M.m[1].v[j] + p[2]*M.m[2].v[j] + M.m[3].v[j];
         memcpy(mPending.pos, tp, sizeof(tp));
+
+        // Displacements receive placement rotation and scale, never translation.
+        const auto wind = mPending.wind;
+        for (int j = 0; j < 3; ++j)
+            mPending.wind[j] = wind[0]*M.m[0].v[j] + wind[1]*M.m[1].v[j] + wind[2]*M.m[2].v[j];
 
         // Transform normal too (no translation, no scale correction for now)
         float *n = mPending.nrm;
@@ -850,18 +999,38 @@ noeRAPI_t::ActiveSubmesh &noeRAPI_t::CurrentSubmesh()
     if (mForceNewSubmesh)
     {
         mForceNewSubmesh = false;
+        const size_t newIndex = mSubmeshes.size();
         mSubmeshes.emplace_back();
         mSubmeshes.back().materialName = mCurrentMaterial;
         mSubmeshes.back().objectName = mCurrentName;
+        mSubmeshes.back().zoneLod = mZoneLod;
+        std::string lookupKey;
+        lookupKey.reserve(mCurrentMaterial.size() + mCurrentName.size() + 1);
+        lookupKey.append(mCurrentMaterial);
+        lookupKey.push_back('\x1f');
+        lookupKey.append(mCurrentName);
+        lookupKey.push_back(static_cast<char>(mZoneLod.enabled ? mZoneLod.levelMask : 0));
+        mSubmeshLookup.emplace(std::move(lookupKey), newIndex);
         return mSubmeshes.back();
     }
 
-    for (ActiveSubmesh &s : mSubmeshes)
-        if (s.materialName == mCurrentMaterial && s.objectName == mCurrentName)
-            return s;
+    std::string lookupKey;
+    lookupKey.reserve(mCurrentMaterial.size() + mCurrentName.size() + 1);
+    lookupKey.append(mCurrentMaterial);
+    lookupKey.push_back('\x1f');
+    lookupKey.append(mCurrentName);
+    lookupKey.push_back(static_cast<char>(mZoneLod.enabled ? mZoneLod.levelMask : 0));
+    const std::unordered_map<std::string, size_t>::const_iterator found =
+        mSubmeshLookup.find(lookupKey);
+    if (found != mSubmeshLookup.end() && found->second < mSubmeshes.size())
+        return mSubmeshes[found->second];
+
+    const size_t newIndex = mSubmeshes.size();
     mSubmeshes.emplace_back();
     mSubmeshes.back().materialName = mCurrentMaterial;
     mSubmeshes.back().objectName = mCurrentName;
+    mSubmeshes.back().zoneLod = mZoneLod;
+    mSubmeshLookup.emplace(std::move(lookupKey), newIndex);
     return mSubmeshes.back();
 }
 
@@ -890,6 +1059,7 @@ noesisAnim_t *noeRAPI_t::rpgAnimFromBonesAndMatsFinish(modelBone_t  *pBones, int
                                                          int frameCount, float fps)
 {
     noesisAnim_t *pAnim = new noesisAnim_t();
+    mAnimPool.push_back(pAnim);
     pAnim->frameCount = frameCount;
     pAnim->fps        = fps;
     pAnim->boneCount  = boneCount;
@@ -926,8 +1096,8 @@ noesisAnim_t *noeRAPI_t::Noesis_AnimFromAnimsList(CArrayList<noesisAnim_t *> &an
 
     // FF11 stores many small named animation chunks in the character DATs, and
     // the first chunk is not necessarily a useful full-body locomotion pose.
-    // Until we expose named animation selection, prefer the movement clips that
-    // match the temporary player camera controls.
+    // Choose a useful default for previews while retaining the named clips
+    // so the player can switch poses without reloading its DAT set.
     static const char *kPreferredNames[] =
     {
         "wlk",
@@ -945,10 +1115,16 @@ noesisAnim_t *noeRAPI_t::Noesis_AnimFromAnimsList(CArrayList<noesisAnim_t *> &an
         {
             noesisAnim_t *pAnim = anims[animIndex];
             if (pAnim && pAnim->filename && !strcmp(pAnim->filename, kPreferredNames[prefIndex]))
+            {
+                for (int i = 0; i < anims.Num(); ++i)
+                    pAnim->sequences.push_back(anims[i]);
                 return pAnim;
+            }
         }
     }
 
+    for (int i = 0; i < anims.Num(); ++i)
+        anims[0]->sequences.push_back(anims[i]);
     return anims[0];
 }
 
@@ -983,22 +1159,31 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
     noesisModel_t *pMdl = new noesisModel_t();
     pMdl->pMatData  = mpStagedMatData;
     pMdl->pAnim     = mpStagedAnim;
+    if (mpStagedAnim) pMdl->animationClips = mpStagedAnim->sequences;
     pMdl->pBones    = mpStagedBones;
     pMdl->boneCount = mStagedBoneCount;
 
-    for (const ActiveSubmesh &src : mSubmeshes)
+    for (ActiveSubmesh &src : mSubmeshes)
     {
         if (src.verts.empty()) continue;
 
         noesisModel_t::Submesh dst;
-        dst.materialName = src.materialName;
-        dst.objectName   = src.objectName;
-        dst.cpuVerts     = src.verts;
-        dst.cpuBindVerts = src.verts;
-        dst.cpuSkinVerts = src.skinVerts;
-        dst.cpuIndices   = src.indices;
-        dst.vertCount    = (int)src.verts.size();
-        dst.triCount     = (int)(src.indices.size() / 3);
+        dst.zoneLod = src.zoneLod;
+        pMdl->hasZoneLod = pMdl->hasZoneLod || dst.zoneLod.enabled;
+        dst.materialName = std::move(src.materialName);
+        dst.objectName   = std::move(src.objectName);
+        // Static zone geometry never consumes a bind-pose copy. Keeping that
+        // duplicate (plus a 296-byte skin record) for every map vertex was the
+        // largest contributor to multi-gigabyte outdoor-zone working sets.
+        const bool needsBindPose = src.hasSkinning || mStagedBoneCount > 0 || mpStagedAnim != nullptr;
+        if (needsBindPose)
+            dst.cpuBindVerts = src.verts;
+        dst.windDisplacements = std::move(src.windDisplacements);
+        dst.cpuVerts     = std::move(src.verts);
+        dst.cpuSkinVerts = std::move(src.skinVerts);
+        dst.cpuIndices   = std::move(src.indices);
+        dst.vertCount    = (int)dst.cpuVerts.size();
+        dst.triCount     = (int)(dst.cpuIndices.size() / 3);
         dst.pVB          = nullptr;
         dst.pIB          = nullptr;
 
@@ -1013,6 +1198,7 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
 
     // Reset accumulator for the next model
     mSubmeshes.clear();
+    mSubmeshLookup.clear();
     mPrimVerts.clear();
     mInPrimitive     = false;
     mpStagedBones    = nullptr;
@@ -1027,18 +1213,169 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
 // noesisModel_t — D3D9 buffer management
 //========================================================================================
 
-void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
+void noesisModel_t::UpdateSubmeshBounds()
 {
     for (Submesh &sm : submeshes)
     {
-        if (sm.cpuVerts.empty() || sm.cpuIndices.empty()) continue;
-        if (sm.pVB || sm.pIB) continue; // already built
+        sm.hasBounds = false;
+        if (sm.cpuVerts.empty())
+            continue;
 
-        // Vertex buffer
+        for (const FFXIVertex &vertex : sm.cpuVerts)
+        {
+            if (!_finite(vertex.pos[0]) || !_finite(vertex.pos[1]) || !_finite(vertex.pos[2]))
+                continue;
+            if (!sm.hasBounds)
+            {
+                memcpy(sm.boundsMin, vertex.pos, sizeof(sm.boundsMin));
+                memcpy(sm.boundsMax, vertex.pos, sizeof(sm.boundsMax));
+                sm.hasBounds = true;
+                continue;
+            }
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                if (vertex.pos[axis] < sm.boundsMin[axis]) sm.boundsMin[axis] = vertex.pos[axis];
+                if (vertex.pos[axis] > sm.boundsMax[axis]) sm.boundsMax[axis] = vertex.pos[axis];
+            }
+        }
+        // Include both endpoints of every authored sway, avoiding edge popping.
+        if (sm.hasBounds && sm.windDisplacements.size() == sm.cpuVerts.size())
+            for (size_t i = 0; i < sm.cpuVerts.size(); ++i)
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const float endpoint = sm.cpuVerts[i].pos[axis] + sm.windDisplacements[i][axis];
+                    sm.boundsMin[axis] = std::min(sm.boundsMin[axis], endpoint);
+                    sm.boundsMax[axis] = std::max(sm.boundsMax[axis], endpoint);
+                }
+        if (sm.hasBounds)
+            for (int axis = 0; axis < 3; ++axis)
+                sm.boundsCenter[axis] = (sm.boundsMin[axis] + sm.boundsMax[axis]) * 0.5f;
+    }
+}
+
+void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
+{
+    if (!pDevice)
+        return;
+
+    UpdateSubmeshBounds();
+    for (Submesh& sm : submeshes) sm.uploadedWindWeight = 0.0f;
+
+    bool canUseSharedStaticBuffers = boneCount == 0 && pAnim == nullptr;
+    if (canUseSharedStaticBuffers)
+    {
+        for (const Submesh &sm : submeshes)
+        {
+            if (!sm.cpuSkinVerts.empty())
+            {
+                canUseSharedStaticBuffers = false;
+                break;
+            }
+        }
+    }
+
+    // Static zones used to allocate one managed VB and IB per object/material
+    // pair (often 40,000 COM buffers). Pack them into bounded shared groups so
+    // large outdoor zones retain 32-bit addressing without relying on a single
+    // driver allocation larger than roughly 32 MiB.
+    if (canUseSharedStaticBuffers && !submeshes.empty())
+    {
+        static const int kMaxVerticesPerGroup = 900000;
+        staticBufferGroups.clear();
+        int groupIndex = -1;
+        for (Submesh &sm : submeshes)
+        {
+            if (sm.cpuVerts.empty() || sm.cpuIndices.empty())
+                continue;
+            if (groupIndex < 0 ||
+                (staticBufferGroups[(size_t)groupIndex].vertCount > 0 &&
+                 staticBufferGroups[(size_t)groupIndex].vertCount + sm.vertCount > kMaxVerticesPerGroup))
+            {
+                staticBufferGroups.emplace_back();
+                groupIndex = (int)staticBufferGroups.size() - 1;
+            }
+
+            StaticBufferGroup &group = staticBufferGroups[(size_t)groupIndex];
+            sm.staticBufferGroupIndex = groupIndex;
+            sm.staticVertexOffset = group.vertCount;
+            sm.staticStartIndex = group.indexCount;
+            group.vertCount += sm.vertCount;
+            group.indexCount += (int)sm.cpuIndices.size();
+        }
+
+        bool sharedBuildOk = !staticBufferGroups.empty();
+        for (size_t index = 0; index < staticBufferGroups.size() && sharedBuildOk; ++index)
+        {
+            StaticBufferGroup &group = staticBufferGroups[index];
+            const UINT vbSize = (UINT)((size_t)group.vertCount * sizeof(FFXIVertex));
+            const UINT ibSize = (UINT)((size_t)group.indexCount * sizeof(DWORD));
+            HRESULT hr = pDevice->CreateVertexBuffer(vbSize, D3DUSAGE_WRITEONLY,
+                FFXI_VERTEX_FVF, D3DPOOL_MANAGED, &group.pVB, nullptr);
+            if (FAILED(hr))
+            {
+                sharedBuildOk = false;
+                break;
+            }
+            hr = pDevice->CreateIndexBuffer(ibSize, D3DUSAGE_WRITEONLY,
+                D3DFMT_INDEX32, D3DPOOL_MANAGED, &group.pIB, nullptr);
+            if (FAILED(hr))
+            {
+                sharedBuildOk = false;
+                break;
+            }
+
+            FFXIVertex *pVBData = nullptr;
+            DWORD *pIBData = nullptr;
+            const bool vbLocked = SUCCEEDED(group.pVB->Lock(0, 0, (void **)&pVBData, 0));
+            const bool ibLocked = SUCCEEDED(group.pIB->Lock(0, 0, (void **)&pIBData, 0));
+            if (!vbLocked || !ibLocked)
+            {
+                if (vbLocked) group.pVB->Unlock();
+                if (ibLocked) group.pIB->Unlock();
+                sharedBuildOk = false;
+                break;
+            }
+
+            for (const Submesh &sm : submeshes)
+            {
+                if (sm.staticBufferGroupIndex != (int)index)
+                    continue;
+                memcpy(pVBData + sm.staticVertexOffset, sm.cpuVerts.data(),
+                    sm.cpuVerts.size() * sizeof(FFXIVertex));
+                memcpy(pIBData + sm.staticStartIndex, sm.cpuIndices.data(),
+                    sm.cpuIndices.size() * sizeof(DWORD));
+            }
+            group.pVB->Unlock();
+            group.pIB->Unlock();
+        }
+
+        if (sharedBuildOk)
+            return;
+
+        for (StaticBufferGroup &group : staticBufferGroups)
+        {
+            if (group.pOpaqueBatchIB) { group.pOpaqueBatchIB->Release(); group.pOpaqueBatchIB = nullptr; }
+            if (group.pIB) { group.pIB->Release(); group.pIB = nullptr; }
+            if (group.pVB) { group.pVB->Release(); group.pVB = nullptr; }
+        }
+        staticBufferGroups.clear();
+        for (Submesh &sm : submeshes)
+        {
+            sm.staticBufferGroupIndex = -1;
+            sm.staticVertexOffset = 0;
+            sm.staticStartIndex = 0;
+        }
+    }
+
+    // Animated/skinned models retain independently lockable buffers.
+    for (Submesh &sm : submeshes)
+    {
+        if (sm.cpuVerts.empty() || sm.cpuIndices.empty()) continue;
+        if (sm.pVB && sm.pIB) continue;
+
         const UINT vbSize = (UINT)(sm.cpuVerts.size() * sizeof(FFXIVertex));
         HRESULT hr = pDevice->CreateVertexBuffer(vbSize, D3DUSAGE_WRITEONLY,
-                                                  FFXI_VERTEX_FVF, D3DPOOL_MANAGED,
-                                                  &sm.pVB, nullptr);
+            FFXI_VERTEX_FVF, D3DPOOL_MANAGED, &sm.pVB, nullptr);
         if (FAILED(hr)) continue;
 
         void *pVBData = nullptr;
@@ -1048,11 +1385,9 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
             sm.pVB->Unlock();
         }
 
-        // Index buffer (32-bit indices; large zone material buckets can exceed 65k vertices).
         const UINT ibSize = (UINT)(sm.cpuIndices.size() * sizeof(DWORD));
         hr = pDevice->CreateIndexBuffer(ibSize, D3DUSAGE_WRITEONLY,
-                                         D3DFMT_INDEX32, D3DPOOL_MANAGED,
-                                         &sm.pIB, nullptr);
+            D3DFMT_INDEX32, D3DPOOL_MANAGED, &sm.pIB, nullptr);
         if (FAILED(hr)) continue;
 
         void *pIBData = nullptr;
@@ -1064,9 +1399,14 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
     }
 }
 
-static bool FFXIAnimValueLooksSane(float v)
+static bool FFXIAnimValueLooksSane(float v, bool allowExtendedPoses = false)
 {
-    return _finite(v) && fabsf(v) < 100.0f;
+    // Ordinary model previews are local and should remain compact. Creation
+    // PB tracks are authored in a much larger cinematic coordinate system;
+    // rejecting them at 100 restores the bind pose every frame while the
+    // separately extracted root trajectory continues to move the actor.
+    const float limit = allowExtendedPoses ? 4096.0f : 100.0f;
+    return _finite(v) && fabsf(v) < limit;
 }
 
 static void FFXIAccumulateBounds(const std::vector<FFXIVertex> &verts, bool &haveBounds, RichVec3 &mins, RichVec3 &maxs)
@@ -1090,14 +1430,17 @@ static void FFXIAccumulateBounds(const std::vector<FFXIVertex> &verts, bool &hav
 }
 
 static bool FFXIBoundsLookSane(const RichVec3 &bindMins, const RichVec3 &bindMaxs,
-                               const RichVec3 &animMins, const RichVec3 &animMaxs)
+                               const RichVec3 &animMins, const RichVec3 &animMaxs,
+                               bool allowExtendedPoses)
 {
     for (int i = 0; i < 3; ++i)
     {
 		const float bindSize = bindMaxs[i] - bindMins[i];
 		const float animSize = animMaxs[i] - animMins[i];
-		const float allowance = std::max(2.0f, bindSize * 2.5f);
-		if (!FFXIAnimValueLooksSane(animMins[i]) || !FFXIAnimValueLooksSane(animMaxs[i]))
+		const float allowance = allowExtendedPoses ?
+            std::max(24.0f, bindSize * 8.0f) : std::max(2.0f, bindSize * 2.5f);
+		if (!FFXIAnimValueLooksSane(animMins[i], allowExtendedPoses) ||
+            !FFXIAnimValueLooksSane(animMaxs[i], allowExtendedPoses))
 			return false;
 		if (bindSize > 0.5f && animSize < bindSize * 0.2f)
 			return false;
@@ -1133,13 +1476,51 @@ void noesisModel_t::RestoreBindPose(IDirect3DDevice9 *pDevice)
     }
 }
 
+noesisAnim_t *noesisModel_t::FindAnimation(const char *name) const
+{
+    for (noesisAnim_t *clip : animationClips)
+        if (clip && clip->filename && name && !strcmp(clip->filename, name))
+            return clip;
+    return nullptr;
+}
+
 void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
 {
     if (!pDevice || !pAnim || pAnim->frameCount <= 0 || pAnim->boneCount <= 0 || pAnim->frameWorldMats.empty())
         return;
 
-    const int frameIndex = (int)(animTime * pAnim->fps) % pAnim->frameCount;
+    const float elapsedFrames = std::max(0.0f, animTime) * pAnim->fps;
+    const float framePosition = pAnim->looping
+        ? std::fmod(elapsedFrames, static_cast<float>(pAnim->frameCount))
+        : std::min(elapsedFrames, static_cast<float>(pAnim->frameCount - 1));
+    const int frameIndex = static_cast<int>(framePosition);
+    const int nextFrameIndex = pAnim->looping ? (frameIndex + 1) % pAnim->frameCount
+        : std::min(frameIndex + 1, pAnim->frameCount - 1);
+    const float frameBlend = framePosition - static_cast<float>(frameIndex);
     const RichMat43 *pFrameMats = &pAnim->frameWorldMats[(size_t)frameIndex * (size_t)pAnim->boneCount];
+    const RichMat43 *pNextFrameMats = &pAnim->frameWorldMats[
+        (size_t)nextFrameIndex * (size_t)pAnim->boneCount];
+    const RichMat44 mirrorX(-RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2),
+        RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+    const RichMat44 mirrorY(RichVec4(g_identityMatrix4x4.c1), -RichVec4(g_identityMatrix4x4.c2),
+        RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+    const RichMat44 mirrorZ(RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2),
+        -RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+    std::vector<std::array<RichMat44, 4> > frameSkinMats((size_t)pAnim->boneCount);
+    std::vector<std::array<RichMat44, 4> > nextFrameSkinMats((size_t)pAnim->boneCount);
+    for (int boneIndex = 0; boneIndex < pAnim->boneCount; ++boneIndex)
+    {
+        const RichMat44 base = pFrameMats[boneIndex].ToMat44();
+        const RichMat44 nextBase = pNextFrameMats[boneIndex].ToMat44();
+        frameSkinMats[(size_t)boneIndex][0] = base;
+        frameSkinMats[(size_t)boneIndex][1] = base * mirrorX;
+        frameSkinMats[(size_t)boneIndex][2] = base * mirrorY;
+        frameSkinMats[(size_t)boneIndex][3] = base * mirrorZ;
+        nextFrameSkinMats[(size_t)boneIndex][0] = nextBase;
+        nextFrameSkinMats[(size_t)boneIndex][1] = nextBase * mirrorX;
+        nextFrameSkinMats[(size_t)boneIndex][2] = nextBase * mirrorY;
+        nextFrameSkinMats[(size_t)boneIndex][3] = nextBase * mirrorZ;
+    }
 
     std::vector<std::vector<FFXIVertex> > candidateVerts;
     candidateVerts.resize(submeshes.size());
@@ -1169,24 +1550,27 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
                 if (boneIndex < 0 || boneIndex >= pAnim->boneCount)
                     continue;
 
-                RichMat44 skinMat = pFrameMats[boneIndex].ToMat44();
-                if (skin.mirrorAxis[weightIndex] == 1)
-                    skinMat = skinMat * RichMat44(-RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
-                else if (skin.mirrorAxis[weightIndex] == 2)
-                    skinMat = skinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), -RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
-                else if (skin.mirrorAxis[weightIndex] == 3)
-                    skinMat = skinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), -RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+                const int mirrorAxis = skin.mirrorAxis[weightIndex] >= 0 && skin.mirrorAxis[weightIndex] <= 3 ?
+                    skin.mirrorAxis[weightIndex] : 0;
+                const RichMat44& skinMat = frameSkinMats[(size_t)boneIndex][(size_t)mirrorAxis];
+                const RichMat44& nextSkinMat = nextFrameSkinMats[(size_t)boneIndex][(size_t)mirrorAxis];
 
                 const float weight = skin.boneWt[weightIndex];
                 const RichVec4 pos(skin.pos[weightIndex][0], skin.pos[weightIndex][1], skin.pos[weightIndex][2], weight);
-                transformedPos += skinMat.TransformVec4(pos);
+                const RichVec4 currentPos = skinMat.TransformVec4(pos);
+                const RichVec4 nextPos = nextSkinMat.TransformVec4(pos);
+                for (int component = 0; component < 4; ++component)
+                    transformedPos[component] += currentPos[component] * (1.0f - frameBlend) +
+                                                 nextPos[component] * frameBlend;
                 const RichVec3 nrm(skin.nrm[weightIndex][0], skin.nrm[weightIndex][1], skin.nrm[weightIndex][2]);
-                transformedNrm += skinMat.TransformNormal(nrm) * weight;
+                const RichVec3 currentNrm = skinMat.TransformNormal(nrm);
+                const RichVec3 nextNrm = nextSkinMat.TransformNormal(nrm);
+                transformedNrm += (currentNrm * (1.0f - frameBlend) + nextNrm * frameBlend) * weight;
             }
 
-            if (!FFXIAnimValueLooksSane(transformedPos[0]) ||
-                !FFXIAnimValueLooksSane(transformedPos[1]) ||
-                !FFXIAnimValueLooksSane(transformedPos[2]))
+            if (!FFXIAnimValueLooksSane(transformedPos[0], pAnim->allowExtendedPoseBounds) ||
+                !FFXIAnimValueLooksSane(transformedPos[1], pAnim->allowExtendedPoseBounds) ||
+                !FFXIAnimValueLooksSane(transformedPos[2], pAnim->allowExtendedPoseBounds))
             {
                 RestoreBindPose(pDevice);
                 return;
@@ -1204,7 +1588,15 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
         candidateVerts[meshIndex].swap(candidate);
     }
 
-    if (haveBindBounds && haveAnimBounds && !FFXIBoundsLookSane(bindMins, bindMaxs, animMins, animMaxs))
+    // The compact bind-relative bounds heuristic protects ordinary model
+    // previews from malformed animation data. PB creation performances contain
+    // legitimate prone, crouched, stretched, and cinematic poses whose axis
+    // extents can be much smaller or larger than the upright bind pose. Applying
+    // this heuristic to them restores the A-pose even though every transformed
+    // vertex is finite and inside the PB absolute safety envelope.
+    if (!pAnim->allowExtendedPoseBounds && haveBindBounds && haveAnimBounds &&
+        !FFXIBoundsLookSane(bindMins, bindMaxs, animMins, animMaxs,
+                           pAnim->allowExtendedPoseBounds))
     {
         RestoreBindPose(pDevice);
         return;
@@ -1232,9 +1624,20 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
 
 void noesisModel_t::ReleaseD3DBuffers()
 {
+    for (StaticBufferGroup &group : staticBufferGroups)
+    {
+        if (group.pOpaqueBatchIB) { group.pOpaqueBatchIB->Release(); group.pOpaqueBatchIB = nullptr; }
+        if (group.pIB) { group.pIB->Release(); group.pIB = nullptr; }
+        if (group.pVB) { group.pVB->Release(); group.pVB = nullptr; }
+    }
+    staticBufferGroups.clear();
+    opaqueBatches.clear();
     for (Submesh &sm : submeshes)
     {
         if (sm.pVB) { sm.pVB->Release(); sm.pVB = nullptr; }
         if (sm.pIB) { sm.pIB->Release(); sm.pIB = nullptr; }
+        sm.staticBufferGroupIndex = -1;
+        sm.staticVertexOffset = 0;
+        sm.staticStartIndex = 0;
     }
 }
