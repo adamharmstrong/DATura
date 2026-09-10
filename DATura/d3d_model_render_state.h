@@ -27,7 +27,7 @@ DWORD FloatBits(float value);
 
 bool SetFfxiTexturePixelShader(IDirect3DDevice9 *device, bool useAuthoredAlpha,
                                bool expandDxt3Alpha, float opacityScale = 1.0f,
-                               const float *colorScale = nullptr);
+                               const float *colorScale = nullptr, bool hasTexture = true);
 bool SetFfxiUiPixelShader(IDirect3DDevice9 *device, bool expandDxt3Alpha,
                           float alphaScale = 1.0f, float maxOpacity = 1.0f);
 void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,

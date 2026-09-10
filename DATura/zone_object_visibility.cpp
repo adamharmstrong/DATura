@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "zone_object_visibility.h"
+#include "model_ff11.h"
 
 #include "zone_object_list_selection.h"
 
@@ -37,6 +38,8 @@ bool PassesRenderVisibility(const noesisModel_t *model, const noesisModel_t::Sub
 {
     if (!filterZoneObjects)
         return true;
+    if (!ZoneLod::Visible(submesh.zoneLod, context.lodViewerPoint))
+        return false;
     if (!submesh.objectName.empty() && context.hiddenNames &&
         IsHidden(*context.hiddenNames, submesh.objectName.c_str()))
     {
@@ -47,6 +50,8 @@ bool PassesRenderVisibility(const noesisModel_t *model, const noesisModel_t::Sub
         char *end = nullptr;
         const unsigned long mapObjectIndex = std::strtoul(submesh.objectName.c_str(), &end, 10);
         if (end != submesh.objectName.c_str() && end && *end == ':' &&
+            !(mapObjectIndex < gFF11LastMapObjects.size() &&
+              gFF11LastMapObjects[mapObjectIndex].roomObject) &&
             mapObjectIndex < context.visibleMapObjects->size() &&
             !(*context.visibleMapObjects)[static_cast<size_t>(mapObjectIndex)])
         {

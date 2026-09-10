@@ -1,6 +1,6 @@
 # DATura Refactoring Remainder Plan
 
-**Document date:** August 18, 2026
+**Document date:** September 4, 2026
 
 **Project:** DATura — FFXI Model Viewer
 
@@ -8,7 +8,7 @@
 
 **Estimated remaining work:** 2–4 careful implementation phases, likely subdivided into smaller reviewable slices, plus final interactive regression hardening
 
-**Latest completed implementation:** Slice 10b, zone-object panel raw-message removal (August 18, 2026)
+**Latest completed implementation:** Slice 11c, legacy renderer audit and removal (September 4, 2026)
 
 ## 1. Purpose
 
@@ -32,14 +32,14 @@ At the time of this plan:
 
 | Measurement | Current value |
 |---|---:|
-| `main.cpp` current size | 3,527 lines |
+| `main.cpp` current size | 3,289 physical lines, including blank lines |
 | `main.cpp` original baseline | 11,346 lines |
-| Reduction from baseline | approximately 68.9% |
+| Reduction from baseline | approximately 71.0% |
 | Static functions remaining in `main.cpp` | approximately 140 unique functions |
 | Largest generated/data header | `ffxi_internal_lists.h`, approximately 23,082 lines |
 | Automated test projects found | `DATuraLogicTests` |
 | Last verified configurations | Debug x64 and Release x64 |
-| Last verified result | application builds: 0 warnings, 0 errors; logic tests: 218/218 passed |
+| Last verified result | application builds: 0 warnings, 0 errors; logic tests: 219/219 passed |
 
 The remaining work is not evenly distributed across the repository. Most of the architectural coupling is concentrated in `main.cpp`, particularly in model and scene ownership, loading workflows, character and zone-object panels, rendering orchestration, and the main window procedure.
 
@@ -713,10 +713,9 @@ This work may be divided into two implementation slices.
 
 **Objective:** Move the panel's business behavior behind its state boundary.
 
-This has been divided into smaller reviewable slices. Slice 10a completed the
-typed command boundary, and Slice 10b removed the raw-message bridge by moving
-refresh, tree, and list notification decoding into the panel. A final Slice 10
-sub-slice will move refresh/population behind an explicit data-source interface.
+**Implementation status:** Complete. Slice 10a completed the typed command
+boundary, Slice 10b removed the raw-message bridge, and Slice 10c moved refresh
+orchestration into the panel behind explicit refresh inputs.
 
 **Scope:**
 
@@ -785,9 +784,77 @@ sub-slice will move refresh/population behind an explicit data-source interface.
 - Verified Debug x64 and Release x64 application and logic-test builds with
   warnings treated as errors; 218/218 logic checks passed in both configurations.
 
+**Slice 10c completion record:**
+
+- Added `ZoneObjectPanel::RefreshData`, a short-lived explicit input carrying
+  only the application-owned label, visibility/transform state, collision count,
+  model summary, and edit-mode values needed to render the panel view.
+- Moved refresh start, redraw suppression, columns, list and tree population,
+  styling, loading status, editor visibility, control enablement, status text,
+  and refresh cleanup into `zone_object_panel.cpp`.
+- Reduced the application-side refresh path to constructing the input snapshot
+  and calling the panel API. Removed its aliases for panel labels, trees, loading
+  controls, status controls, transform fields, column modes, and collision check.
+- Added panel APIs for local label, checkbox, transform-field, tree-selection,
+  and combined-tree behavior, so scene code no longer mutates those controls.
+- Added a refresh-input default-state contract. Debug x64 and Release x64 builds
+  passed with warnings treated as errors, and 219/219 logic checks passed in both
+  configurations.
+
 #### Slice 11: Model rendering
 
 **Objective:** Establish one explicit model-rendering path and context.
+
+**Implementation status:** In progress. Actor shadows, fixed-function setup,
+texture-scroll caching, opaque and transparent draw loops, and cleanup now live
+in `model_renderer.*`. The application supplies camera and visibility inputs.
+The disabled legacy reference has been reviewed and removed. Visual regression
+validation remains before Slice 11 can meet its full exit criteria.
+
+September 5 validation: both application builds and both 219-check logic suites
+passed. Hidden Debug and Release instances completed actor/indoor/outdoor menu
+commands, resize, return-to-title, and normal shutdown. Captures did not expose
+the D3D frame, so visual parity remains unverified. See
+[renderer validation record](RENDERER_VALIDATION_2026-09-05.md).
+
+**Slice 11c completion record (September 4, 2026):**
+
+- Removed the 240-line `#if 0` legacy renderer and imports used only by it.
+  It had no callers and referenced the retired `IsZoneObjectVisible` helper.
+  Its source remains available in Git history.
+- Material lookup and opaque/transparent classification now belong to
+  `ZoneModelRenderMetadata::Prepare`; material binding, two-sided culling,
+  alpha testing, DXT3 alpha handling, and shader fallback belong to
+  `D3DModelRenderState`. The active geometry pass retains object overrides,
+  transparency blending and depth bias, texture-scroll calls, and cleanup.
+- The old path is not a visual parity oracle: it forced lighting off, sorted
+  transparency using three sampled vertices, used per-submesh buffers only, and
+  used `LESSEQUAL` for opaque drawing and cleanup. The active path already uses
+  lighting policy, cached bounds centers, static batching, and `LESS` for opaque
+  drawing and cleanup. No active behavior was changed to match the old reference.
+- Visual verification still needs representative zones and actors, cutout and
+  blended surfaces, DXT3 textures, object hide/transform overrides, animated
+  models, lighting tiers, mirrored zones, and transitions between scenes.
+  Also check water/weather and device reset. Builds alone do not establish
+  visual parity; none of those interactive checks are claimed by this audit.
+- Debug and Release x64 application builds passed with warnings treated as
+  errors; `git diff --check` passed. The Release compiler reported zero changed
+  functions, consistent with removal of preprocessor-disabled reference code.
+
+**Slice 11b completion record (September 4, 2026):**
+
+- Moved opaque batch selection, frustum/visibility filtering, per-object transforms,
+  material binding, and both geometry loops into `ModelRenderer::DrawGeometry`.
+- Preserved stable back-to-front transparency sorting, water-scroll speeds, draw
+  order, and model-pass cleanup. Visibility collections are borrowed only during
+  the call; no application globals are accessed by the renderer.
+- Added camera position and the existing visibility context to the renderer input.
+  Absent optional visibility collections mean no corresponding filter or override.
+- Debug and Release x64 application builds passed with warnings treated as errors.
+  Interactive visual verification remains pending; builds do not prove visual parity.
+- Corrected the current line-count measurement to include blank lines. Recent
+  entries used PowerShell `Measure-Object -Line`, which excluded empty lines;
+  their counts and reduction percentages were not comparable to physical counts.
 
 **Scope:**
 
@@ -814,6 +881,19 @@ sub-slice will move refresh/population behind an explicit data-source interface.
 - legacy behavior is either migrated or explicitly justified;
 - rendering inputs are explicit; and
 - representative zones, characters, animated models, water, weather, and overrides are visually verified.
+
+**Slice 11a completion record:**
+
+- Added `model_renderer.*` and moved the live dynamic actor planar-shadow pass
+  from `main.cpp` behind an explicit device, model, world-transform, and
+  time-of-day interface.
+- Preserved the existing caller policy: shadows apply only to non-zone actor
+  models at the dynamic-lighting tier. Opaque and transparent material passes
+  are deliberately unchanged for the next visual-risk-controlled sub-slice.
+- Registered the renderer sources in the Visual Studio project and reduced
+  `main.cpp` by 61 lines.
+- Verified Debug x64 and Release x64 application builds with warnings treated
+  as errors; the Release logic suite passed 219/219 checks.
 
 #### Slice 12: Frame and scene renderer
 

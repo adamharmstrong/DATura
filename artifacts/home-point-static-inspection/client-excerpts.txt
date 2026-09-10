@@ -1,0 +1,311 @@
+Static excerpts from the locally unpacked client; addresses use preferred image base.
+These are code observations, not a runtime execution trace.
+
+Model bank resolver
+100c51d0 mov       eax, dword ptr [esp + 4]
+100c51d4 dec       eax
+100c51d5 cmp       eax, 3
+100c51d8 ja        0x100c5219
+100c51da jmp       dword ptr [eax*4 + 0x100c5260]
+100c51e1 mov       ecx, dword ptr [esp + 8]
+100c51e5 push      ecx
+100c51e6 call      0x100c5270
+100c51eb add       esp, 4
+100c51ee ret       
+100c51ef mov       edx, dword ptr [esp + 8]
+100c51f3 push      edx
+100c51f4 call      0x100c52a0
+100c51f9 add       esp, 4
+100c51fc ret       
+100c51fd mov       eax, dword ptr [esp + 8]
+100c5201 push      eax
+100c5202 call      0x100c5290
+100c5207 add       esp, 4
+100c520a ret       
+100c520b mov       ecx, dword ptr [esp + 8]
+100c520f push      ecx
+100c5210 call      0x100c5280
+100c5215 add       esp, 4
+100c5218 ret       
+100c5219 mov       eax, dword ptr [esp + 8]
+100c521d mov       ecx, 0x514
+100c5222 cmp       eax, 0xdac
+100c5227 jl        0x100c5236
+100c5229 mov       ecx, 0x18d6b
+100c522e sub       eax, 0xdac
+100c5233 add       eax, ecx
+100c5235 ret       
+100c5236 cmp       eax, 0xbb8
+100c523b jl        0x100c524a
+100c523d mov       ecx, 0x18643
+100c5242 sub       eax, 0xbb8
+100c5247 add       eax, ecx
+100c5249 ret       
+100c524a cmp       eax, 0x5dc
+100c524f jl        0x100c525b
+100c5251 mov       ecx, 0xca53
+100c5256 sub       eax, 0x5dc
+100c525b add       eax, ecx
+100c525d ret       
+
+Kind-zero model resource request
+100d3f2e push      eax
+100d3f2f push      0
+100d3f31 call      0x100c51d0
+100d3f36 add       esp, 8
+100d3f39 lea       ecx, [esp + 0x3c]
+100d3f3d mov       dword ptr [esp + 0x24], eax
+100d3f41 push      eax
+100d3f42 push      ecx
+100d3f43 mov       ecx, dword ptr [0x1047d168]
+100d3f49 call      0x100730f0
+100d3f4e mov       eax, dword ptr [eax]
+100d3f50 mov       dword ptr [esp + 0x10], eax
+
+Effect vertex pointer
+1003fcf0 lea       eax, [ecx + 0x38]
+1003fcf3 ret       
+1003fcf4 nop       
+1003fcf5 nop       
+1003fcf6 nop       
+1003fcf7 nop       
+1003fcf8 nop       
+1003fcf9 nop       
+1003fcfa nop       
+1003fcfb nop       
+1003fcfc nop       
+1003fcfd nop       
+1003fcfe nop       
+1003fcff nop       
+
+Effect material pointer
+1003fd00 mov       al, byte ptr [ecx + 0x30]
+1003fd03 push      esi
+1003fd04 and       eax, 0xf
+1003fd07 cmp       eax, 5
+1003fd0a jl        0x1003fd70
+1003fd0c cmp       eax, 6
+1003fd0f jle       0x1003fd49
+1003fd11 cmp       eax, 7
+1003fd14 jne       0x1003fd70
+1003fd16 call      0x1003fcf0
+1003fd1b mov       dl, byte ptr [ecx + 0x34]
+1003fd1e mov       esi, eax
+1003fd20 test      dl, dl
+1003fd22 jne       0x1003fd26
+1003fd24 pop       esi
+1003fd25 ret       
+1003fd26 xor       eax, eax
+1003fd28 and       edx, 0xff
+1003fd2e mov       al, byte ptr [ecx + 0x35]
+1003fd31 mov       ecx, eax
+1003fd33 add       ecx, edx
+1003fd35 mov       edx, ecx
+1003fd37 and       edx, 3
+1003fd3a je        0x1003fd44
+1003fd3c sub       ecx, edx
+1003fd3e lea       eax, [esi + ecx*2 + 6]
+1003fd42 pop       esi
+1003fd43 ret       
+1003fd44 lea       eax, [esi + ecx*2]
+1003fd47 pop       esi
+1003fd48 ret       
+1003fd49 call      0x1003fcf0
+1003fd4e mov       esi, eax
+1003fd50 xor       edx, edx
+1003fd52 mov       dl, byte ptr [ecx + 0x35]
+1003fd55 xor       eax, eax
+1003fd57 mov       al, byte ptr [ecx + 0x34]
+1003fd5a add       edx, eax
+1003fd5c mov       ecx, edx
+1003fd5e and       ecx, 3
+1003fd61 je        0x1003fd6b
+1003fd63 sub       edx, ecx
+1003fd65 lea       eax, [esi + edx*2 + 6]
+1003fd69 pop       esi
+1003fd6a ret       
+1003fd6b lea       eax, [esi + edx*2]
+1003fd6e pop       esi
+1003fd6f ret       
+1003fd70 lea       eax, [ecx + 0x40]
+1003fd73 pop       esi
+1003fd74 ret       
+
+Effect vertex pointer after materials
+1003fd80 push      esi
+1003fd81 mov       esi, ecx
+1003fd83 mov       al, byte ptr [esi + 0x30]
+1003fd86 and       eax, 0xf
+1003fd89 cmp       eax, 5
+1003fd8c jl        0x1003fda4
+1003fd8e cmp       eax, 7
+1003fd91 jg        0x1003fda4
+1003fd93 call      0x1003fd00
+1003fd98 xor       ecx, ecx
+1003fd9a mov       cl, byte ptr [esi + 0x34]
+1003fd9d pop       esi
+1003fd9e shl       ecx, 4
+1003fda1 add       eax, ecx
+1003fda3 ret       
+1003fda4 lea       eax, [esi + 0x80]
+1003fdaa pop       esi
+1003fdab ret       
+
+Effect model vertex copy
+10043395 mov       ecx, dword ptr [esp + 0x10]
+10043399 xor       eax, eax
+1004339b mov       ax, word ptr [ecx + 0x36]
+1004339f mov       ecx, dword ptr [0x1047bbf0]
+100433a5 lea       esi, [eax + eax*2]
+100433a8 push      esi
+100433a9 mov       dword ptr [esp + 0x1c], esi
+100433ad call      0x10044020
+100433b2 lea       ebx, [esi + esi*8]
+100433b5 push      4
+100433b7 shl       ebx, 2
+100433ba push      ebx
+100433bb mov       dword ptr [esp + 0x2c], ebx
+100433bf call      0x10028650
+100433c4 mov       ebp, eax
+100433c6 mov       eax, dword ptr [edi + 0x104]
+100433cc add       esp, 8
+100433cf test      eax, eax
+100433d1 je        0x100433d7
+100433d3 mov       ecx, dword ptr [eax]
+100433d5 jmp       0x100433d9
+100433d7 xor       ecx, ecx
+100433d9 call      0x1003fd80
+100433de mov       ecx, ebx
+100433e0 mov       esi, eax
+100433e2 mov       edx, ecx
+100433e4 mov       edi, ebp
+100433e6 shr       ecx, 2
+100433e9 rep movsd dword ptr es:[edi], dword ptr [esi]
+100433eb mov       ecx, edx
+100433ed and       ecx, 3
+100433f0 rep movsb byte ptr es:[edi], byte ptr [esi]
+
+Effect subclass selection
+10050f9e mov       eax, dword ptr [ebp + 4]
+10050fa1 push      esi
+10050fa2 test      eax, 0x200000
+10050fa7 je        0x10050fc5
+10050fa9 push      0x19c
+10050fae call      0x10052a70
+10050fb3 add       esp, 8
+10050fb6 test      eax, eax
+10050fb8 je        0x10051026
+10050fba mov       ecx, eax
+10050fbc call      0x10052ea0
+10050fc1 mov       ebx, eax
+10050fc3 jmp       0x10051028
+10050fc5 test      eax, 0x100000
+10050fca je        0x10050fe8
+10050fcc push      0x198
+10050fd1 call      0x10052a70
+10050fd6 add       esp, 8
+10050fd9 test      eax, eax
+10050fdb je        0x10051026
+10050fdd mov       ecx, eax
+10050fdf call      0x10052f30
+10050fe4 mov       ebx, eax
+10050fe6 jmp       0x10051028
+10050fe8 test      byte ptr [ebp + 7], 1
+10050fec je        0x1005100a
+10050fee push      0x1c0
+10050ff3 call      0x10052a70
+10050ff8 add       esp, 8
+10050ffb test      eax, eax
+10050ffd je        0x10051026
+10050fff mov       ecx, eax
+10051001 call      0x10041030
+10051006 mov       ebx, eax
+10051008 jmp       0x10051028
+1005100a push      0x198
+1005100f call      0x10052a70
+10051014 add       esp, 8
+10051017 test      eax, eax
+10051019 je        0x10051026
+1005101b mov       ecx, eax
+1005101d call      0x10052f10
+10051022 mov       ebx, eax
+10051024 jmp       0x10051028
+10051026 xor       ebx, ebx
+
+Specular effect constructor
+10041030 push      esi
+10041031 mov       esi, ecx
+10041033 call      0x100448a0
+10041038 mov       eax, dword ptr [esi + 0x198]
+1004103e xor       ecx, ecx
+10041040 and       al, 0xf7
+10041042 mov       dword ptr [esi], 0x1032ad20
+10041048 mov       word ptr [esi + 0x176], 0x1c0
+10041051 mov       dword ptr [esi + 0x1a8], ecx
+10041057 mov       dword ptr [esi + 0x198], eax
+
+Specular effect draw entry
+100412c0 sub       esp, 0x10
+100412c3 push      ebx
+100412c4 push      ebp
+100412c5 mov       ebp, ecx
+100412c7 push      edi
+100412c8 xor       edi, edi
+100412ca cmp       dword ptr [ebp + 0x104], edi
+100412d0 je        0x10041a04
+100412d6 mov       al, byte ptr [ebp + 0x179]
+100412dc test      al, al
+100412de je        0x100412eb
+100412e0 pop       edi
+100412e1 pop       ebp
+100412e2 pop       ebx
+100412e3 add       esp, 0x10
+100412e6 jmp       0x10040c30
+100412eb mov       eax, dword ptr [ebp + 0x104]
+100412f1 cmp       eax, edi
+100412f3 je        0x100412fd
+100412f5 mov       ebx, dword ptr [eax]
+100412f7 mov       dword ptr [esp + 0x10], ebx
+100412fb jmp       0x10041303
+100412fd mov       dword ptr [esp + 0x10], edi
+10041301 mov       ebx, edi
+10041303 mov       ecx, ebx
+10041305 call      0x1003fd00
+1004130a cmp       dword ptr [eax + 4], edi
+1004130d je        0x10041a04
+10041313 mov       eax, dword ptr [ebp + 0x104]
+10041319 cmp       eax, edi
+1004131b je        0x10041325
+1004131d mov       eax, dword ptr [eax]
+1004131f mov       dword ptr [esp + 0xc], eax
+10041323 jmp       0x10041329
+10041325 mov       dword ptr [esp + 0xc], edi
+
+Primitive submission
+10043fee mov       eax, dword ptr [esp + 0x18]
+10043ff2 mov       ecx, dword ptr [esi + 0xc]
+10043ff5 mov       esi, dword ptr [esp + 0x14]
+10043ff9 mov       edx, dword ptr [esp + 0x1c]
+10043ffd push      eax
+10043ffe mov       eax, dword ptr [0x1047bfe8]
+10044003 add       ecx, esi
+10044005 push      ecx
+10044006 mov       ecx, dword ptr [eax + 0xdc8]
+1004400c push      edx
+1004400d call      0x1000cb20
+10044012 pop       ebp
+10044013 pop       edi
+10044014 pop       esi
+10044015 pop       ebx
+
+Device draw call
+1000cb59 mov       ebx, dword ptr [esp + 0x24]
+1000cb5d mov       eax, dword ptr [esi + 0xc]
+1000cb60 mov       ebp, dword ptr [esp + 0x20]
+1000cb64 mov       ecx, dword ptr [esp + 0x1c]
+1000cb68 mov       edx, dword ptr [eax]
+1000cb6a push      ebx
+1000cb6b push      ebp
+1000cb6c push      ecx
+1000cb6d push      eax
+1000cb6e call      dword ptr [edx + 0x118]

@@ -2,6 +2,7 @@
 
 #include "model_ff11.h"
 #include "model_ff11_texture_handler.h"
+#include "effect_model_layout.h"
 
 #pragma pack(push, 1)
 
@@ -31,6 +32,7 @@ public:
 		noeRAPI_t *mpAllocatingInstance;
 		int mDataSize;
 		char mChunkName[8];
+		std::string mDirectoryPath;
 		char mMaterialName[CFFXITextureHandler::skTexNameLength + 1];
 		unsigned short mHeaderWords[8];
 		EEffectLayout mLayout;
@@ -87,6 +89,7 @@ public:
 		mesh.mDataSize = dataSize;
 		memcpy(mesh.mChunkName, chunk.mName, 4);
 		mesh.mChunkName[4] = 0;
+		mesh.mDirectoryPath = dat.GetChunkDirectoryPath(chunk);
 		mEffectMeshes.push_back(mesh);
 		return true;
 	}
@@ -168,9 +171,10 @@ protected:
 		const int imageCount = pData[4];
 		mesh.mPrimitiveCount = ReadU16(pData, dataSize, 6);
 		const bool extendedMarker3 = pData[0] == 3;
-		const int materialOffset = extendedMarker3 ? 0x10 : 0x0E;
+		const int materialOffset = extendedMarker3 ? 0x10 :
+			EffectModelLayout::MaterialOffset6(imageCount, pData[5]);
 		mesh.mVertexOffset = extendedMarker3 ? 0x50 :
-			Align16(0x0E + imageCount * CFFXITextureHandler::skTexNameLength);
+			EffectModelLayout::VertexOffset6(imageCount, pData[5]);
 		mesh.mLayout = kEffectLayout_Model1F;
 		if (imageCount > 0 && RangeIsValid(materialOffset, CFFXITextureHandler::skTexNameLength, dataSize))
 			memcpy(mesh.mMaterialName, pData + materialOffset, CFFXITextureHandler::skTexNameLength);
@@ -199,6 +203,30 @@ protected:
 		const int cardCount = pData[6];
 		mesh.mLayout = kEffectLayout_Animated21;
 		memcpy(mesh.mMaterialName, pData + 0x08, CFFXITextureHandler::skTexNameLength);
+
+		// Retail compact cards: each frame has a four-byte 0x77010001 tag,
+		// followed by six 24-byte vertices (Home Point tama/tubu resources).
+		// Do not mistake the frame count for the number of 0xA4 extended cards.
+		if (cardCount > 0 && Align16(0x18 + cardCount * 148) == dataSize)
+		{
+			bool compact = true;
+			for (int card = 0; card < cardCount; ++card)
+			{
+				const int header = 0x18 + card * 148;
+				if (!RangeIsValid(header, 148, dataSize) ||
+					ReadU16(pData, dataSize, header) != 1 ||
+					ReadU16(pData, dataSize, header + 2) != 0x7701 ||
+					!PositionsAreSane(pData, dataSize, header + 4, 6, 24))
+					compact = false;
+			}
+			if (compact)
+			{
+				for (int card = 0; card < cardCount; ++card)
+					mesh.mCardVertexOffsets.push_back(0x1C + card * 148);
+				mesh.mPrimitiveCount = cardCount * 2;
+				return true;
+			}
+		}
 
 		bool directLayoutValid = cardCount > 0;
 		if (directLayoutValid && extendedCardCount <= 1)

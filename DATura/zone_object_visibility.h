@@ -18,6 +18,7 @@ struct RenderContext
 {
     const std::vector<std::string> *hiddenNames = nullptr;
     bool viewerPointValid = false;
+    const float* lodViewerPoint = nullptr; // player/orbit target in DAT coordinates
     const std::vector<unsigned char> *visibleMapObjects = nullptr;
     const std::map<std::string, ZoneObjectTransform::DebugTransform> *overrides = nullptr;
     const ZoneRenderFrustum::Data *frustum = nullptr;

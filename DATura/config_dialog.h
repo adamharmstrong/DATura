@@ -4,6 +4,7 @@
 
 #include "application_settings.h"
 #include "win32_theme.h"
+#include "game_ui_config.h"
 
 namespace ConfigDialog
 {
@@ -16,6 +17,7 @@ enum class Command
     MipMappingChanged,
     BumpMappingChanged,
     LightingQualityChanged,
+    DoorInteractionChanged,
     EnvironmentalAnimationChanged,
     DisplayChanged,
     ToggleGameMode,
@@ -23,6 +25,8 @@ enum class Command
     DrawDistanceChanged,
     TextureCompressionChanged,
     ColorThemeChanged,
+    PlayerNameplateChanged,
+    ChatLogChanged,
     CollisionVisibilityChanged,
     SoundSettingsChanged,
     HardwareCursorChanged,
@@ -45,6 +49,7 @@ struct State
     const char* ffxiPath = NULL;
     ApplicationSettings::State* settings = nullptr;
     Win32Theme::State* theme = nullptr;
+    GameUiConfig* gameUi = nullptr;
     void* callbackContext = nullptr;
     EventCallback eventCallback = nullptr;
     IsGameModeCallback isGameModeCallback = nullptr;
@@ -56,6 +61,7 @@ void Initialize(
     const char* ffxiPath,
     ApplicationSettings::State& settings,
     Win32Theme::State& theme,
+    GameUiConfig& gameUi,
     EventCallback eventCallback,
     IsGameModeCallback isGameModeCallback,
     void* callbackContext = nullptr);

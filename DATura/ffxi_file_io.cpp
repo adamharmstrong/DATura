@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "ffxi_file_io.h"
+#include "ffxi_dat_resolver.h"
 
 #include <cctype>
 #include <commdlg.h>
@@ -17,8 +18,7 @@ bool ReadWholeFile(const char* path, BYTE** outBuffer, DWORD* outSize, ReadResul
     *outBuffer = nullptr;
     *outSize = 0;
 
-    HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ,
-                              nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE file = FFXIDatResolver::OpenRead(path);
     if (file == INVALID_HANDLE_VALUE)
     {
         if (outResult)
@@ -26,8 +26,8 @@ bool ReadWholeFile(const char* path, BYTE** outBuffer, DWORD* outSize, ReadResul
         return false;
     }
 
-    const DWORD fileSize = GetFileSize(file, nullptr);
-    if (fileSize == 0 || fileSize == INVALID_FILE_SIZE)
+    LARGE_INTEGER size = {};
+    if (!GetFileSizeEx(file, &size) || size.QuadPart <= 0 || size.QuadPart > 0x7fffffff)
     {
         CloseHandle(file);
         if (outResult)
@@ -35,6 +35,7 @@ bool ReadWholeFile(const char* path, BYTE** outBuffer, DWORD* outSize, ReadResul
         return false;
     }
 
+    const DWORD fileSize = static_cast<DWORD>(size.QuadPart);
     BYTE* buffer = new BYTE[fileSize];
     DWORD bytesRead = 0;
     const BOOL readOk = ReadFile(file, buffer, fileSize, &bytesRead, nullptr);
@@ -66,8 +67,7 @@ bool ReadWholeTextFile(const char* path, char** outText, DWORD* outSize, ReadRes
     if (outSize)
         *outSize = 0;
 
-    HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ,
-                              nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE file = FFXIDatResolver::OpenRead(path);
     if (file == INVALID_HANDLE_VALUE)
     {
         if (outResult)
@@ -75,8 +75,8 @@ bool ReadWholeTextFile(const char* path, char** outText, DWORD* outSize, ReadRes
         return false;
     }
 
-    const DWORD fileSize = GetFileSize(file, nullptr);
-    if (fileSize == INVALID_FILE_SIZE)
+    LARGE_INTEGER size = {};
+    if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 || size.QuadPart > 0x7fffffff)
     {
         CloseHandle(file);
         if (outResult)
@@ -84,6 +84,7 @@ bool ReadWholeTextFile(const char* path, char** outText, DWORD* outSize, ReadRes
         return false;
     }
 
+    const DWORD fileSize = static_cast<DWORD>(size.QuadPart);
     char* text = new char[static_cast<std::size_t>(fileSize) + 1];
     DWORD bytesRead = 0;
     const BOOL readOk = ReadFile(file, text, fileSize, &bytesRead, nullptr);

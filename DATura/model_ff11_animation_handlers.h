@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "model_ff11.h"
 
@@ -146,16 +146,32 @@ public:
 	{
 		CArrayList<noesisAnim_t *> anims;
 
-		const SAnimHeaderData *pWalkLower = FindAnimation("wlk0");
-		const SAnimHeaderData *pWalkUpper = FindAnimation("wlk1");
-		if (pWalkLower && pWalkUpper &&
-			pWalkLower->mpAnimHdr->mFrameCount == pWalkUpper->mpAnimHdr->mFrameCount &&
-			pWalkLower->mpAnimHdr->mFrameCount > 0)
+		struct Motion { const char *name; const char *source; bool relaxed; };
+		const Motion motions[] = {
+			{ "wlk", "wlk", false }, { "run", "run", false },
+			{ "mvb", "mvb", false }, { "std", "std", false },
+			{ "idl", "idl", false }, { "mvl", "mvl", false },
+			{ "mvr", "mvr", false }, { "jmp", "jmp", false },
+			{ "wlk_relaxed", "wlk", true }, { "run_relaxed", "run", true },
+			{ "mvb_relaxed", "mvb", true }, { "idl_relaxed", "idl", true },
+		};
+		for (const Motion &motion : motions)
 		{
-			noesisAnim_t *pWalkAnim = ConstructCompositedAnimation(pRapi, pSkel, pWalkLower, pWalkUpper, "wlk");
-			if (pWalkAnim)
+			char lowerName[5], upperName[5];
+			sprintf_s(lowerName, "%s0", motion.source);
+			sprintf_s(upperName, "%s1", motion.source);
+			const SAnimHeaderData *pLower = FindAnimation(lowerName, motion.relaxed);
+			const SAnimHeaderData *pUpper = FindAnimation(upperName, motion.relaxed);
+			if (pLower && pUpper &&
+				pUpper->mpAnimHdr->mFrameCount > 0 &&
+				pLower->mpAnimHdr->mFrameCount > 0)
 			{
-				anims.Append(pWalkAnim);
+				noesisAnim_t *pComposite = ConstructCompositedAnimation(pRapi, pSkel, pLower, pUpper, motion.name);
+				if (pComposite)
+				{
+					pComposite->looping = strcmp(motion.source, "jmp") != 0;
+					anims.Append(pComposite);
+				}
 			}
 		}
 
@@ -292,9 +308,18 @@ public:
 	bool AnimDataIsPresent() const { return mAnimHeaderList.size() > 0; }
 
 protected:
-	const SAnimHeaderData *FindAnimation(const char *pName) const
+	const SAnimHeaderData *FindAnimation(const char *pName, bool relaxed = false) const
 	{
-		for (TAnimHeaderList::const_iterator it = mAnimHeaderList.begin(); it != mAnimHeaderList.end(); ++it)
+		// DAT sets load skeleton/general motions before the selected weapon bank.
+		// Relaxed locomotion uses those first tracks; previews and strafing use
+		// the selected bank's overrides.
+		if (relaxed)
+		{
+			for (const SAnimHeaderData &animation : mAnimHeaderList)
+				if (!strcmp(animation.mName, pName)) return &animation;
+			return NULL;
+		}
+		for (TAnimHeaderList::const_reverse_iterator it = mAnimHeaderList.rbegin(); it != mAnimHeaderList.rend(); ++it)
 		{
 			if (!strcmp(it->mName, pName))
 				return &(*it);
@@ -331,8 +356,8 @@ protected:
 			memcpy(pMats + frameIndex * pSkel->mBoneCount, pBaseMats, sizeof(RichMat43) * pSkel->mBoneCount);
 		}
 
-		ApplyAnimationChunk(pRapi, pSkel, *pLowerAnimData, pBaseMats, pMats);
-		ApplyAnimationChunk(pRapi, pSkel, *pUpperAnimData, pBaseMats, pMats);
+		ApplyAnimationChunk(pRapi, pSkel, *pLowerAnimData, pBaseMats, pMats, pAnimHdr->mFrameCount);
+		ApplyAnimationChunk(pRapi, pSkel, *pUpperAnimData, pBaseMats, pMats, pAnimHdr->mFrameCount);
 
 		noesisAnim_t *pAnim = pRapi->rpgAnimFromBonesAndMatsFinish(pSkel->mpBones, pSkel->mBoneCount, (modelMatrix_t *)pMats,
 																	pAnimHdr->mFrameCount, pAnimHdr->mSpeedScale * 30.0f);
@@ -348,7 +373,7 @@ protected:
 
 	void ApplyAnimationChunk(noeRAPI_t *pRapi, const CFFXISkelHandler::SInterpretedSkel *pSkel,
 							 const SAnimHeaderData &animHeaderData, const RichMat43 *pBaseMats,
-							 RichMat43 *pMats) const
+							 RichMat43 *pMats, const int outputFrameCount) const
 	{
 		const SAnimHeader *pAnimHdr = animHeaderData.mpAnimHdr;
 		const SAnimElemHeader *pElems = (const SAnimElemHeader *)(pAnimHdr + 1);
@@ -371,9 +396,12 @@ protected:
 				continue;
 			}
 
-			for (int frameIndex = 0; frameIndex < pAnimHdr->mFrameCount; ++frameIndex)
+			for (int outputFrame = 0; outputFrame < outputFrameCount; ++outputFrame)
 			{
-				RichMat43 *pFrameMats = pMats + pSkel->mBoneCount * frameIndex;
+				// Some pairs differ by an endpoint frame (Hume female std: 51/50).
+				// Sample both halves at the same loop phase without dropping a half.
+				const int frameIndex = outputFrame * pAnimHdr->mFrameCount / outputFrameCount;
+				RichMat43 *pFrameMats = pMats + pSkel->mBoneCount * outputFrame;
 				RichMat43 &mat = pFrameMats[pElem->mBoneIndex];
 				if (pElem->mQuatIndex[0] < 0 || pElem->mQuatIndex[1] < 0 || pElem->mQuatIndex[2] < 0 || pElem->mQuatIndex[3] < 0)
 				{

@@ -15,7 +15,10 @@ void MakeDefaultNoesisPath(const char* characterName, char* outPath, std::size_t
     char stem[64] = {};
     FFXIFileIO::GetExecutableDirectory(exeDir, sizeof(exeDir));
     FFXIFileIO::MakeSafeFileStem(characterName, stem, sizeof(stem));
-    sprintf_s(outPath, outPathSize, "%s%s.noesis", exeDir, stem);
+    char characterDir[MAX_PATH] = {};
+    sprintf_s(characterDir, sizeof(characterDir), "%sCharacters", exeDir);
+    CreateDirectoryA(characterDir, nullptr);
+    sprintf_s(outPath, outPathSize, "%s\\%s.noesis", characterDir, stem);
 }
 
 void BuildNoesisScene(const Inputs& inputs, char* out, std::size_t outSize)

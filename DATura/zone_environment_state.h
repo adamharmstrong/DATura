@@ -34,6 +34,8 @@ struct Cache
 
 void Invalidate(Cache &cache, bool clearWeatherGroups);
 int CurrentMinuteOfDay();
+void SetTimeOverride(int minuteOfDay);
+void ClearTimeOverride();
 void Update(Data &state, Cache &cache, int &weatherIndex,
             const std::vector<ff11EnvironmentRecord_t> &records, int currentMinute);
 }

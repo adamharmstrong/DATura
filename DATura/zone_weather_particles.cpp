@@ -9,6 +9,7 @@
 #include "zone_environment_render_state.h"
 #include "zone_environment_identity.h"
 #include "zone_environment_state.h"
+#include "zone_environment_animation.h"
 #include "zone_model_render_metadata.h"
 
 #include <algorithm>
@@ -21,14 +22,6 @@ namespace ZoneWeatherParticles
 {
 namespace
 {
-struct Vertex
-{
-    float x, y, z;
-    DWORD color;
-};
-
-constexpr DWORD kVertexFormat = D3DFVF_XYZ | D3DFVF_DIFFUSE;
-
 float Hash(const unsigned int valueInput)
 {
     unsigned int value = valueInput;
@@ -40,40 +33,20 @@ float Hash(const unsigned int valueInput)
     return (float)(value & 0xffffu) / 65535.0f;
 }
 
-const ff11GeneratorRecord_t *FindActiveGenerator(
-    const char *weatherPath, const std::vector<ff11GeneratorRecord_t> &generators)
+bool Active(const ff11GeneratorRecord_t &g, const char *weatherPath)
 {
-    if (!weatherPath || !weatherPath[0])
-        return nullptr;
-
-    const size_t weatherPathLength = strlen(weatherPath);
-    const ff11GeneratorRecord_t *best = nullptr;
-    for (const ff11GeneratorRecord_t &generator : generators)
-    {
-        // 0x20 is a batching flag, not a unique weather identifier (footstep
-        // generators use it too). Requiring the active weat/<tag> directory is
-        // what makes this an authored weather-particle generator.
-        if ((generator.moreFlags & 0x20) == 0 ||
-            (generator.generatorFlags & 0x10) == 0 ||
-            generator.particlesPerEmission == 0 ||
-            strncmp(generator.directoryPath, weatherPath, weatherPathLength) != 0 ||
-            generator.directoryPath[weatherPathLength] != '/')
-        {
-            continue;
-        }
-        if (!best || generator.particlesPerEmission > best->particlesPerEmission)
-            best = &generator;
-    }
-    return best;
+    return weatherPath && weatherPath[0] && (g.moreFlags & 0x20) &&
+        (g.generatorFlags & 0x10) && g.particlesPerEmission &&
+        ZoneEnvironmentIdentity::EnvironmentWeatherRootsMatch(g.directoryPath, weatherPath);
 }
 
 bool DrawAuthoredBatchedWeather(
     IDirect3DDevice9 *device, noesisModel_t *model, const bool enableMipMapping,
     const char *weatherPath, const std::vector<ff11GeneratorRecord_t> &generators,
     const std::vector<ff11KeyframeRecord_t> &keyframes,
-    const float cameraX, const float cameraY, const float cameraZ)
+    const float cameraX, const float cameraY, const float cameraZ,
+    const ff11GeneratorRecord_t *generator, double seconds, int vanadielMinute)
 {
-    const ff11GeneratorRecord_t *generator = FindActiveGenerator(weatherPath, generators);
     if (!device || !model || !generator || !generator->linkedResource[0])
         return false;
 
@@ -106,9 +79,10 @@ bool DrawAuthoredBatchedWeather(
         (unsigned int)generator->framesPerEmission + 1u;
     const unsigned int lifetimeFrames = generator->particleLifetimeFrames > 0 ?
         (unsigned int)generator->particleLifetimeFrames : emissionFrames;
-    const unsigned int currentFrame =
-        (unsigned int)(GetTickCount64() * 60ULL / 1000ULL);
-    const float emissionPhase = (float)(currentFrame % emissionFrames);
+    // Retain sub-frame time so rendering above 60 Hz does not repeat positions.
+    // Reduce in double precision before converting to float for long uptimes.
+    const double currentFrame = seconds * 60.0;
+    const float emissionPhase = (float)fmod(currentFrame, (double)emissionFrames);
 
     D3DModelRenderState::ApplyFixedFunctionModelState(device, enableMipMapping);
     device->SetFVF(FFXI_VERTEX_FVF);
@@ -119,7 +93,6 @@ bool DrawAuthoredBatchedWeather(
     device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
     device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
 
-    const int vanadielMinute = ZoneEnvironmentState::CurrentMinuteOfDay();
     for (noesisModel_t::Submesh *submesh : batches)
     {
         const ZoneEnvironmentRenderState::Data controller =
@@ -156,8 +129,10 @@ bool DrawAuthoredBatchedWeather(
                 // The updater stream applies position-from-velocity before it
                 // adds acceleration to velocity each frame (opcodes 0x02,
                 // then 0x03). Reproduce that discrete update order exactly.
-                const float displacement = velocity * ageFrames +
-                    0.5f * acceleration * ageFrames * (ageFrames - 1.0f);
+                const float wholeFrames = floorf(ageFrames);
+                const float fraction = ageFrames - wholeFrames;
+                const float displacement = velocity * ageFrames + acceleration *
+                    (0.5f * wholeFrames * (wholeFrames - 1.0f) + fraction * wholeFrames);
                 (&world._41)[axis] += displacement;
             }
             device->SetTransform(D3DTS_WORLD, &world);
@@ -175,122 +150,161 @@ bool DrawAuthoredBatchedWeather(
     device->SetIndices(nullptr);
     return true;
 }
-}
 
-void Draw(IDirect3DDevice9 *device, noesisModel_t *model, const bool environmentValid,
-          const bool enableMipMapping, const char *weatherPath,
-          const std::vector<ff11GeneratorRecord_t> &generators,
-          const std::vector<ff11KeyframeRecord_t> &keyframes,
-          const float cameraX, const float cameraY, const float cameraZ)
+void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
+                 const ff11GeneratorRecord_t &g, const std::vector<ff11KeyframeRecord_t> &curves,
+                 double seconds, int minute, const float camera[3])
 {
-    if (!device || !environmentValid)
-        return;
-
-    const std::string weather = weatherPath ? weatherPath : "";
-    const bool rain = ZoneEnvironmentIdentity::ContainsLowerToken(weather, "rain") ||
-                      ZoneEnvironmentIdentity::ContainsLowerToken(weather, "squl") ||
-                      ZoneEnvironmentIdentity::ContainsLowerToken(weather, "storm");
-    const bool snow = ZoneEnvironmentIdentity::ContainsLowerToken(weather, "snow") ||
-                      ZoneEnvironmentIdentity::ContainsLowerToken(weather, "bliz");
-    const bool sand = ZoneEnvironmentIdentity::ContainsLowerToken(weather, "sand") ||
-                      ZoneEnvironmentIdentity::ContainsLowerToken(weather, "dust");
-    if (!rain && !snow && !sand)
-        return;
-
-    // Rain is never synthesized here. If the active DAT does not provide an
-    // authored batched rain field, there is no precipitation draw for it.
-    if (rain)
+    const noesisModel_t::WeatherSprite *sprite = nullptr;
+    for (const auto &candidate : model->weatherSprites)
     {
-        DrawAuthoredBatchedWeather(
-            device, model, enableMipMapping, weatherPath, generators, keyframes,
-            cameraX, cameraY, cameraZ);
-        return;
+        if (candidate.resourceName != g.linkedResource) continue;
+        if (candidate.directoryPath == g.directoryPath) { sprite = &candidate; break; }
+        if (ZoneEnvironmentIdentity::EnvironmentWeatherRootsMatch(candidate.directoryPath.c_str(), g.directoryPath))
+            sprite = &candidate;
+        else if (!sprite && !Model_FF11_IsWeatherDirectory(candidate.directoryPath.c_str())) sprite = &candidate;
     }
-
-    const ff11GeneratorRecord_t *authoredGenerator = FindActiveGenerator(weatherPath, generators);
-    const int particleCount = authoredGenerator ?
-        std::clamp((int)authoredGenerator->particlesPerEmission, 1, 1000) :
-        420;
-    const float time = (float)(GetTickCount64() % 600000ULL) * 0.001f;
-    const float fallSpeed = snow ? 4.0f : 8.0f;
-    const float streak = snow ? 0.35f : 0.8f;
-    const DWORD color = snow ? D3DCOLOR_ARGB(185, 245, 248, 255) :
-        D3DCOLOR_ARGB(105, 211, 174, 105);
-    std::vector<Vertex> vertices;
-    vertices.reserve((size_t)particleCount * 6);
-    for (int index = 0; index < particleCount; ++index)
+    if (!sprite || sprite->vertices.size() < 6 || !model->pMatData) return;
+    noesisTex_t *texture = nullptr;
+    for (int i = 0; i < model->pMatData->texCount; ++i)
+        if (model->pMatData->textures[i] && model->pMatData->textures[i]->name &&
+            sprite->textureName == model->pMatData->textures[i]->name)
+            texture = model->pMatData->textures[i];
+    if (!texture || !texture->pD3DTex) return;
+    float origin[3] = {};
+    float distanceSquared = 0;
+    for (int axis = 0; axis < 3; ++axis)
     {
-        const float rx = Hash((unsigned int)index * 3u + 1u);
-        const float ry = Hash((unsigned int)index * 3u + 2u);
-        const float rz = Hash((unsigned int)index * 3u + 3u);
-        const float extent = 55.0f;
-        const float x = cameraX + (rx * 2.0f - 1.0f) * extent;
-        const float z = cameraZ + (rz * 2.0f - 1.0f) * extent;
-        // FFXI gravity points toward +Y. Start most particles above the eye
-        // (negative Y), advance them toward +Y, and wrap below the camera.
-        const float y = cameraY - 60.0f + fmodf(ry * 85.0f + time * fallSpeed, 85.0f);
-        const float drift = snow ? sinf(time * 0.7f + index) * 0.7f :
-                            (sand ? streak : 0.25f);
-        const Vertex topCenter = { x, y, z, color };
-        const Vertex bottomCenter = sand ?
-            Vertex{ x + streak, y + 0.15f, z + drift, color } :
-            Vertex{ x + drift, y + streak, z, color };
-
-        // Build a narrow vertical card facing the eye. The old LINELIST path
-        // discarded the authored plane behavior and rasterized inconsistently
-        // across resolutions and drivers.
-        float viewX = cameraX - x;
-        float viewZ = cameraZ - z;
-        const float viewLength = sqrtf(viewX * viewX + viewZ * viewZ);
-        if (viewLength > 0.0001f)
-        {
-            viewX /= viewLength;
-            viewZ /= viewLength;
-        }
-        else
-        {
-            viewX = 0.0f;
-            viewZ = 1.0f;
-        }
-        const float halfWidth = snow ? 0.16f : 0.12f;
-        const float rightX = viewZ * halfWidth;
-        const float rightZ = -viewX * halfWidth;
-        const Vertex topLeft =
-            { topCenter.x - rightX, topCenter.y, topCenter.z - rightZ, color };
-        const Vertex topRight =
-            { topCenter.x + rightX, topCenter.y, topCenter.z + rightZ, color };
-        const Vertex bottomLeft =
-            { bottomCenter.x - rightX, bottomCenter.y, bottomCenter.z - rightZ, color };
-        const Vertex bottomRight =
-            { bottomCenter.x + rightX, bottomCenter.y, bottomCenter.z + rightZ, color };
-        vertices.push_back(topLeft);
-        vertices.push_back(topRight);
-        vertices.push_back(bottomRight);
-        vertices.push_back(topLeft);
-        vertices.push_back(bottomRight);
-        vertices.push_back(bottomLeft);
+        origin[axis] = g.hasSpawnPosition ? g.spawnPosition[axis] : 0;
+        if (g.standardParticleFlags & 4) origin[axis] += camera[axis];
+        distanceSquared += (origin[axis]-camera[axis])*(origin[axis]-camera[axis]);
     }
-
-    const D3DMATRIX identity = D3DMath::BuildIdentity();
+    if (g.hasCullDistance && g.cullDistance > 0 && distanceSquared > g.cullDistance*g.cullDistance) return;
+    auto curve = [&](const char *name, float t, float fallback) {
+        return ZoneEnvironmentAnimation::EvaluateKeyframe(
+            ZoneEnvironmentAnimation::FindKeyframe(g, name, curves), t, fallback);
+    };
+    float colors[3] = {1,1,1};
+    const char *tracks[3] = {g.redKeyframe, g.greenKeyframe, g.blueKeyframe};
+    for (int axis = 0; axis < 3; ++axis)
+        colors[axis] = curve(tracks[axis], minute / 1440.0f,
+            g.hasColor ? ((g.colorBgra >> (16-axis*8)) & 255) / 128.0f : 1.0f);
+    const float dayAlpha = curve(g.alphaKeyframe, minute / 1440.0f, 1);
+    const double interval = g.framesPerEmission + 1.0;
+    const double life = g.particleLifetimeFrames ? g.particleLifetimeFrames : interval;
+    const double frame = seconds * 60;
+    const auto cycle = static_cast<unsigned long long>(floor(frame / interval));
+    const double phase = fmod(frame, interval);
+    D3DMATRIX view;
+    device->GetTransform(D3DTS_VIEW, &view);
+    const float right[3] = {view._11, view._21, view._31};
+    const float down[3] = {-view._12, -view._22, -view._32};
+    struct Particle { float center[3]; float alpha; float depth; size_t spriteOffset; };
+    std::vector<Particle> particles;
+    for (unsigned int generation = 0; generation * interval + phase < life && generation < 1024; ++generation)
+    {
+        const float age = static_cast<float>(generation * interval + phase);
+        const float alpha = g.updateLifetimeAlpha ? curve(g.lifetimeAlphaKeyframe, age / (float)life,
+            g.hasColor ? ((g.colorBgra >> 24) & 255) / 128.0f : 1.0f) :
+            (g.hasColor ? ((g.colorBgra >> 24) & 255) / 128.0f : 1.0f);
+        if (!std::isfinite(alpha) || alpha * dayAlpha <= 0.001f) continue;
+        for (unsigned int i = 0; i < g.particlesPerEmission && particles.size() < 32768; ++i)
+        {
+            const unsigned int seed = g.sourceDataOffset ^ (unsigned int)(cycle-generation)*747796405u ^ i*2891336453u;
+            const float radius = g.hasPositionVariance ? g.spawnRadius * Hash(seed+1) : 0;
+            const float yaw = (Hash(seed+2)*2-1)*3.14159265f;
+            const float pitch = (Hash(seed+3)*2-1)*3.14159265f;
+            const float direction[3] = {cosf(pitch)*cosf(yaw), sinf(pitch), cosf(pitch)*sinf(yaw)};
+            Particle particle = {};
+            particle.alpha = std::clamp(alpha * dayAlpha, 0.0f, 1.0f);
+            const size_t frames = sprite->vertices.size()/6;
+            particle.spriteOffset = g.animateSprite ?
+                std::min(frames-1, static_cast<size_t>((frames+1)*age/life))*6 : 0;
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const float speed = (g.hasLinearVelocity ? g.linearVelocity[axis] : 0) +
+                    (g.hasVelocityVariance ? (Hash(seed+4+axis)*2-1)*g.velocityVariance[axis] : 0);
+                const float whole = floorf(age), fraction = age-whole;
+                particle.center[axis] = origin[axis] + radius*direction[axis]*g.spawnAxisScale[axis] + speed*age +
+                    (g.hasLinearAcceleration ? g.linearAcceleration[axis]*(whole*(whole-1)*0.5f+fraction*whole) : 0);
+            }
+            particle.depth = particle.center[0]*view._13 + particle.center[1]*view._23 + particle.center[2]*view._33 + view._43;
+            if (g.hasParticleDistanceFade && g.particleFadeFar > g.particleFadeNear)
+            {
+                float distance = 0;
+                for (int axis = 0; axis < 3; ++axis)
+                    distance += (particle.center[axis]-camera[axis])*(particle.center[axis]-camera[axis]);
+                particle.alpha *= std::clamp((g.particleFadeFar-sqrtf(distance))/
+                    (g.particleFadeFar-g.particleFadeNear), 0.0f, 1.0f);
+            }
+            if (particle.depth > 0) particles.push_back(particle);
+        }
+    }
+    std::stable_sort(particles.begin(), particles.end(), [](const Particle &a, const Particle &b) {return a.depth > b.depth;});
+    std::vector<FFXIVertex> vertices;
+    for (const auto &particle : particles)
+        for (int i = 0; i < 6; ++i)
+        {
+            auto v = sprite->vertices[particle.spriteOffset+i];
+            const float x = v.pos[0]*(g.hasScale ? g.scale[0] : 1);
+            const float y = v.pos[1]*(g.hasScale ? g.scale[1] : 1);
+            const float angle = g.hasRotation ? g.rotation[2] : 0;
+            const float rotatedX = x*cosf(angle)-y*sinf(angle);
+            const float rotatedY = x*sinf(angle)+y*cosf(angle);
+            for (int axis = 0; axis < 3; ++axis) v.pos[axis] = particle.center[axis]+right[axis]*rotatedX+down[axis]*rotatedY;
+            const DWORD alpha = static_cast<DWORD>(((v.diffuse >> 24) & 255)*particle.alpha);
+            v.diffuse = (v.diffuse & 0xffffff) | (alpha << 24);
+            vertices.push_back(v);
+        }
+    if (vertices.empty()) return;
+    D3DModelRenderState::ApplyFixedFunctionModelState(device, true);
+    const auto identity = D3DMath::BuildIdentity();
     device->SetTransform(D3DTS_WORLD, &identity);
-    device->SetFVF(kVertexFormat);
-    device->SetTexture(0, nullptr);
-    device->SetPixelShader(nullptr);
+    device->SetFVF(FFXI_VERTEX_FVF);
     device->SetRenderState(D3DRS_LIGHTING, FALSE);
     device->SetRenderState(D3DRS_FOGENABLE, FALSE);
     device->SetRenderState(D3DRS_ZENABLE, TRUE);
     device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
     device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)particleCount * 2,
-                            vertices.data(), sizeof(Vertex));
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
+    ZoneEnvironmentRenderState::ApplyBlendMode(device, g.hasBlendMode ? g.blendMode : 0x44);
+    const bool shader = D3DModelRenderState::SetFfxiTexturePixelShader(device, true, texture->texType == NOESISTEX_DXT3, 1, colors);
+    D3DModelRenderState::SetTextureStageForOptionalTexture(device, texture->pD3DTex, shader ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE2X);
+    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)vertices.size()/3, vertices.data(), sizeof(FFXIVertex));
+}
+}
+
+void DrawAtTime(IDirect3DDevice9 *device, noesisModel_t *model, bool environmentValid,
+          bool enableMipMapping, const char *weatherPath,
+          const std::vector<ff11GeneratorRecord_t> &generators,
+          const std::vector<ff11KeyframeRecord_t> &keyframes,
+          float cameraX, float cameraY, float cameraZ, double seconds, int minute)
+{
+    if (!device || !model || !environmentValid || !std::isfinite(seconds) || seconds < 0) return;
+    IDirect3DStateBlock9 *saved = nullptr;
+    if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &saved))) return;
+    const float camera[3] = {cameraX,cameraY,cameraZ};
+    for (const auto &g : generators)
+    {
+        if (!Active(g, weatherPath)) continue;
+        // Some 0x0E resources are complete rain card fields already instantiated
+        // as environment meshes. Keep that path before trying a sprite atlas.
+        const bool hasMeshBatch = DrawAuthoredBatchedWeather(device, model, enableMipMapping, weatherPath, generators,
+            keyframes, cameraX, cameraY, cameraZ, &g, seconds, minute);
+        if (!hasMeshBatch && g.linkedDataType == 0x0e)
+            DrawSprites(device, model, g, keyframes, seconds, minute, camera);
+    }
+    saved->Apply();
+    saved->Release();
+}
+
+void Draw(IDirect3DDevice9 *device, noesisModel_t *model, bool environmentValid,
+          bool enableMipMapping, const char *weatherPath,
+          const std::vector<ff11GeneratorRecord_t> &generators,
+          const std::vector<ff11KeyframeRecord_t> &keyframes,
+          float cameraX, float cameraY, float cameraZ)
+{
+    DrawAtTime(device, model, environmentValid, enableMipMapping, weatherPath, generators,
+        keyframes, cameraX, cameraY, cameraZ, GetTickCount64()*0.001, ZoneEnvironmentState::CurrentMinuteOfDay());
 }
 }

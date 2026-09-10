@@ -16,11 +16,12 @@ Sources: `thirdparty/xim` (faithful Kotlin client reimplementation), `cexi` pars
    config byte: bit 0 = tri strip vs tri list, bit 1 = "vertex blend enabled" =
    48-byte layout. (`xim/resource/ZoneMeshSection.kt:33–35`)
 
-3. **The "unknown 12 bytes" of the 48-byte zone vertex are a second position** —
-   a wind-sway blend target. The shader lerps position → position2 by a global wind
-   factor (`positionBlendWeight = WindFactor.getWindFactor()`,
-   `xim/poc/ZoneDrawer.kt:131`). The doc lists "a second position" as one of five
-   candidates; it is the answer, and its purpose is foliage/vegetation sway.
+3. **The extra 12 bytes of the 48-byte zone vertex are a displacement**, used for
+   foliage sway. Xim's shader computes `position0 + positionBlendWeight * position1`;
+   the stored vector is not an absolute second position. Installed Konschtat grass
+   confirms nonzero tip vectors and zero root vectors. The prior description of
+   lerping between two absolute positions was incorrect.
+   (`xim/resource/ZoneMeshSection.kt`, `xim/poc/gl/XimShader.kt`)
 
 4. **"No confirmed native per-pixel normal-map binding" is wrong.** Section type
    `0x5D` is a native **BumpMap** resource: an 8-bit height map converted to a normal

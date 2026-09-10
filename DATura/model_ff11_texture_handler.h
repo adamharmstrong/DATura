@@ -115,28 +115,6 @@ public:
 			strstr(lowerName, "kum1") != NULL;
 	}
 
-	static bool IsTitleBackdropDat(const noeRAPI_t *rapi)
-	{
-		const char *path = rapi ? rapi->GetCurrentFilePath() : nullptr;
-		if (!path)
-			return false;
-
-		// The custom title screen uses Konschtat (ROM/0/90.DAT) as a composed
-		// backdrop. Its cloud layer is an intentional additive title effect;
-		// resolving its stipple into continuous alpha makes its broad aurora band
-		// nearly solid white.
-		char normalizedPath[MAX_NOESIS_PATH] = {};
-		for (size_t index = 0; path[index] && index + 1 < sizeof(normalizedPath); ++index)
-		{
-			const char c = path[index];
-			normalizedPath[index] = (c == '/') ? '\\' : (char)tolower((unsigned char)c);
-		}
-		const char suffix[] = "\\rom\\0\\90.dat";
-		const size_t pathLength = strlen(normalizedPath);
-		return pathLength >= sizeof(suffix) - 1 &&
-			strcmp(normalizedPath + pathLength - (sizeof(suffix) - 1), suffix) == 0;
-	}
-
 	static bool IsDxt1StippleAlpha(const unsigned char *rgba, const size_t pixelCount)
 	{
 		bool hasTransparent = false;
@@ -269,8 +247,7 @@ public:
 		memcpy(texName, pTexHdr->mName, skTexNameLength);
 		texName[skTexNameLength] = 0;
 		const char *directoryPath = dat.GetChunkDirectoryPath(chunk);
-		const bool weatherCloudTexture = IsWeatherCloudTexture(directoryPath, texName) &&
-			!IsTitleBackdropDat(pRapi);
+		const bool weatherCloudTexture = IsWeatherCloudTexture(directoryPath, texName);
 		if (pTexHdr->mWidth <= 0 || pTexHdr->mWidth > 4096 ||
 			pTexHdr->mHeight <= 0 || pTexHdr->mHeight > 4096)
 		{
@@ -425,7 +402,13 @@ public:
 			pTexData = CreateRgbaFromPaletted(pRapi, pSrcData, pSrcData + palSize, pTexHdr->mWidth, pTexHdr->mHeight, (int)safeBpc);
 			if (fixAlphaOrColor)
 			{
-				ShiftRgbaData(pTexData, pTexHdr->mWidth, pTexHdr->mHeight, texColorShift, texAlphaShift);
+				// Fine's palette cloud mask has a smooth 0..128 alpha ramp.
+				// The generic x4 fix clips its upper half before filtering/blending.
+				// Expand the half-range mask once; generator and vertex alpha are
+				// composed by the environment renderer.
+				const int paletteAlphaShift = IsWeatherCloudTexture(directoryPath, texName) &&
+					!(gpFF11Opts && gpFF11Opts->explicitAlphaShift) ? 1 : texAlphaShift;
+				ShiftRgbaData(pTexData, pTexHdr->mWidth, pTexHdr->mHeight, texColorShift, paletteAlphaShift);
 			}
 			texDataSize = pTexHdr->mWidth * pTexHdr->mHeight * 4;
 			texType = NOESISTEX_RGBA32;

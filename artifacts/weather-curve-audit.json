@@ -1,0 +1,153 @@
+{
+  "zone_files": 72,
+  "weather": {
+    "thdr": {
+      "generators": 50,
+      "curve_references": 60,
+      "previously_misread": 60,
+      "resolved": 60,
+      "examples": [
+        "ROM/0/90.DAT f_ko/weat/thdr/cld2 -> kcr1",
+        "ROM/0/90.DAT f_ko/weat/thdr/cld2 -> kcg1"
+      ]
+    },
+    "dust": {
+      "generators": 71,
+      "curve_references": 163,
+      "previously_misread": 163,
+      "resolved": 163,
+      "examples": [
+        "ROM/0/90.DAT f_ko/weat/dust/~1du -> kdsr",
+        "ROM/0/90.DAT f_ko/weat/dust/~1du -> kdsg"
+      ]
+    },
+    "clod": {
+      "generators": 175,
+      "curve_references": 396,
+      "previously_misread": 396,
+      "resolved": 396,
+      "examples": [
+        "ROM/0/90.DAT f_ko/weat/clod/cld1 -> kcr1",
+        "ROM/0/90.DAT f_ko/weat/clod/cld1 -> kcg1"
+      ]
+    },
+    "fine": {
+      "generators": 482,
+      "curve_references": 653,
+      "previously_misread": 653,
+      "resolved": 653,
+      "examples": [
+        "ROM/0/90.DAT f_ko/weat/fine/sun1 -> ksr1",
+        "ROM/0/90.DAT f_ko/weat/fine/sun1 -> ksg1"
+      ]
+    },
+    "mist": {
+      "generators": 167,
+      "curve_references": 378,
+      "previously_misread": 378,
+      "resolved": 378,
+      "examples": [
+        "ROM/0/90.DAT f_ko/weat/mist/cld1 -> kcr1",
+        "ROM/0/90.DAT f_ko/weat/mist/cld1 -> kcg1"
+      ]
+    },
+    "suny": {
+      "generators": 543,
+      "curve_references": 770,
+      "previously_misread": 770,
+      "resolved": 770,
+      "examples": [
+        "ROM/0/90.DAT f_ko/weat/suny/cld1 -> k00r",
+        "ROM/0/90.DAT f_ko/weat/suny/cld1 -> k00g"
+      ]
+    },
+    "rain": {
+      "generators": 103,
+      "curve_references": 6,
+      "previously_misread": 6,
+      "resolved": 6,
+      "examples": [
+        "ROM/0/99.DAT d_da/weat/rain/~4cl -> ktim",
+        "ROM/0/99.DAT d_da/weat/rain/~4cl -> ktim"
+      ]
+    },
+    "dryw": {
+      "generators": 44,
+      "curve_references": 64,
+      "previously_misread": 64,
+      "resolved": 64,
+      "examples": [
+        "ROM/0/101.DAT f_me/weat/dryw/ka01 -> kkag",
+        "ROM/0/101.DAT f_me/weat/dryw/sun1 -> ksr1"
+      ]
+    },
+    "wind": {
+      "generators": 35,
+      "curve_references": 47,
+      "previously_misread": 47,
+      "resolved": 47,
+      "examples": [
+        "ROM/0/115.DAT f_la/weat/wind/sun0 -> ks0r",
+        "ROM/0/115.DAT f_la/weat/wind/sun0 -> ks0g"
+      ]
+    },
+    "snow": {
+      "generators": 25,
+      "curve_references": 34,
+      "previously_misread": 34,
+      "resolved": 34,
+      "examples": [
+        "ROM/0/122.DAT f_no/weat/snow/sn15 -> ksnt",
+        "ROM/0/122.DAT f_no/weat/snow/sn14 -> ksnt"
+      ]
+    },
+    "aura": {
+      "generators": 13,
+      "curve_references": 18,
+      "previously_misread": 18,
+      "resolved": 18,
+      "examples": [
+        "ROM/1/3.DAT f_qu/weat/aura/cld2 -> kcr1",
+        "ROM/1/3.DAT f_qu/weat/aura/cld2 -> kcg1"
+      ]
+    },
+    "ligt": {
+      "generators": 12,
+      "curve_references": 21,
+      "previously_misread": 21,
+      "resolved": 21,
+      "examples": [
+        "ROM/1/3.DAT f_qu/weat/ligt/lig2 -> ks0r",
+        "ROM/1/3.DAT f_qu/weat/ligt/lig2 -> ks0g"
+      ]
+    },
+    "bliz": {
+      "generators": 4,
+      "curve_references": 8,
+      "previously_misread": 8,
+      "resolved": 8,
+      "examples": [
+        "ROM/1/19.DAT h_ga/weat/bliz/~1s1 -> ktms",
+        "ROM/1/19.DAT h_ga/weat/bliz/~4cl -> kcr1"
+      ]
+    },
+    "fogd": {
+      "generators": 3,
+      "curve_references": 4,
+      "previously_misread": 4,
+      "resolved": 4,
+      "examples": [
+        "ROM/1/19.DAT h_ga/weat/fogd/fog1 -> ktif",
+        "ROM/1/19.DAT h_ga/weat/fogd/cld1 -> kcr1"
+      ]
+    },
+    "squl": {
+      "generators": 6,
+      "curve_references": 0,
+      "previously_misread": 0,
+      "resolved": 0,
+      "examples": []
+    }
+  },
+  "unresolved": []
+}

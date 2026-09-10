@@ -14,6 +14,7 @@ namespace ZoneEnvironmentState
 {
 namespace
 {
+int g_timeOverride = -1;
 DWORD LerpColor(const unsigned int a, const unsigned int b, const float t)
 {
     // FFXI's 0x2F environment colors are packed R, G, B from the low byte up.
@@ -37,6 +38,8 @@ void Invalidate(Cache &cache, const bool clearWeatherGroups)
 
 int CurrentMinuteOfDay()
 {
+    if (g_timeOverride >= 0)
+        return g_timeOverride;
     // One Vana'diel day is 3456 real seconds (25x real time), with this epoch.
     constexpr long long kVanadielEpoch = 1009810800LL;
     const long long unixSeconds = (long long)std::time(nullptr);
@@ -45,6 +48,16 @@ int CurrentMinuteOfDay()
     if (minute < 0)
         minute += 1440;
     return minute;
+}
+
+void SetTimeOverride(const int minuteOfDay)
+{
+    g_timeOverride = ((minuteOfDay % 1440) + 1440) % 1440;
+}
+
+void ClearTimeOverride()
+{
+    g_timeOverride = -1;
 }
 
 void Update(Data &state, Cache &cache, int &weatherIndex,

@@ -322,9 +322,13 @@ static const FFXIZoneEntry kFFXIZoneTable[] =
     { 297, "Dynamis - Jeuno [D]",              "ROM/355/47.DAT",        "ROM/355/51.DAT",       "ROM/355/54.DAT",       "ROM/355/49.DAT"      },
     { 298, "Walk of Echoes [P1]",              "",                      "",                     "",                     ""                    },
     { 299, "Gwora - Throne Room",              "",                      "",                     "",                     ""                    },
+    // Synthetic entries for home-nation Mog House interiors.
+    { 300, "San d'Oria Mog House",              "ROM/1/45.DAT",          "",                     "",                     ""                    },
+    { 301, "Bastok Mog House",                  "ROM/1/46.DAT",          "",                     "",                     ""                    },
+    { 302, "Windurst Mog House",                "ROM/1/47.DAT",          "",                     "",                     ""                    },
 };
 
-static const int kFFXIZoneCount = 300; // entries 0 through 299
+static const int kFFXIZoneCount = 303; // entries 0 through 302
 
 namespace FFXIZone
 {

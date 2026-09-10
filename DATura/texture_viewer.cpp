@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "ffxi_dat_resolver.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
 #include "texture_viewer.h"
@@ -141,8 +142,7 @@ namespace
     bool ReadWholeFile(const char* path, std::vector<BYTE>& bytes)
     {
         bytes.clear();
-        HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
-                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        HANDLE file = FFXIDatResolver::OpenRead(path);
         if (file == INVALID_HANDLE_VALUE)
             return false;
 
@@ -552,7 +552,7 @@ namespace
 
         char path[MAX_PATH] = {};
         sprintf_s(path, "%s%s", g_rootPath, preset.relativePath);
-        if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES)
+        if (!FFXIDatResolver::FileExists(path))
         {
             char message[MAX_PATH + 128] = {};
             sprintf_s(message, "Could not find:\n%s", path);

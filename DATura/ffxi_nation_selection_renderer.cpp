@@ -5,6 +5,7 @@
 #include "d3d_ui_renderer.h"
 #include "ffxi_nation_selection.h"
 #include "ffxi_title_assets.h"
+#include "ffxi_title_ui_primitives.h"
 #include "noesis_rapi.h"
 #include "win32_drawing.h"
 
@@ -12,6 +13,19 @@
 
 namespace FFXINationSelectionRenderer
 {
+ActionButtonRects GetActionButtonRects(const GameUiNationConfig& config, int width, int height)
+{
+    const int statusHeight = std::max(config.statusMinimumHeight,
+        (int)((float)height * config.statusHeightRatio));
+    const int buttonWidth = std::max(120, width / 9);
+    const int buttonHeight = std::max(26, height / 28);
+    const int gap = std::max(12, width / 100);
+    const int center = width / 2;
+    const int y = height - statusHeight - buttonHeight - std::max(10, height / 100);
+    return {{center + gap / 2, y, center + gap / 2 + buttonWidth, y + buttonHeight},
+            {center - gap / 2 - buttonWidth, y, center - gap / 2, y + buttonHeight}};
+}
+
 void DrawTextures(const Context& context)
 {
     if (!context.window)
@@ -54,6 +68,23 @@ void DrawTextures(const Context& context)
             context.device, context.enableMipMapping, crest, crestX, crestY, crestSize, crestSize,
             0.0f, 0.0f, (float)crest->w, (float)crest->h, 0xFFFFFFFF);
     }
+
+    noesisTex_t* buttonTexture = FFXITitleAssets::FindTitleTexture(
+        context.titleUiModel, "buttonto");
+    if (!buttonTexture)
+        buttonTexture = FFXITitleAssets::FindTitleTexture(context.titleUiModel, "lrbutton");
+    if (buttonTexture && buttonTexture->pD3DTex)
+    {
+        const ActionButtonRects buttons = GetActionButtonRects(ui, width, height);
+        FFXITitleUiPrimitives::DrawButton(context.device, context.enableMipMapping, buttonTexture,
+            (float)buttons.confirm.left, (float)buttons.confirm.top,
+            (float)(buttons.confirm.right - buttons.confirm.left),
+            (float)(buttons.confirm.bottom - buttons.confirm.top), false);
+        FFXITitleUiPrimitives::DrawButton(context.device, context.enableMipMapping, buttonTexture,
+            (float)buttons.back.left, (float)buttons.back.top,
+            (float)(buttons.back.right - buttons.back.left),
+            (float)(buttons.back.bottom - buttons.back.top), false);
+    }
 }
 
 void DrawOverlay(const Context& context)
@@ -67,11 +98,13 @@ void DrawOverlay(const Context& context)
     if (width <= 0 || height <= 0)
         return;
 
-    HDC hdc = GetDC(context.window);
+    const bool ownsDc = context.overlayDc == nullptr;
+    HDC hdc = ownsDc ? GetDC(context.window) : context.overlayDc;
     if (!hdc)
         return;
-    const int savedDc = D3D9Device::BeginGdiViewportMapping(
-        hdc, context.window, width, height);
+    const int savedDc = ownsDc ?
+        D3D9Device::BeginGdiViewportMapping(hdc, context.window, width, height) :
+        SaveDC(hdc);
 
     const GameUiNationConfig& ui = context.config;
     HFONT titleFont = CreateFontA(
@@ -191,15 +224,27 @@ void DrawOverlay(const Context& context)
     DeleteObject(statusBrush);
     Win32Drawing::DrawShadowText(
         hdc, statusFont,
-        "Click a nation to select it. Press Enter to confirm, or Backspace to return.",
+        "Click a nation to select it. Confirm or Back to continue.",
         statusBounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE, ui.statusTextColor, 1);
     DeleteObject(statusFont);
+
+    const ActionButtonRects actionButtons = GetActionButtonRects(ui, width, height);
+    HFONT actionFont = CreateFontA(-std::max(16, (int)((float)height * 0.026f)),
+        0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_SWISS, "Arial");
+    Win32Drawing::DrawShadowText(hdc, actionFont, "Back", actionButtons.back,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(255, 255, 255), 1);
+    Win32Drawing::DrawShadowText(hdc, actionFont, "Confirm", actionButtons.confirm,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(255, 255, 255), 1);
+    DeleteObject(actionFont);
 
     DeleteObject(bodyFont);
     DeleteObject(subtitleFont);
     DeleteObject(nameFont);
     if (savedDc)
         RestoreDC(hdc, savedDc);
-    ReleaseDC(context.window, hdc);
+    if (ownsDc)
+        ReleaseDC(context.window, hdc);
 }
 }

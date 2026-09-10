@@ -5,6 +5,22 @@
 
 namespace NpcRenderGeometry
 {
+bool SelectIdleAnimation(noesisModel_t* model)
+{
+    if (!model) return false;
+    for (const char* name : { "idl_relaxed", "idl", "idle", "idl0", "idl1" })
+    {
+        if (noesisAnim_t* clip = model->FindAnimation(name))
+        {
+            model->pAnim = clip;
+            return true;
+        }
+    }
+    // An unknown action is not an idle fallback (it may walk, attack, or die).
+    model->pAnim = nullptr;
+    return false;
+}
+
 float ComputeNameplateLocalY(const noesisModel_t* model)
 {
     if (!model)

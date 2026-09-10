@@ -4,9 +4,11 @@
 ========================================================================================*/
 
 #include "stdafx.h"
+#include "ffxi_dat_resolver.h"
 #include "noesis_rapi.h"
 #include <stdarg.h>
 #include <algorithm>
+#include <array>
 
 //========================================================================================
 // Construction / destruction
@@ -51,6 +53,9 @@ noeRAPI_t::~noeRAPI_t()
         delete[] matData->textures;
         delete matData;
     }
+
+    for (noesisAnim_t *animation : mAnimPool)
+        delete animation;
 
     // Free unmanaged allocations
     for (void *p : mAllocs)
@@ -580,6 +585,7 @@ noesisModel_t *noeRAPI_t::Noesis_AllocModelContainer(noesisMatData_t *pMd,
     noesisModel_t *pMdl = new noesisModel_t();
     pMdl->pMatData  = pMd;
     pMdl->pAnim     = pAnim;
+    if (pAnim) pMdl->animationClips = pAnim->sequences;
     mModelPool.push_back(pMdl);
     return pMdl;
 }
@@ -612,19 +618,21 @@ unsigned char *noeRAPI_t::Noesis_LoadPairedFile(const char *desc, const char *ex
 
 unsigned char *noeRAPI_t::Noesis_ReadFile(const char *path, int *outSize)
 {
-    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ,
-                                nullptr, OPEN_EXISTING, 0, nullptr);
+    if (outSize) *outSize = 0;
+    HANDLE hFile = FFXIDatResolver::OpenRead(path);
     if (hFile == INVALID_HANDLE_VALUE)
         return nullptr;
 
-    DWORD fileSize = GetFileSize(hFile, nullptr);
-    if (fileSize == INVALID_FILE_SIZE || fileSize == 0)
+    LARGE_INTEGER size = {};
+    if (!GetFileSizeEx(hFile, &size) || size.QuadPart <= 0 || size.QuadPart > 0x7fffffff)
     {
         CloseHandle(hFile);
         return nullptr;
     }
 
+    const DWORD fileSize = static_cast<DWORD>(size.QuadPart);
     unsigned char *pBuf = (unsigned char *)malloc(fileSize);
+    if (!pBuf) { CloseHandle(hFile); return nullptr; }
     DWORD bytesRead = 0;
     ReadFile(hFile, pBuf, fileSize, &bytesRead, nullptr);
     CloseHandle(hFile);
@@ -748,6 +756,7 @@ void noeRAPI_t::LogOutput(const char *fmt, ...)
 
 void *noeRAPI_t::rpgCreateContext()
 {
+    mZoneLod = {};
     // Clear any leftover state from a previous load
     mSubmeshes.clear();
     mSubmeshLookup.clear();
@@ -881,6 +890,14 @@ void noeRAPI_t::rpgSetPendingSkinData(const FFXISkinVertex *pSkin)
         mPending.skin.Reset();
 }
 
+void noeRAPI_t::rpgVertWind3f(const float* displacement)
+{
+    mPending.wind = {};
+    if (displacement && std::isfinite(displacement[0]) &&
+        std::isfinite(displacement[1]) && std::isfinite(displacement[2]))
+        std::copy_n(displacement, 3, mPending.wind.begin());
+}
+
 void noeRAPI_t::rpgVertex3f(float *pos)
 {
     if (!pos) return;
@@ -896,6 +913,11 @@ void noeRAPI_t::rpgVertex3f(float *pos)
         for (int j = 0; j < 3; ++j)
             tp[j] = p[0]*M.m[0].v[j] + p[1]*M.m[1].v[j] + p[2]*M.m[2].v[j] + M.m[3].v[j];
         memcpy(mPending.pos, tp, sizeof(tp));
+
+        // Displacements receive placement rotation and scale, never translation.
+        const auto wind = mPending.wind;
+        for (int j = 0; j < 3; ++j)
+            mPending.wind[j] = wind[0]*M.m[0].v[j] + wind[1]*M.m[1].v[j] + wind[2]*M.m[2].v[j];
 
         // Transform normal too (no translation, no scale correction for now)
         float *n = mPending.nrm;
@@ -981,11 +1003,13 @@ noeRAPI_t::ActiveSubmesh &noeRAPI_t::CurrentSubmesh()
         mSubmeshes.emplace_back();
         mSubmeshes.back().materialName = mCurrentMaterial;
         mSubmeshes.back().objectName = mCurrentName;
+        mSubmeshes.back().zoneLod = mZoneLod;
         std::string lookupKey;
         lookupKey.reserve(mCurrentMaterial.size() + mCurrentName.size() + 1);
         lookupKey.append(mCurrentMaterial);
         lookupKey.push_back('\x1f');
         lookupKey.append(mCurrentName);
+        lookupKey.push_back(static_cast<char>(mZoneLod.enabled ? mZoneLod.levelMask : 0));
         mSubmeshLookup.emplace(std::move(lookupKey), newIndex);
         return mSubmeshes.back();
     }
@@ -995,6 +1019,7 @@ noeRAPI_t::ActiveSubmesh &noeRAPI_t::CurrentSubmesh()
     lookupKey.append(mCurrentMaterial);
     lookupKey.push_back('\x1f');
     lookupKey.append(mCurrentName);
+    lookupKey.push_back(static_cast<char>(mZoneLod.enabled ? mZoneLod.levelMask : 0));
     const std::unordered_map<std::string, size_t>::const_iterator found =
         mSubmeshLookup.find(lookupKey);
     if (found != mSubmeshLookup.end() && found->second < mSubmeshes.size())
@@ -1004,6 +1029,7 @@ noeRAPI_t::ActiveSubmesh &noeRAPI_t::CurrentSubmesh()
     mSubmeshes.emplace_back();
     mSubmeshes.back().materialName = mCurrentMaterial;
     mSubmeshes.back().objectName = mCurrentName;
+    mSubmeshes.back().zoneLod = mZoneLod;
     mSubmeshLookup.emplace(std::move(lookupKey), newIndex);
     return mSubmeshes.back();
 }
@@ -1033,6 +1059,7 @@ noesisAnim_t *noeRAPI_t::rpgAnimFromBonesAndMatsFinish(modelBone_t  *pBones, int
                                                          int frameCount, float fps)
 {
     noesisAnim_t *pAnim = new noesisAnim_t();
+    mAnimPool.push_back(pAnim);
     pAnim->frameCount = frameCount;
     pAnim->fps        = fps;
     pAnim->boneCount  = boneCount;
@@ -1069,8 +1096,8 @@ noesisAnim_t *noeRAPI_t::Noesis_AnimFromAnimsList(CArrayList<noesisAnim_t *> &an
 
     // FF11 stores many small named animation chunks in the character DATs, and
     // the first chunk is not necessarily a useful full-body locomotion pose.
-    // Until we expose named animation selection, prefer the movement clips that
-    // match the temporary player camera controls.
+    // Choose a useful default for previews while retaining the named clips
+    // so the player can switch poses without reloading its DAT set.
     static const char *kPreferredNames[] =
     {
         "wlk",
@@ -1088,10 +1115,16 @@ noesisAnim_t *noeRAPI_t::Noesis_AnimFromAnimsList(CArrayList<noesisAnim_t *> &an
         {
             noesisAnim_t *pAnim = anims[animIndex];
             if (pAnim && pAnim->filename && !strcmp(pAnim->filename, kPreferredNames[prefIndex]))
+            {
+                for (int i = 0; i < anims.Num(); ++i)
+                    pAnim->sequences.push_back(anims[i]);
                 return pAnim;
+            }
         }
     }
 
+    for (int i = 0; i < anims.Num(); ++i)
+        anims[0]->sequences.push_back(anims[i]);
     return anims[0];
 }
 
@@ -1126,6 +1159,7 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
     noesisModel_t *pMdl = new noesisModel_t();
     pMdl->pMatData  = mpStagedMatData;
     pMdl->pAnim     = mpStagedAnim;
+    if (mpStagedAnim) pMdl->animationClips = mpStagedAnim->sequences;
     pMdl->pBones    = mpStagedBones;
     pMdl->boneCount = mStagedBoneCount;
 
@@ -1134,6 +1168,8 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
         if (src.verts.empty()) continue;
 
         noesisModel_t::Submesh dst;
+        dst.zoneLod = src.zoneLod;
+        pMdl->hasZoneLod = pMdl->hasZoneLod || dst.zoneLod.enabled;
         dst.materialName = std::move(src.materialName);
         dst.objectName   = std::move(src.objectName);
         // Static zone geometry never consumes a bind-pose copy. Keeping that
@@ -1142,6 +1178,7 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
         const bool needsBindPose = src.hasSkinning || mStagedBoneCount > 0 || mpStagedAnim != nullptr;
         if (needsBindPose)
             dst.cpuBindVerts = src.verts;
+        dst.windDisplacements = std::move(src.windDisplacements);
         dst.cpuVerts     = std::move(src.verts);
         dst.cpuSkinVerts = std::move(src.skinVerts);
         dst.cpuIndices   = std::move(src.indices);
@@ -1201,6 +1238,15 @@ void noesisModel_t::UpdateSubmeshBounds()
                 if (vertex.pos[axis] > sm.boundsMax[axis]) sm.boundsMax[axis] = vertex.pos[axis];
             }
         }
+        // Include both endpoints of every authored sway, avoiding edge popping.
+        if (sm.hasBounds && sm.windDisplacements.size() == sm.cpuVerts.size())
+            for (size_t i = 0; i < sm.cpuVerts.size(); ++i)
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const float endpoint = sm.cpuVerts[i].pos[axis] + sm.windDisplacements[i][axis];
+                    sm.boundsMin[axis] = std::min(sm.boundsMin[axis], endpoint);
+                    sm.boundsMax[axis] = std::max(sm.boundsMax[axis], endpoint);
+                }
         if (sm.hasBounds)
             for (int axis = 0; axis < 3; ++axis)
                 sm.boundsCenter[axis] = (sm.boundsMin[axis] + sm.boundsMax[axis]) * 0.5f;
@@ -1213,6 +1259,7 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
         return;
 
     UpdateSubmeshBounds();
+    for (Submesh& sm : submeshes) sm.uploadedWindWeight = 0.0f;
 
     bool canUseSharedStaticBuffers = boneCount == 0 && pAnim == nullptr;
     if (canUseSharedStaticBuffers)
@@ -1429,19 +1476,51 @@ void noesisModel_t::RestoreBindPose(IDirect3DDevice9 *pDevice)
     }
 }
 
+noesisAnim_t *noesisModel_t::FindAnimation(const char *name) const
+{
+    for (noesisAnim_t *clip : animationClips)
+        if (clip && clip->filename && name && !strcmp(clip->filename, name))
+            return clip;
+    return nullptr;
+}
+
 void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
 {
     if (!pDevice || !pAnim || pAnim->frameCount <= 0 || pAnim->boneCount <= 0 || pAnim->frameWorldMats.empty())
         return;
 
-    const float framePosition = std::fmod(
-        std::max(0.0f, animTime) * pAnim->fps, static_cast<float>(pAnim->frameCount));
+    const float elapsedFrames = std::max(0.0f, animTime) * pAnim->fps;
+    const float framePosition = pAnim->looping
+        ? std::fmod(elapsedFrames, static_cast<float>(pAnim->frameCount))
+        : std::min(elapsedFrames, static_cast<float>(pAnim->frameCount - 1));
     const int frameIndex = static_cast<int>(framePosition);
-    const int nextFrameIndex = (frameIndex + 1) % pAnim->frameCount;
+    const int nextFrameIndex = pAnim->looping ? (frameIndex + 1) % pAnim->frameCount
+        : std::min(frameIndex + 1, pAnim->frameCount - 1);
     const float frameBlend = framePosition - static_cast<float>(frameIndex);
     const RichMat43 *pFrameMats = &pAnim->frameWorldMats[(size_t)frameIndex * (size_t)pAnim->boneCount];
     const RichMat43 *pNextFrameMats = &pAnim->frameWorldMats[
         (size_t)nextFrameIndex * (size_t)pAnim->boneCount];
+    const RichMat44 mirrorX(-RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2),
+        RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+    const RichMat44 mirrorY(RichVec4(g_identityMatrix4x4.c1), -RichVec4(g_identityMatrix4x4.c2),
+        RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+    const RichMat44 mirrorZ(RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2),
+        -RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
+    std::vector<std::array<RichMat44, 4> > frameSkinMats((size_t)pAnim->boneCount);
+    std::vector<std::array<RichMat44, 4> > nextFrameSkinMats((size_t)pAnim->boneCount);
+    for (int boneIndex = 0; boneIndex < pAnim->boneCount; ++boneIndex)
+    {
+        const RichMat44 base = pFrameMats[boneIndex].ToMat44();
+        const RichMat44 nextBase = pNextFrameMats[boneIndex].ToMat44();
+        frameSkinMats[(size_t)boneIndex][0] = base;
+        frameSkinMats[(size_t)boneIndex][1] = base * mirrorX;
+        frameSkinMats[(size_t)boneIndex][2] = base * mirrorY;
+        frameSkinMats[(size_t)boneIndex][3] = base * mirrorZ;
+        nextFrameSkinMats[(size_t)boneIndex][0] = nextBase;
+        nextFrameSkinMats[(size_t)boneIndex][1] = nextBase * mirrorX;
+        nextFrameSkinMats[(size_t)boneIndex][2] = nextBase * mirrorY;
+        nextFrameSkinMats[(size_t)boneIndex][3] = nextBase * mirrorZ;
+    }
 
     std::vector<std::vector<FFXIVertex> > candidateVerts;
     candidateVerts.resize(submeshes.size());
@@ -1471,23 +1550,10 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
                 if (boneIndex < 0 || boneIndex >= pAnim->boneCount)
                     continue;
 
-                RichMat44 skinMat = pFrameMats[boneIndex].ToMat44();
-                RichMat44 nextSkinMat = pNextFrameMats[boneIndex].ToMat44();
-                if (skin.mirrorAxis[weightIndex] == 1)
-                {
-                    skinMat = skinMat * RichMat44(-RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
-                    nextSkinMat = nextSkinMat * RichMat44(-RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
-                }
-                else if (skin.mirrorAxis[weightIndex] == 2)
-                {
-                    skinMat = skinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), -RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
-                    nextSkinMat = nextSkinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), -RichVec4(g_identityMatrix4x4.c2), RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
-                }
-                else if (skin.mirrorAxis[weightIndex] == 3)
-                {
-                    skinMat = skinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), -RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
-                    nextSkinMat = nextSkinMat * RichMat44(RichVec4(g_identityMatrix4x4.c1), RichVec4(g_identityMatrix4x4.c2), -RichVec4(g_identityMatrix4x4.c3), RichVec4(g_identityMatrix4x4.c4));
-                }
+                const int mirrorAxis = skin.mirrorAxis[weightIndex] >= 0 && skin.mirrorAxis[weightIndex] <= 3 ?
+                    skin.mirrorAxis[weightIndex] : 0;
+                const RichMat44& skinMat = frameSkinMats[(size_t)boneIndex][(size_t)mirrorAxis];
+                const RichMat44& nextSkinMat = nextFrameSkinMats[(size_t)boneIndex][(size_t)mirrorAxis];
 
                 const float weight = skin.boneWt[weightIndex];
                 const RichVec4 pos(skin.pos[weightIndex][0], skin.pos[weightIndex][1], skin.pos[weightIndex][2], weight);

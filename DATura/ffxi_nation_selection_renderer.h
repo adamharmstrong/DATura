@@ -7,6 +7,9 @@ struct noesisModel_t;
 
 namespace FFXINationSelectionRenderer
 {
+struct ActionButtonRects { RECT confirm; RECT back; };
+ActionButtonRects GetActionButtonRects(const GameUiNationConfig& config, int width, int height);
+
 struct Context
 {
     IDirect3DDevice9* device;
@@ -15,6 +18,7 @@ struct Context
     noesisModel_t* titleUiModel;
     const GameUiNationConfig& config;
     int selectedIndex;
+    HDC overlayDc = nullptr;
 };
 
 void DrawTextures(const Context& context);

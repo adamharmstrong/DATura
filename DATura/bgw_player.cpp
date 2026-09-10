@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "ffxi_dat_resolver.h"
 #include "bgw_player.h"
 
 #include <mmsystem.h>
@@ -31,7 +32,7 @@ static int32_t ReadS32LE(const std::vector<unsigned char>& data, size_t ofs)
 
 static bool ReadWholeFile(const char* path, std::vector<unsigned char>& data)
 {
-    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE hFile = FFXIDatResolver::OpenRead(path);
     if (hFile == INVALID_HANDLE_VALUE)
         return false;
 
@@ -333,7 +334,8 @@ static bool GetCachedWAVPath(const char* sourcePath, char* outPath, DWORD outPat
     char cacheDir[MAX_PATH] = {};
     sprintf_s(cacheDir, "%sDATuraAudio", tempPath);
     CreateDirectoryA(cacheDir, nullptr);
-    const uint64_t hash = HashSourcePath(sourcePath);
+    const auto resolved = FFXIDatResolver::Resolve(sourcePath);
+    const uint64_t hash = HashSourcePath(resolved.sourcePath.c_str());
     sprintf_s(outPath, outPathSize, "%s\\%08X%08X.wav", cacheDir,
               (uint32_t)(hash >> 32), (uint32_t)hash);
     return true;
@@ -344,8 +346,7 @@ bool FFXIAudio_ReadInfo(const char* path, FFXIAudioInfo* outInfo)
     if (!path || !path[0] || !outInfo)
         return false;
 
-    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
-                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE hFile = FFXIDatResolver::OpenRead(path);
     if (hFile == INVALID_HANDLE_VALUE)
         return false;
 

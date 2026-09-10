@@ -66,7 +66,11 @@ void PopulateMapObjectFields(const HWND tree, const HTREEITEM item, const int in
                       ((dataIndex == 4) ? " - object flags 1" : " - unknown"));
             ZoneObjectTreeView::AddZoneTreeHexField(tree, data2Root, label, object.data2[dataIndex]);
         }
-        ZoneObjectTreeView::AddZoneTreeVec4Field(tree, item, "Extra vector", object.vec);
+        ZoneObjectTreeView::AddZoneTreeVec3Field(tree, item,
+            "LOD distances: high / medium / draw (+0x38/+0x3C/+0x40)", object.vec + 1);
+        ZoneObjectTreeView::AddZoneTreeIntField(tree, item, "Replacement sub-area (+0x50)", object.data2[3]);
+        ZoneObjectTreeView::AddZoneTreeField(tree, item, "Geometry resident",
+            object.replacedByRoom ? "No - replaced by loaded room" : "Yes");
     }
     else
     {

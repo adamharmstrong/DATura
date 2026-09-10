@@ -1,12 +1,17 @@
 #include "stdafx.h"
 #include "zone_object_panel.h"
 
+#include "noesis_rapi.h"
+#include "model_ff11.h"
 #include "zone_object_panel_arrangement.h"
 #include "zone_object_panel_edit_controls.h"
 #include "zone_object_panel_layout.h"
 #include "zone_object_panel_splitter.h"
 #include "zone_object_transform_editor.h"
 #include "zone_object_list_selection.h"
+#include "zone_object_list_columns.h"
+#include "zone_object_list_rows.h"
+#include "zone_object_tree_builder.h"
 #include "zone_object_tree_view.h"
 #include "win32_panel_controls.h"
 #include "win32_tool_window.h"
@@ -529,6 +534,24 @@ HWND TreeWindow(const State& state, const Tree tree) noexcept
     return NULL;
 }
 
+int SelectedMapObjectIndex(const State& state) noexcept
+{
+    return ZoneObjectListSelection::GetSelectedMapObjectIndex(
+        state.placedObjectList, state.unreferencedObjectList,
+        state.treeSelectedMapObjectIndex);
+}
+
+void SetTreeSelectedMapObjectIndex(
+    State& state, const int mapObjectIndex) noexcept
+{
+    state.treeSelectedMapObjectIndex = mapObjectIndex;
+}
+
+void ToggleCombinedTree(State& state) noexcept
+{
+    state.combinedObjectTree = !state.combinedObjectTree;
+}
+
 void Show(State& state, const char* const zoneLabel,
           const bool collisionVisible, const bool editingEnabled,
           const bool activate)
@@ -597,6 +620,186 @@ void SetHighlightActive(const State& state, const bool active)
         SetWindowTextA(state.highlightSelectedButton,
             active ? "Clear Highlight" : "Highlight Selected");
     }
+}
+
+void SetCollisionVisible(const State& state, const bool visible)
+{
+    if (state.collisionVisibleCheck)
+    {
+        SendMessageA(state.collisionVisibleCheck, BM_SETCHECK,
+            visible ? BST_CHECKED : BST_UNCHECKED, 0);
+    }
+}
+
+void SetZoneLabel(const State& state, const char* const zoneLabel)
+{
+    if (state.zoneLabel)
+        SetWindowTextA(state.zoneLabel, zoneLabel ? zoneLabel : "");
+}
+
+void PopulateTransformFields(
+    State& state, const int mapObjectIndex,
+    const std::map<std::string, ZoneObjectTransform::DebugTransform>& overrides)
+{
+    ZoneObjectTransformEditor::PopulateMapObjectFields(
+        state.unreferencedEdits, kUnreferencedFieldCount,
+        mapObjectIndex, overrides);
+}
+
+void RebuildTree(State& state, const char* const zoneLabel)
+{
+    ZoneObjectTreeBuilder::Context context = {};
+    context.placedObjectList = state.placedObjectList;
+    context.unreferencedObjectList = state.unreferencedObjectList;
+    context.dataTree = state.dataTree;
+    context.rawDataTree = state.rawDataTree;
+    context.collisionDataTree = state.collisionDataTree;
+    context.combinedObjectTree = state.combinedObjectTree;
+    context.loadedZoneLabel = zoneLabel ? zoneLabel : "";
+    ZoneObjectTreeBuilder::Build(context);
+}
+
+void BeginRefresh(State& state, const char* const zoneLabel)
+{
+    if (!state.window || !state.placedObjectList || !state.unreferencedObjectList ||
+        !state.collisionObjectList || !state.drawBatchList || !state.dataTree ||
+        !state.rawDataTree || !state.collisionDataTree)
+    {
+        return;
+    }
+
+    if (state.zoneLabel)
+        SetWindowTextA(state.zoneLabel, zoneLabel ? zoneLabel : "");
+    ZoneObjectListColumns::SetupMapObjectColumns(
+        state.placedObjectList, state.placedColumnMode, 0);
+    ZoneObjectListColumns::SetupMapObjectColumns(
+        state.unreferencedObjectList, state.unreferencedColumnMode, 1);
+    ZoneObjectListColumns::SetupCollisionColumns(
+        state.collisionObjectList, state.collisionColumnMode, 0);
+    ZoneObjectListColumns::SetupDrawBatchColumns(
+        state.drawBatchList, state.drawBatchColumnMode, 0);
+    ListView_DeleteAllItems(state.placedObjectList);
+    ListView_DeleteAllItems(state.unreferencedObjectList);
+    ListView_DeleteAllItems(state.collisionObjectList);
+    ListView_DeleteAllItems(state.drawBatchList);
+    TreeView_DeleteAllItems(state.dataTree);
+    TreeView_DeleteAllItems(state.rawDataTree);
+    TreeView_DeleteAllItems(state.collisionDataTree);
+    if (state.loadingLabel)
+    {
+        SetWindowTextA(state.loadingLabel, "Loading Object List...");
+        ShowWindow(state.loadingLabel, SW_SHOW);
+        BringWindowToTop(state.loadingLabel);
+    }
+    UpdateWindow(state.window);
+    PostMessageA(state.window, kPopulateMessage, 0, 0);
+}
+
+void Refresh(State& state, const RefreshData& data)
+{
+    if (!state.placedObjectList || !state.unreferencedObjectList ||
+        !state.collisionObjectList || !state.drawBatchList || !state.dataTree ||
+        !state.rawDataTree || !state.collisionDataTree || !data.overrides ||
+        !data.hiddenObjectNames)
+    {
+        return;
+    }
+
+    const HWND redrawControls[] =
+    {
+        state.placedObjectList, state.unreferencedObjectList,
+        state.collisionObjectList, state.drawBatchList, state.dataTree,
+        state.rawDataTree, state.collisionDataTree
+    };
+    state.populatingObjectList = true;
+    state.treeSelectedMapObjectIndex = -1;
+    for (const HWND control : redrawControls)
+        SendMessageA(control, WM_SETREDRAW, FALSE, 0);
+
+    ListView_DeleteAllItems(state.placedObjectList);
+    ListView_DeleteAllItems(state.unreferencedObjectList);
+    ListView_DeleteAllItems(state.collisionObjectList);
+    ListView_DeleteAllItems(state.drawBatchList);
+    ZoneObjectListColumns::SetupMapObjectColumns(
+        state.placedObjectList, state.placedColumnMode, 0);
+    ZoneObjectListColumns::SetupMapObjectColumns(
+        state.unreferencedObjectList, state.unreferencedColumnMode, 1);
+    ZoneObjectListColumns::SetupCollisionColumns(
+        state.collisionObjectList, state.collisionColumnMode, 0);
+    ZoneObjectListColumns::SetupDrawBatchColumns(
+        state.drawBatchList, state.drawBatchColumnMode, 0);
+    ZoneObjectPanelStyle::ApplyListColors(state.placedObjectList, true);
+    ZoneObjectPanelStyle::ApplyListColors(state.unreferencedObjectList, true);
+    ZoneObjectPanelStyle::ApplyListColors(state.collisionObjectList, false);
+    ZoneObjectPanelStyle::ApplyListColors(state.drawBatchList, false);
+    ZoneObjectPanelStyle::ApplyTreeColors(state.dataTree);
+    ZoneObjectPanelStyle::ApplyTreeColors(state.rawDataTree);
+    ZoneObjectPanelStyle::ApplyTreeColors(state.collisionDataTree);
+    SetZoneLabel(state, data.zoneLabel);
+
+    const int mapObjectCount = Model_FF11_GetLastMapObjectCount();
+    for (int index = 0; index < mapObjectCount; ++index)
+    {
+        const char* displayName = Model_FF11_GetLastMapObjectDisplayName(index);
+        const bool unreferenced = displayName && strncmp(displayName, "env:", 4) == 0;
+        ZoneObjectListRows::InsertMapObjectRow(
+            unreferenced ? state.unreferencedObjectList : state.placedObjectList,
+            index, *data.overrides, *data.hiddenObjectNames);
+    }
+    const int collisionMeshCount = Model_FF11_GetLastCollisionMeshCount();
+    for (int index = 0; index < collisionMeshCount; ++index)
+        ZoneObjectListRows::InsertCollisionRow(state.collisionObjectList, index);
+    const int drawBatchCount = Model_FF11_GetLastMapGeoDrawBatchCount();
+    for (int index = 0; index < drawBatchCount; ++index)
+        ZoneObjectListRows::InsertDrawBatchRow(state.drawBatchList, index);
+    RebuildTree(state, data.zoneLabel);
+
+    state.populatingObjectList = false;
+    ZoneObjectPanelEditControls::SetUnreferencedEditorVisible(
+        state.unreferencedLabels, state.unreferencedEdits,
+        kUnreferencedFieldCount, state.unreferencedApplyButton, true);
+    if (state.collisionVisibleCheck)
+    {
+        char collisionText[128] = {};
+        sprintf_s(collisionText, "Show collision mesh (%d triangles)",
+                  data.collisionTriangleCount);
+        SetWindowTextA(state.collisionVisibleCheck, collisionText);
+        ShowWindow(state.collisionVisibleCheck, SW_SHOW);
+    }
+    const HWND visibilityButtons[] =
+    {
+        state.placedShowAllButton, state.placedHideAllButton,
+        state.unreferencedShowAllButton, state.unreferencedHideAllButton
+    };
+    for (const HWND button : visibilityButtons)
+    {
+        if (button)
+            ShowWindow(button, SW_SHOW);
+    }
+    SetEditingEnabled(state, data.editingEnabled);
+
+    if (state.statusLabel)
+    {
+        char statusText[512] = {};
+        sprintf_s(statusText,
+            "Map records: %d     Unreferenced MapGeo: %d     Draw batches: %d     Collision grid entries: %d     Meshes: %d     Textures: %d     Materials: %d     Bones: %d",
+            ListView_GetItemCount(state.placedObjectList),
+            ListView_GetItemCount(state.unreferencedObjectList), drawBatchCount,
+            ListView_GetItemCount(state.collisionObjectList), data.modelMeshCount,
+            data.modelTextureCount, data.modelMaterialCount, data.modelBoneCount);
+        SetWindowTextA(state.statusLabel, statusText);
+    }
+    const int selectedMapObjectIndex = ZoneObjectListSelection::GetSelectedMapObjectIndex(
+        state.placedObjectList, state.unreferencedObjectList,
+        state.treeSelectedMapObjectIndex);
+    PopulateTransformFields(state, selectedMapObjectIndex, *data.overrides);
+    for (const HWND control : redrawControls)
+    {
+        SendMessageA(control, WM_SETREDRAW, TRUE, 0);
+        InvalidateRect(control, NULL, TRUE);
+    }
+    if (state.loadingLabel)
+        ShowWindow(state.loadingLabel, SW_HIDE);
 }
 
 void ResetControls(State& state)

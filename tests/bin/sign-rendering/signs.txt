@@ -1,0 +1,152 @@
+695: bord_magic       | model   s_item  _explicitnoblend_cullback tris=24 mat=1 flags=0 blend=0 center=-217.491,-8.73942,57.6096
+695: bord_magic       | model   s_sign  _explicitnoblend_cullback tris=8 mat=1 flags=0 blend=0 center=-217.491,-8.73942,57.6096
+695: bord_magic       | model   s_sign  _explicitsoftblend_cullback tris=4 mat=1 flags=0 blend=1 center=-217.491,-8.73942,57.6715
+698: bord_chasing     | model   s_item  _explicitnoblend_cullback tris=28 mat=1 flags=0 blend=0 center=-202.876,-12.7301,-65.1806
+698: bord_chasing     | model   s_sign  _explicitnoblend_cullback tris=4 mat=1 flags=0 blend=0 center=-202.876,-12.7301,-65.2424
+698: bord_chasing     | model   s_sign  _explicitsoftblend_cullback tris=4 mat=1 flags=0 blend=1 center=-202.876,-12.7301,-65.2424
+700: bord_jewel       | model   s_item  _explicitnoblend_cullback tris=28 mat=1 flags=0 blend=0 center=-155.264,-10.7346,-77.6053
+700: bord_jewel       | model   s_sign  _explicitnoblend_cullback tris=4 mat=1 flags=0 blend=0 center=-155.292,-10.7346,-77.6608
+700: bord_jewel       | model   s_sign  _explicitsoftblend_cullback tris=4 mat=1 flags=0 blend=1 center=-155.292,-10.7346,-77.6608
+702: bord_musical     | model   s_item  _explicitnoblend_cullback tris=24 mat=1 flags=0 blend=0 center=-80,-10.7394,-126.558
+702: bord_musical     | model   s_sign  _explicitnoblend_cullback tris=8 mat=1 flags=0 blend=0 center=-80,-10.7394,-126.558
+702: bord_musical     | model   s_sign  _explicitsoftblend_cullback tris=4 mat=1 flags=0 blend=1 center=-80,-10.7394,-126.496
+781: bord_wepon       | model   s_item  _explicitnoblend_cullback tris=28 mat=1 flags=0 blend=0 center=-297.161,-16.5376,-126.647
+781: bord_wepon       | model   s_sign  _explicitnoblend_cullback tris=4 mat=1 flags=0 blend=0 center=-297.205,-16.5376,-126.603
+781: bord_wepon       | model   s_sign  _explicitsoftblend_cullback tris=4 mat=1 flags=0 blend=1 center=-297.205,-16.5376,-126.603
+782: bord_armor       | model   s_item  _explicitnoblend_cullback tris=28 mat=1 flags=0 blend=0 center=-314.133,-16.5376,-143.618
+  -313.677,-17.2446,-143.075
+  -314.089,-17.2446,-143.662
+  -314.177,-17.2446,-143.575
+  -314.089,-17.2446,-143.662
+  -314.589,-17.2446,-144.162
+  -314.177,-17.2446,-143.575
+  -314.177,-17.2446,-143.575
+  -314.589,-17.2446,-144.162
+  -314.677,-17.2446,-144.075
+  -314.589,-17.2446,-144.162
+  -314.677,-15.8307,-144.075
+  -314.677,-17.2446,-144.075
+  -314.677,-17.2446,-144.075
+  -314.677,-15.8307,-144.075
+  -314.592,-15.9507,-143.99
+  -313.589,-15.8307,-143.162
+  -313.589,-17.2446,-143.162
+  -313.677,-15.8307,-143.075
+  -313.589,-17.2446,-143.162
+  -313.677,-17.2446,-143.075
+  -313.677,-15.8307,-143.075
+  -313.677,-15.8307,-143.075
+  -313.677,-17.2446,-143.075
+  -313.762,-15.9507,-143.16
+  -313.677,-17.2446,-143.075
+  -313.762,-17.1246,-143.16
+  -313.762,-15.9507,-143.16
+  -314.589,-15.8307,-144.162
+  -314.089,-15.8307,-143.662
+  -314.677,-15.8307,-144.075
+  -314.089,-15.8307,-143.662
+  -314.177,-15.8307,-143.575
+  -314.677,-15.8307,-144.075
+  -314.677,-15.8307,-144.075
+  -314.177,-15.8307,-143.575
+  -314.177,-15.9507,-143.575
+  -314.177,-15.8307,-143.575
+  -313.762,-15.9507,-143.16
+  -314.177,-15.9507,-143.575
+  -314.677,-17.2446,-144.075
+  -314.592,-17.1246,-143.99
+  -314.177,-17.2446,-143.575
+  -314.592,-17.1246,-143.99
+  -314.177,-17.1246,-143.575
+  -314.177,-17.2446,-143.575
+  -314.177,-17.2446,-143.575
+  -314.177,-17.1246,-143.575
+  -313.762,-17.1246,-143.16
+  -314.089,-15.8307,-143.662
+  -313.589,-15.8307,-143.162
+  -314.177,-15.8307,-143.575
+  -313.589,-15.8307,-143.162
+  -313.677,-15.8307,-143.075
+  -314.177,-15.8307,-143.575
+  -314.177,-15.8307,-143.575
+  -313.677,-15.8307,-143.075
+  -313.762,-15.9507,-143.16
+  -314.589,-17.2446,-144.162
+  -314.089,-17.2446,-143.662
+  -314.089,-15.8307,-143.662
+  -314.089,-17.2446,-143.662
+  -313.589,-17.2446,-143.162
+  -314.089,-15.8307,-143.662
+  -314.089,-15.8307,-143.662
+  -313.589,-17.2446,-143.162
+  -313.589,-15.8307,-143.162
+  -313.677,-17.2446,-143.075
+  -314.177,-17.2446,-143.575
+  -313.762,-17.1246,-143.16
+  -313.589,-17.2446,-143.162
+  -314.089,-17.2446,-143.662
+  -313.677,-17.2446,-143.075
+  -314.589,-17.2446,-144.162
+  -314.589,-15.8307,-144.162
+  -314.677,-15.8307,-144.075
+  -314.089,-15.8307,-143.662
+  -314.589,-15.8307,-144.162
+  -314.589,-17.2446,-144.162
+  -314.592,-17.1246,-143.99
+  -314.677,-17.2446,-144.075
+  -314.592,-15.9507,-143.99
+  -314.592,-15.9507,-143.99
+  -314.677,-15.8307,-144.075
+  -314.177,-15.9507,-143.575
+782: bord_armor       | model   s_sign  _explicitnoblend_cullback tris=4 mat=1 flags=0 blend=0 center=-314.177,-16.5376,-143.575
+  -313.762,-15.9507,-143.16
+  -313.762,-17.1246,-143.16
+  -314.177,-15.9507,-143.575
+  -313.762,-17.1246,-143.16
+  -314.177,-17.1246,-143.575
+  -314.177,-15.9507,-143.575
+  -314.177,-15.9507,-143.575
+  -314.177,-17.1246,-143.575
+  -314.592,-15.9507,-143.99
+  -314.177,-17.1246,-143.575
+  -314.592,-17.1246,-143.99
+  -314.592,-15.9507,-143.99
+782: bord_armor       | model   s_sign  _explicitsoftblend_cullback tris=4 mat=1 flags=0 blend=1 center=-314.177,-16.5376,-143.575
+  -313.762,-15.9507,-143.16
+  -313.762,-17.1246,-143.16
+  -314.177,-15.9507,-143.575
+  -313.762,-17.1246,-143.16
+  -314.177,-17.1246,-143.575
+  -314.177,-15.9507,-143.575
+  -314.177,-15.9507,-143.575
+  -314.177,-17.1246,-143.575
+  -314.592,-15.9507,-143.99
+  -314.177,-17.1246,-143.575
+  -314.592,-17.1246,-143.99
+  -314.592,-15.9507,-143.99
+783: bord_zakka       | model   s_item  _explicitnoblend_cullback tris=32 mat=1 flags=0 blend=0 center=-331.102,-16.5376,-160.587
+783: bord_zakka       | model   s_sign  _explicitsoftblend_cullback tris=4 mat=1 flags=0 blend=1 center=-331.146,-16.5376,-160.544
+810: zakka_bord_p     | model   s_tent1 _explicitnoblend_cullback tris=2 mat=1 flags=0 blend=0 center=-327.448,-12.5644,-160.195
+810: zakka_bord_p     | model   s_item1 _explicitnoblend_cullback tris=68 mat=1 flags=0 blend=0 center=-327.202,-12.5644,-160.03
+810: zakka_bord_p     |                 _explicitnoblend_cullback tris=4 mat=0 flags=0 blend=0 center=-327.09,-12.5644,-159.837
+810: zakka_bord_p     | model   s_sign  _explicitnoblend_cullback tris=12 mat=1 flags=0 blend=0 center=-327.248,-12.5644,-159.984
+810: zakka_bord_p     | model   s_sign  _explicitsoftblend_cullback tris=2 mat=1 flags=0 blend=1 center=-327.069,-12.962,-159.805
+811: armor_bord_p     | model   s_item1 _explicitnoblend_cullback tris=68 mat=1 flags=0 blend=0 center=-314.69,-12.5644,-147.519
+811: armor_bord_p     |                 _explicitnoblend_cullback tris=4 mat=0 flags=0 blend=0 center=-314.883,-12.5644,-147.63
+811: armor_bord_p     | model   s_tent1 _explicitnoblend_cullback tris=2 mat=1 flags=0 blend=0 center=-314.526,-12.5644,-147.273
+811: armor_bord_p     | model   s_sign  _explicitnoblend_cullback tris=12 mat=1 flags=0 blend=0 center=-314.736,-12.5644,-147.473
+811: armor_bord_p     | model   s_sign  _explicitsoftblend_cullback tris=2 mat=1 flags=0 blend=1 center=-314.558,-12.962,-147.294
+812: wepon_bord_p     | model   s_item1 _explicitnoblend_cullback tris=68 mat=1 flags=0 blend=0 center=-293.261,-12.5644,-126.09
+812: wepon_bord_p     |                 _explicitnoblend_cullback tris=4 mat=0 flags=0 blend=0 center=-293.149,-12.5644,-125.896
+812: wepon_bord_p     | model   s_tent1 _explicitnoblend_cullback tris=2 mat=1 flags=0 blend=0 center=-293.507,-12.5644,-126.254
+812: wepon_bord_p     | model   s_sign  _explicitnoblend_cullback tris=12 mat=1 flags=0 blend=0 center=-293.307,-12.5644,-126.043
+812: wepon_bord_p     | model   s_sign  _explicitsoftblend_cullback tris=2 mat=1 flags=0 blend=1 center=-293.486,-12.962,-126.222
+816: bord_musical2    | model   s_item  _explicitnoblend_cullback tris=44 mat=1 flags=0 blend=0 center=-82.3,-7.24955,-124.318
+816: bord_musical2    | model   s_sign  _explicitsoftblend_cullback tris=8 mat=1 flags=0 blend=1 center=-82.3,-7.24955,-124.318
+818: bord_jewel2      | model   s_item  _explicitnoblend_cullback tris=44 mat=1 flags=0 blend=0 center=-154.185,-7.24475,-80.6296
+818: bord_jewel2      | model   s_sign  _explicitsoftblend_cullback tris=8 mat=1 flags=0 blend=1 center=-154.185,-7.24476,-80.6296
+821: bord_magic2      | model   s_item  _explicitnoblend_cullback tris=44 mat=1 flags=0 blend=0 center=-219.791,-5.24955,59.8502
+821: bord_magic2      | model   s_sign  _explicitsoftblend_cullback tris=8 mat=1 flags=0 blend=1 center=-219.791,-5.24955,59.8502
+822: bord_chasing2    | model   s_item  _explicitnoblend_cullback tris=36 mat=1 flags=0 blend=0 center=-200.576,-9.24023,-67.4212
+822: bord_chasing2    | model   s_sign  _explicitnoblend_cullback tris=8 mat=1 flags=0 blend=0 center=-200.576,-9.24024,-67.4212
+822: bord_chasing2    | model   s_sign  _explicitsoftblend_cullback tris=8 mat=1 flags=0 blend=1 center=-200.576,-9.24024,-67.4212

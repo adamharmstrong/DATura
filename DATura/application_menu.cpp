@@ -37,6 +37,8 @@ enum CommandId
     ViewCycleWeather = 6010,
     ResourceCurrentZone = 6101,
     ResourceOpenDat = 6102,
+    ResourceZoneDiagnostics = 6103,
+    ResourceDatReplacements = 6104,
     AudioPlayer = 6201,
     AudioStop = 6202,
     TextureViewer = 6251,
@@ -112,6 +114,8 @@ ApplicationMenu::Action DecodeAction(const UINT commandId)
     case ViewCycleWeather: return Action::CycleWeather;
     case ResourceCurrentZone: return Action::ShowCurrentZoneResources;
     case ResourceOpenDat: return Action::OpenResourceDat;
+    case ResourceZoneDiagnostics: return Action::ShowZoneGeometryDiagnostics;
+    case ResourceDatReplacements: return Action::ShowDatReplacements;
     case TextureViewer: return Action::ShowTextureViewer;
     case CompanionBrowser: return Action::ShowCompanionBrowser;
     case AudioPlayer: return Action::ShowAudioPlayer;
@@ -172,6 +176,8 @@ HMENU Build(State& state, const ApplicationSettings::State& settings, const bool
     AppendMenuA(viewMenu, MF_STRING, ViewCycleWeather, "Cycle Zone Weather\tV");
 
     AppendMenuA(resourceMenu, MF_STRING, ResourceCurrentZone, "Current Zone Dialog / NPCs...");
+    AppendMenuA(resourceMenu, MF_STRING, ResourceZoneDiagnostics, "Zone Geometry Diagnostics...");
+    AppendMenuA(resourceMenu, MF_STRING, ResourceDatReplacements, "DAT Replacements and Sources...");
     AppendMenuA(resourceMenu, MF_STRING, ResourceOpenDat, "Open Resource DAT...");
     AppendMenuA(imageMenu, MF_STRING, TextureViewer, "Image / Texture Viewer...");
     AppendMenuA(audioMenu, MF_STRING, AudioPlayer, "Music / SFX Player...");
@@ -433,6 +439,8 @@ UINT CommandId(const Action action)
     case Action::OpenDat: return FileOpenDat;
     case Action::ToggleGameMode: return ViewToggleGameMode;
     case Action::CycleWeather: return ViewCycleWeather;
+    case Action::ShowZoneGeometryDiagnostics: return ResourceZoneDiagnostics;
+    case Action::ShowDatReplacements: return ResourceDatReplacements;
     default: return 0;
     }
 }

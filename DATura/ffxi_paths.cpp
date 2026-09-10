@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "ffxi_dat_resolver.h"
 #include "ffxi_paths.h"
 
 #include "ffxi_resource.h"
@@ -125,8 +126,7 @@ bool FileExists(const char* path)
 {
     if (!path || !path[0])
         return false;
-    const DWORD attrs = GetFileAttributesA(path);
-    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+    return FFXIDatResolver::FileExists(path);
 }
 
 void BuildFullPath(const char* ffxiRoot, const char* relativePath, char* outPath, const std::size_t outPathSize)

@@ -104,6 +104,8 @@ bool BuildBrowseData(const char* ffxiRoot, const char* zoneModelPath, BrowseData
             if (!row.details.empty())
                 row.details += L" | ";
             row.details += wideRelative;
+            if (!FFXIPath::StringEqualsNoCase(parsed.logicalPath.c_str(), parsed.sourcePath.c_str()))
+                row.details += L" | Source: " + WideFromAnsi(parsed.sourcePath.c_str());
             outData.rows.push_back(std::move(row));
         }
     }

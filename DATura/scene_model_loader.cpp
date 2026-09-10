@@ -4,6 +4,7 @@
 #include "ffxi_file_io.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
+#include "zone_room_loader.h"
 
 #include <cstring>
 #include <memory>
@@ -141,6 +142,7 @@ Result LoadDat(IDirect3DDevice9* device, const char* path, const DatOptions& opt
         parserOptions.renderEnvironment =
             options.renderEnvironment || options.userContentLoad;
         parserOptions.renderEffectMeshes = false;
+        parserOptions.renderWater = options.renderEnvironment || options.userContentLoad;
         parserOptions.collectCollision =
             options.userContentLoad || options.renderEnvironment;
         parserOptions.collectCollisionUnreferenced =
@@ -154,6 +156,8 @@ Result LoadDat(IDirect3DDevice9* device, const char* path, const DatOptions& opt
         model = Model_FF11_LoadDAT(
             buffer.get(), static_cast<int>(fileSize), result.modelCount,
             result.asset.ParserContext());
+        if (model && options.userContentLoad)
+            ZoneRoomLoader::Append(model, result.asset.ParserContext(), path);
     }
     if (!model || result.modelCount == 0)
     {

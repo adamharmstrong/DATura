@@ -35,6 +35,34 @@ struct OpaqueBatchBuildKey
 };
 }
 
+bool UploadVegetation(noesisModel_t* model, noesisModel_t::Submesh& submesh, const float weight)
+{
+    if (!model || submesh.windDisplacements.empty() ||
+        submesh.windDisplacements.size() != submesh.cpuVerts.size() || !std::isfinite(weight))
+        return false;
+    const float blend = std::clamp(weight, 0.0f, 1.0f);
+    if (submesh.uploadedWindWeight == blend) return true;
+    IDirect3DVertexBuffer9* buffer = submesh.pVB;
+    UINT offset = 0;
+    if (submesh.staticBufferGroupIndex >= 0)
+    {
+        if (submesh.staticBufferGroupIndex >= (int)model->staticBufferGroups.size()) return false;
+        buffer = model->staticBufferGroups[submesh.staticBufferGroupIndex].pVB;
+        offset = (UINT)(submesh.staticVertexOffset * sizeof(FFXIVertex));
+    }
+    if (!buffer) return false;
+    FFXIVertex* output = nullptr;
+    const UINT size = (UINT)(submesh.cpuVerts.size() * sizeof(FFXIVertex));
+    if (FAILED(buffer->Lock(offset, size, reinterpret_cast<void**>(&output), 0))) return false;
+    std::memcpy(output, submesh.cpuVerts.data(), size);
+    for (size_t i = 0; i < submesh.cpuVerts.size(); ++i)
+        for (int axis = 0; axis < 3; ++axis)
+            output[i].pos[axis] += blend * submesh.windDisplacements[i][axis];
+    if (FAILED(buffer->Unlock())) return false;
+    submesh.uploadedWindWeight = blend;
+    return true;
+}
+
 void UploadVertices(noesisModel_t::Submesh& submesh)
 {
     if (!submesh.pVB || submesh.cpuVerts.empty())
@@ -46,6 +74,7 @@ void UploadVertices(noesisModel_t::Submesh& submesh)
     {
         std::memcpy(bufferData, submesh.cpuVerts.data(), bufferSize);
         submesh.pVB->Unlock();
+        submesh.uploadedWindWeight = 0.0f;
     }
 }
 
@@ -137,7 +166,7 @@ void BuildStaticOpaqueBatches(noesisModel_t *model, IDirect3DDevice9 *device)
     for (size_t submeshIndex : model->opaqueSubmeshOrder)
     {
         const noesisModel_t::Submesh &submesh = model->submeshes[submeshIndex];
-        if (submesh.environmentObject || submesh.staticBufferGroupIndex < 0)
+        if (submesh.environmentObject || submesh.water || submesh.staticBufferGroupIndex < 0)
             continue;
         OpaqueBatchBuildKey key = {};
         key.bufferGroupIndex = submesh.staticBufferGroupIndex;

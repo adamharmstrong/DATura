@@ -1,6 +1,7 @@
 #pragma once
 
 #include <windows.h>
+#include <string>
 
 struct GameUiTitleConfig
 {
@@ -120,12 +121,30 @@ struct GameUiNationConfig
     int statusFontMinimumHeight;
 };
 
+enum class PlayerSubtitleMode { None, Linkshell, Jobs };
+
+struct GameUiPlayerNameplateConfig
+{
+    bool enabled;
+    char name[64];
+    char icon[32];
+    COLORREF linkshellColor;
+    bool jobMaster;
+    PlayerSubtitleMode subtitleMode;
+    char linkshellName[128];
+    int mainJob, mainLevel, subJob, subLevel;
+};
+
 struct GameUiConfig
 {
     bool loaded;
     char loadedPath[MAX_PATH];
     GameUiTitleConfig title;
     GameUiNationConfig nation;
+    GameUiPlayerNameplateConfig playerNameplate;
+    int chatLogTimeoutSeconds;
+    int chatLogWidthPercent;
+    int chatLogHeightPercent;
 };
 
 struct GameUiTitleMenuMetrics
@@ -138,6 +157,10 @@ struct GameUiTitleMenuMetrics
 
 void GameUiConfig_SetDefaults(GameUiConfig &config);
 bool GameUiConfig_Load(GameUiConfig &config);
+bool GameUiConfig_SavePlayerNameplate(const GameUiConfig &config);
+bool GameUiConfig_SaveChatLog(const GameUiConfig &config);
+// Formats per-player presentation data; levels are independent, never inferred.
+std::string GameUiConfig_PlayerSubtitle(const GameUiPlayerNameplateConfig &player);
 GameUiTitleMenuMetrics GameUiConfig_GetTitleMenuMetrics(const GameUiTitleConfig &config,
                                                         int viewportWidth, int viewportHeight);
 int GameUiConfig_GetTitleMenuButtonIndex(const GameUiTitleConfig &config,

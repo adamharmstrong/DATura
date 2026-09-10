@@ -120,6 +120,9 @@ bool BuildPlayer(
     strcat_s(out, outSize, ffxiRoot);
     strcat_s(out, outSize, "\"\n");
     AppendLine(out, outSize, "__skeleton", race.entries[0].dat);
+    // The adjacent general-motion DAT supplies neutral idle and fallback upper
+    // locomotion tracks. The selected bank may override those tracks below.
+    AppendVariantLine(out, outSize, "__animation", race, 0, 1);
     AppendVariantLine(
         out, outSize, "__animation", race, 8, options.animationBank);
 

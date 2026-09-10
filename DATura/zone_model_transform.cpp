@@ -2,6 +2,7 @@
 #include "zone_model_transform.h"
 
 #include "d3d_model_buffers.h"
+#include "ffxi_coordinate_frame.h"
 
 #include <algorithm>
 
@@ -17,16 +18,19 @@ void MirrorOnX(noesisModel_t* model, IDirect3DDevice9* device)
     {
         for (FFXIVertex& vertex : submesh.cpuVerts)
         {
-            vertex.pos[0] = -vertex.pos[0];
-            vertex.nrm[0] = -vertex.nrm[0];
+            FFXICoordinateFrame::NativeDatToScene(vertex.pos, true, vertex.pos);
+            FFXICoordinateFrame::NativeDatToScene(vertex.nrm, true, vertex.nrm);
         }
+        for (auto& wind : submesh.windDisplacements)
+            FFXICoordinateFrame::NativeDatToScene(wind.data(), true, wind.data());
         for (FFXIVertex& vertex : submesh.cpuBindVerts)
         {
-            vertex.pos[0] = -vertex.pos[0];
-            vertex.nrm[0] = -vertex.nrm[0];
+            FFXICoordinateFrame::NativeDatToScene(vertex.pos, true, vertex.pos);
+            FFXICoordinateFrame::NativeDatToScene(vertex.nrm, true, vertex.nrm);
         }
         for (size_t index = 0; index + 2 < submesh.cpuIndices.size(); index += 3)
-            std::swap(submesh.cpuIndices[index + 1], submesh.cpuIndices[index + 2]);
+            FFXICoordinateFrame::ReverseTriangleWindingIfReflected(
+                submesh.cpuIndices[index + 1], submesh.cpuIndices[index + 2], true);
 
         if (!rebuildSharedBuffers)
         {

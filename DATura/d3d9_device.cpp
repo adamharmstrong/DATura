@@ -17,6 +17,10 @@ void BuildPresentParameters(const int width, const int height, const bool window
     outParameters.EnableAutoDepthStencil = TRUE;
     outParameters.AutoDepthStencilFormat = D3DFMT_D24S8;
     outParameters.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+    // Title/nation text is rendered with GDI directly onto the completed D3D
+    // frame so textures and labels are presented atomically. GetDC on a swap-
+    // chain back buffer requires this flag.
+    outParameters.Flags = D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
 }
 
 void ApplyWindowMode(const HWND window, const bool borderless, const bool fullscreen,

@@ -29,6 +29,12 @@ enum LightingQuality
     LightingDynamicShadows = 2
 };
 
+enum DoorInteractionMode
+{
+    DoorClassic = 0,
+    DoorPhysics = 1
+};
+
 struct ResolutionOption
 {
     int width;
@@ -38,6 +44,7 @@ struct ResolutionOption
 
 struct State
 {
+    int doorInteractionMode = DoorClassic;
     int windowMode = Windowed;
     int resolutionIndex = 0;
     int environmentalAnimationMode = EnvironmentalAnimationSmooth;

@@ -8,7 +8,6 @@
 #include "targetver.h"
 
 #define NOMINMAX          // prevent windows.h from defining min/max macros
-#define stricmp _stricmp  // POSIX alias; MSVC prefers _stricmp
 
 #include <windows.h>
 #include <stdio.h>
@@ -21,6 +20,10 @@
 #include <malloc.h>
 #include <memory.h>
 #include <tchar.h>
+
+// Define the alias after CRT declarations, otherwise the deprecated stricmp
+// declaration is rewritten into (and marks deprecated) _stricmp itself.
+#define stricmp _stricmp
 
 #include <d3d9.h>
 #include <d3dcompiler.h>

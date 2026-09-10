@@ -36,13 +36,17 @@ void Prepare(noesisModel_t *model, IDirect3DDevice9 *device)
         }
         submesh.environmentObject = ZoneEnvironmentIdentity::IsEnvironmentObjectName(submesh.objectName);
         submesh.animatedWater = IsAnimatedWaterSurface(submesh);
-        submesh.softBlend = submesh.pResolvedMaterial && !submesh.pResolvedMaterial->noDefaultBlend;
+        submesh.softBlend = submesh.water ||
+            (submesh.pResolvedMaterial && !submesh.pResolvedMaterial->noDefaultBlend);
         if (submesh.softBlend)
             model->softBlendSubmeshOrder.push_back(index);
         else
             model->opaqueSubmeshOrder.push_back(index);
     }
     model->renderMetadataPrepared = true;
-    D3DModelBuffers::BuildStaticOpaqueBatches(model, device);
+    // Distance-selected placements must remain individually selectable. A batch
+    // spanning LODs would draw both variants and waste an unused GPU index buffer.
+    if (!model->hasZoneLod)
+        D3DModelBuffers::BuildStaticOpaqueBatches(model, device);
 }
 }

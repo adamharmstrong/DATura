@@ -2,6 +2,7 @@
 
 #include <map>
 #include <vector>
+#include <cstdint>
 
 struct IDirect3DDevice9;
 
@@ -31,6 +32,10 @@ namespace ZoneCollision
 
         float cellSize_;
         std::map<long long, std::vector<int>> cells_;
+        // Query stamps preserve first-seen ordering without linearly searching
+        // the candidate vector for every overlapping grid-cell entry.
+        mutable std::vector<std::uint32_t> queryMarks_;
+        mutable std::uint32_t queryMark_ = 0;
     };
 
     class Mesh
@@ -91,6 +96,7 @@ namespace ZoneCollision
     bool UpdateVerticalMotion(const Mesh& mesh, float playerRadius, float stepHeight,
                               float initialGroundStep, float floorSearchDistance,
                               float gravity, float maximumFallSpeed, float dt,
-                              float position[3], float& verticalVelocity, bool& onGround);
+                              float position[3], float& verticalVelocity, bool& onGround,
+                              float playerHeight = 0.0f);
     void DrawOverlay(IDirect3DDevice9 *device, const Mesh& mesh);
 }

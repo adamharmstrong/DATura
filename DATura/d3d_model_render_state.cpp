@@ -30,7 +30,7 @@ bool EnsureFfxiTexturePixelShader(IDirect3DDevice9 *device)
         "float4 ColorScale : register(c1);\n"
         "float4 main(float4 diffuse : COLOR0, float2 uv : TEXCOORD0) : COLOR0\n"
         "{\n"
-        "    float4 texel = tex2D(BaseTexture, uv);\n"
+        "    float4 texel = lerp(tex2D(BaseTexture, uv), float4(1,1,1,1), AlphaParams.w);\n"
         "    float textureAlpha = (AlphaParams.y > 0.5) ? saturate(texel.a * 1.875) : texel.a;\n"
         "    float vertexAlpha = saturate(diffuse.a * 2.0);\n"
         "    float alpha = ((AlphaParams.x > 0.5) ? textureAlpha * vertexAlpha : 1.0) * AlphaParams.z;\n"
@@ -41,7 +41,8 @@ bool EnsureFfxiTexturePixelShader(IDirect3DDevice9 *device)
     ID3DBlob *errors = nullptr;
     const HRESULT compileHr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1,
         "DATuraFfxiTexture", nullptr, nullptr, "main", "ps_2_0",
-        D3DCOMPILE_ENABLE_STRICTNESS, 0, &byteCode, &errors);
+        // ps_2_0 uses legacy sampler2D/tex2D syntax, rejected by strict mode.
+        0, 0, &byteCode, &errors);
     if (FAILED(compileHr))
     {
         if (errors)
@@ -87,7 +88,7 @@ bool EnsureFfxiUiPixelShader(IDirect3DDevice9 *device)
     ID3DBlob *errors = nullptr;
     const HRESULT compileHr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1,
         "DATuraFfxiUi", nullptr, nullptr, "main", "ps_2_0",
-        D3DCOMPILE_ENABLE_STRICTNESS, 0, &byteCode, &errors);
+        0, 0, &byteCode, &errors);
     if (FAILED(compileHr))
     {
         if (errors)
@@ -243,7 +244,7 @@ DWORD FloatBits(const float value)
 
 bool SetFfxiTexturePixelShader(IDirect3DDevice9 *device, const bool useAuthoredAlpha,
                                const bool expandDxt3Alpha, const float opacityScale,
-                               const float *colorScale)
+                               const float *colorScale, const bool hasTexture)
 {
     if (!EnsureFfxiTexturePixelShader(device))
     {
@@ -257,7 +258,7 @@ bool SetFfxiTexturePixelShader(IDirect3DDevice9 *device, const bool useAuthoredA
         useAuthoredAlpha ? 1.0f : 0.0f,
         expandDxt3Alpha ? 1.0f : 0.0f,
         opacityScale,
-        0.0f
+        hasTexture ? 0.0f : 1.0f
     };
     const float defaultColorScale[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
     float authoredColorScale[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -318,6 +319,8 @@ void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
     }
     const bool shaderActive = d3dTexture && SetFfxiTexturePixelShader(
         device, alphaRef > 0.0f, expandDxt3Alpha);
+    if (!d3dTexture)
+        device->SetPixelShader(nullptr); // Untextured materials use fixed-function vertex color.
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 :
         (alphaRef > 0.0f ? D3DTOP_MODULATE4X : D3DTOP_MODULATE2X));
@@ -338,6 +341,8 @@ void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& ca
     device->SetRenderState(D3DRS_CULLMODE, twoSided ? D3DCULL_NONE : D3DCULL_CW);
     const bool shaderActive = d3dTexture && SetFfxiTexturePixelShader(
         device, true, expandDxt3Alpha);
+    if (!d3dTexture)
+        device->SetPixelShader(nullptr);
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
 }

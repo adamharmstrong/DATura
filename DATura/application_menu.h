@@ -27,6 +27,8 @@ enum class Action
     ShowZoneObjects,
     CycleWeather,
     ShowCurrentZoneResources,
+    ShowZoneGeometryDiagnostics,
+    ShowDatReplacements,
     OpenResourceDat,
     ShowTextureViewer,
     ShowCompanionBrowser,

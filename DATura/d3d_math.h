@@ -4,6 +4,9 @@
 
 namespace D3DMath
 {
+    // Zone signs contain closely spaced front/back panels. A 0.01 near
+    // plane loses too much depth precision at ordinary viewing distances.
+    inline constexpr float ZoneNearPlane = 0.1f;
     D3DMATRIX BuildIdentity();
     D3DMATRIX BuildLookAtLH(float eyeX, float eyeY, float eyeZ,
                             float targetX, float targetY, float targetZ);

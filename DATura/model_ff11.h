@@ -56,6 +56,7 @@ struct ff11Opts_t
     bool forceCull;               // enable backface culling on all meshes
     bool renderUnreferenced;      // also render map geometry not referenced by any map object
     bool renderEnvironment;       // also render unplaced sky / weather / celestial map geometry
+    bool renderWater;             // render supported generator-owned world water surfaces
     bool renderEffectMeshes;       // render decoded 0x1F/0x21 geometry and the base pose of 0x25 morph meshes
     bool collectCollision;         // collect map triangles for runtime collision
     bool collectCollisionUnreferenced; // include unreferenced collision/helper map geometry
@@ -69,11 +70,15 @@ extern ff11Opts_t *gpFF11Opts;
 
 struct ff11MapObjectDebug_t
 {
-    char displayName[64];
+    char displayName[512]; // includes directory-qualified generated object identity
     char objectName[17];
     int mapRecordIndex;
     int mapGeoIndex;
     bool referencedByMap;
+    bool roomObject; // separate DAT; not indexed by the outdoor MZB visibility tree
+    bool replacedByRoom; // diagnostic retained; CPU/GPU draw geometry has been removed
+    size_t visualCollisionStart;
+    size_t visualCollisionCount;
     unsigned int objectFlags[2];
     unsigned int data2[8];
     float vec[4];
@@ -159,6 +164,7 @@ struct ff11GeneratorRecord_t
 {
     char name[8];
     char directoryPath[128];
+    unsigned int sourceDataOffset; // payload offset within the source DAT; distinguishes reused generator names
     unsigned short attachFlags;
     unsigned short emissionVariance;
     unsigned short framesPerEmission;
@@ -197,6 +203,18 @@ struct ff11GeneratorRecord_t
     float linearVelocity[3];
     bool hasLinearAcceleration;
     float linearAcceleration[3];
+    bool hasVelocityVariance;
+    float velocityVariance[3];
+    bool hasPositionVariance;
+    float spawnRadius;
+    float spawnAxisScale[3];
+    char lifetimeAlphaKeyframe[8];
+    bool updateLifetimeAlpha;
+    bool animateSprite;
+    bool hasParticleDistanceFade;
+    float particleFadeNear;
+    float particleFadeFar;
+    bool hasAnimatedScale; // unsupported moving shoreline geometry; do not flatten into the water surface pass
 };
 
 extern std::vector<ff11GeneratorRecord_t> gFF11LastGeneratorRecords;

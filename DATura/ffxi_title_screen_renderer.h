@@ -17,6 +17,7 @@ struct Context
     noesisModel_t* titleUiModel;
     const GameUiTitleConfig& config;
     POINT mouseClient;
+    HDC overlayDc = nullptr;
 };
 
 void DrawTextures(const Context& context);

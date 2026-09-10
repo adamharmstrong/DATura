@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "ffxi_resource.h"
+#include "ffxi_dat_resolver.h"
 
 #include <algorithm>
 #include <fstream>
@@ -72,26 +73,6 @@ namespace
         const DWORD attributes = GetFileAttributesA(path.c_str());
         return attributes != INVALID_FILE_ATTRIBUTES &&
                (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
-    }
-
-    bool ReadFileBytes(const char* path, ByteVector& bytes)
-    {
-        bytes.clear();
-        if (!path || !path[0])
-            return false;
-
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
-        if (!file)
-            return false;
-
-        const std::streamoff length = file.tellg();
-        if (length <= 0 || static_cast<std::uint64_t>(length) > 512ull * 1024ull * 1024ull)
-            return false;
-
-        bytes.resize(static_cast<std::size_t>(length));
-        file.seekg(0, std::ios::beg);
-        file.read(reinterpret_cast<char*>(bytes.data()), length);
-        return file.good() || file.gcount() == length;
     }
 
     bool ReadByteAt(const std::string& path, const std::uint64_t offset, std::uint8_t& value)
@@ -901,7 +882,7 @@ namespace FFXIResource
                                          std::to_string(file) + ".DAT";
             std::string full = root + relative;
             std::replace(full.begin(), full.end(), '/', '\\');
-            if (!FileExists(full))
+            if (!FFXIDatResolver::FileExists(full.c_str()))
                 continue;
 
             result.fileId = fileId;
@@ -909,6 +890,9 @@ namespace FFXIResource
             result.packedLocation = packed;
             result.relativePath = relative;
             result.fullPath = full;
+            const auto resolved = FFXIDatResolver::Resolve(full.c_str());
+            result.sourcePath = resolved.sourcePath;
+            result.replacement = resolved.source == FFXIDatResolver::Source::Replacement;
             return true;
         }
         return false;
@@ -988,15 +972,27 @@ namespace FFXIResource
         return false;
     }
 
+    bool ReadBytes(const char* path, std::vector<std::uint8_t>& bytes)
+    {
+        FFXIDatResolver::Resolution selected;
+        return FFXIDatResolver::ReadBytes(path, bytes, 512u * 1024u * 1024u, &selected);
+    }
+
     bool ParseFile(const char* path, ParseResult& result)
     {
         ByteVector bytes;
-        if (!ReadFileBytes(path, bytes))
+        FFXIDatResolver::Resolution selected;
+        if (!FFXIDatResolver::ReadBytes(path, bytes, 512u*1024u*1024u, &selected))
         {
             result = {};
+            result.logicalPath = selected.logicalPath;
+            result.sourcePath = selected.sourcePath;
             result.warning = L"The file could not be read or exceeds the 512 MiB resource-inspection limit.";
             return false;
         }
-        return ParseBytes(bytes, result);
+        const bool parsed = ParseBytes(bytes, result);
+        result.logicalPath = selected.logicalPath;
+        result.sourcePath = selected.sourcePath;
+        return parsed;
     }
 }

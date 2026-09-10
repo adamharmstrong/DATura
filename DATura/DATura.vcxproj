@@ -140,13 +140,16 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="application_menu.cpp" />
+    <ClCompile Include="ffxi_main_menu.cpp" />
     <ClCompile Include="application_settings.cpp" />
     <ClCompile Include="audio_player.cpp" />
     <ClCompile Include="bgw_player.cpp" />
     <ClCompile Include="d3d9_device.cpp" />
       <ClCompile Include="d3d_math.cpp" />
+    <ClCompile Include="zone_door_interaction.cpp" />
       <ClCompile Include="d3d_model_buffers.cpp" />
       <ClCompile Include="d3d_model_render_state.cpp" />
+      <ClCompile Include="model_renderer.cpp" />
       <ClCompile Include="d3d_ui_renderer.cpp" />
     <ClCompile Include="CNoeR3000A.cpp">
       <ExcludedFromBuild>true</ExcludedFromBuild>
@@ -161,6 +164,8 @@
     <ClCompile Include="ffxi_nation_selection_renderer.cpp" />
       <ClCompile Include="ffxi_lore_zone_dat_crossref.cpp" />
       <ClCompile Include="ffxi_resource.cpp" />
+      <ClCompile Include="ffxi_event_table.cpp" />
+      <ClCompile Include="ffxi_event_messages.cpp" />
       <ClCompile Include="ffxi_resource_browser.cpp" />
       <ClCompile Include="ffxi_dat_set_builder.cpp" />
     <ClCompile Include="ffxi_player_preset.cpp" />
@@ -193,6 +198,8 @@
     <ClCompile Include="input_controller.cpp" />
     <ClCompile Include="interaction_controller.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="home_point_effect.cpp" />
+    <ClCompile Include="npc_dat_set_builder.cpp" />
     <ClCompile Include="npc_placement.cpp" />
     <ClCompile Include="npc_render_geometry.cpp" />
     <ClCompile Include="npc_nameplate_renderer.cpp" />
@@ -201,6 +208,7 @@
     <ClCompile Include="player_model_loader.cpp" />
     <ClCompile Include="scene_load_context.cpp" />
     <ClCompile Include="scene_model_loader.cpp" />
+    <ClCompile Include="zone_room_loader.cpp" />
     <ClCompile Include="scene_request_resolver.cpp" />
     <ClCompile Include="model_ff11.cpp" />
     <ClCompile Include="model_ff11_creation.cpp" />
@@ -219,6 +227,10 @@
     <ClCompile Include="zone_object_transform.cpp" />
     <ClCompile Include="zone_object_highlight_renderer.cpp" />
     <ClCompile Include="zone_model_transform.cpp" />
+    <ClCompile Include="zone_coverage.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="zone_scene_diagnostics.cpp" />
+    <ClCompile Include="zone_diagnostics_dialog.cpp" />
+    <ClCompile Include="dat_replacement_dialog.cpp" />
     <ClCompile Include="zone_model_render_metadata.cpp" />
     <ClCompile Include="zone_environment_identity.cpp" />
     <ClCompile Include="zone_environment_state.cpp" />
@@ -240,20 +252,30 @@
     <ClCompile Include="zone_object_panel_layout.cpp" />
     <ClCompile Include="zone_object_panel.cpp" />
     <ClCompile Include="zone_object_panel_splitter.cpp" />
-    <ClCompile Include="zone_object_panel_loading.cpp" />
     <ClCompile Include="zone_object_panel_arrangement.cpp" />
     <ClCompile Include="zone_object_panel_edit_controls.cpp" />
     <ClCompile Include="zone_object_panel_style.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ffxi_bitmap_font.h" />
+    <ClInclude Include="ffxi_nameplate_font.h" />
+    <ClInclude Include="ffxi_player_icons.h" />
     <ClInclude Include="application_menu.h" />
     <ClInclude Include="application_settings.h" />
     <ClInclude Include="audio_player.h" />
+    <ClInclude Include="home_point_effect.h" />
+    <ClInclude Include="home_point_data.h" />
+    <ClInclude Include="home_point_audio.h" />
+    <ClInclude Include="effect_model_layout.h" />
     <ClInclude Include="bgw_player.h" />
     <ClInclude Include="d3d9_device.h" />
       <ClInclude Include="d3d_math.h" />
+    <ClInclude Include="zone_door_interaction.h" />
+    <ClInclude Include="zone_transition.h" />
+    <ClInclude Include="zone_elevator.h" />
       <ClInclude Include="d3d_model_buffers.h" />
       <ClInclude Include="d3d_model_render_state.h" />
+      <ClInclude Include="model_renderer.h" />
       <ClInclude Include="d3d_ui_renderer.h" />
     <ClInclude Include="character_creation_dat_table.h" />
     <ClInclude Include="character_dat_table.h" />
@@ -263,6 +285,8 @@
     <ClInclude Include="creation_model_loader.h" />
       <ClInclude Include="ffxi_lore_zone_dat_crossref.h" />
       <ClInclude Include="ffxi_resource.h" />
+      <ClInclude Include="ffxi_event_table.h" />
+      <ClInclude Include="ffxi_event_messages.h" />
       <ClInclude Include="ffxi_resource_browser.h" />
       <ClInclude Include="ffxi_dat_set_builder.h" />
     <ClInclude Include="ffxi_player_preset.h" />
@@ -308,8 +332,12 @@
     <ClInclude Include="model_ff11_geometry_handler.h" />
     <ClInclude Include="model_ff11_internal.h" />
     <ClInclude Include="model_ff11_map_handlers.h" />
+    <ClInclude Include="model_ff11_water.h" />
+    <ClInclude Include="model_ff11_weather.h" />
     <ClInclude Include="model_ff11_texture_handler.h" />
     <ClInclude Include="npc_placement.h" />
+    <ClInclude Include="npc_interaction.h" />
+    <ClInclude Include="npc_chat_window.h" />
     <ClInclude Include="npc_render_geometry.h" />
     <ClInclude Include="npc_nameplate_renderer.h" />
     <ClInclude Include="orbit_camera.h" />
@@ -317,6 +345,9 @@
     <ClInclude Include="player_model_loader.h" />
     <ClInclude Include="scene_load_context.h" />
     <ClInclude Include="scene_model_loader.h" />
+    <ClInclude Include="zone_room_loader.h" />
+    <ClInclude Include="zone_room_catalog.h" />
+    <ClInclude Include="zone_lod.h" />
     <ClInclude Include="scene_request_resolver.h" />
     <ClInclude Include="npc_monster_dat_table.h" />
     <ClInclude Include="noesis_rapi.h" />
@@ -337,10 +368,18 @@
     <ClInclude Include="zone_music_table.h" />
     <ClInclude Include="zone_collision_geometry.h" />
     <ClInclude Include="zone_model_transform.h" />
+    <ClInclude Include="ffxi_coordinate_frame.h" />
+    <ClInclude Include="zone_coverage.h" />
+    <ClInclude Include="zone_scene_diagnostics.h" />
+    <ClInclude Include="zone_diagnostics_dialog.h" />
+    <ClInclude Include="dat_replacement_dialog.h" />
+    <ClInclude Include="ffxi_dat_resolver.h" />
     <ClInclude Include="zone_model_render_metadata.h" />
     <ClInclude Include="zone_environment_identity.h" />
     <ClInclude Include="zone_environment_state.h" />
     <ClInclude Include="zone_environment_fog.h" />
+    <ClInclude Include="zone_vegetation_animation.h" />
+    <ClInclude Include="zone_water_data.h" />
     <ClInclude Include="zone_environment_animation.h" />
     <ClInclude Include="zone_environment_render_state.h" />
     <ClInclude Include="zone_render_frustum.h" />
@@ -360,7 +399,6 @@
     <ClInclude Include="zone_object_panel_layout.h" />
     <ClInclude Include="zone_object_panel.h" />
     <ClInclude Include="zone_object_panel_splitter.h" />
-    <ClInclude Include="zone_object_panel_loading.h" />
     <ClInclude Include="zone_object_panel_arrangement.h" />
     <ClInclude Include="zone_object_panel_edit_controls.h" />
     <ClInclude Include="zone_object_panel_style.h" />
@@ -378,12 +416,16 @@
     <None Include="..\THIRD_PARTY_NOTICES.md" />
     <None Include="DATura.game-ui.config" />
     <None Include="npc_placements.csv" />
+    <None Include="npc_roles.csv" />
+    <None Include="npc_starter_quests.csv" />
     <None Include="Vulture_DAT_Extractor.cs" />
   </ItemGroup>
   <ItemDefinitionGroup>
     <PostBuildEvent>
       <Command>copy /Y "$(ProjectDir)DATura.game-ui.config" "$(OutDir)DATura.game-ui.config"
-copy /Y "$(ProjectDir)npc_placements.csv" "$(OutDir)npc_placements.csv"</Command>
+copy /Y "$(ProjectDir)npc_placements.csv" "$(OutDir)npc_placements.csv"
+copy /Y "$(ProjectDir)npc_roles.csv" "$(OutDir)npc_roles.csv"
+copy /Y "$(ProjectDir)npc_starter_quests.csv" "$(OutDir)npc_starter_quests.csv"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

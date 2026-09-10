@@ -5,6 +5,11 @@
 
 namespace
 {
+bool UsesRunAnimation(const PlayerController::InputSnapshot& input)
+{
+    return (input.boost || input.fastRunning) && input.forward > 0.0f && input.strafe == 0.0f;
+}
+
 void CopyPosition(float destination[3], const float source[3])
 {
     destination[0] = source[0];
@@ -27,6 +32,7 @@ void RestoreCheckpoint(PlayerController::State& state,
     state.yaw = checkpoint.yaw;
     state.verticalVelocity = 0.0f;
     state.onGround = true;
+    state.jumping = false;
 }
 }
 
@@ -41,6 +47,7 @@ void SetPose(State& state, const float x, const float y, const float z,
     state.yaw = yaw;
     state.verticalVelocity = 0.0f;
     state.onGround = onGround;
+    state.jumping = false;
 }
 
 void SetRespawnPoint(State& state)
@@ -77,6 +84,7 @@ void ClearCollisionState(State& state)
 {
     state.verticalVelocity = 0.0f;
     state.onGround = false;
+    state.jumping = false;
     state.lastSafe.valid = false;
 }
 
@@ -123,19 +131,31 @@ UpdateResult UpdateMovement(State& state, const InputSnapshot& input, float dt,
         dt = 0.1f;
 
     constexpr float turnSpeed = 2.5f;
-    float moveSpeed = 8.0f;
-    if (input.boost)
-        moveSpeed *= 2.0f;
+    // Backpedal and strafe clips have a walking stride, even with run toggled.
+    float moveSpeed = UsesRunAnimation(input) ?
+        (input.fastRunning ? kFastRunSpeed : kRunSpeed) : kWalkSpeed;
     if (input.slow)
-        moveSpeed *= 0.35f;
+        moveSpeed *= kSlowMultiplier;
 
     state.yaw += input.turn * turnSpeed * dt;
-    const float step = input.forward * moveSpeed * dt;
-    const float deltaX = -std::sin(state.yaw) * step;
-    const float deltaZ = -std::cos(state.yaw) * step;
+    const float magnitude = std::sqrt(input.forward * input.forward + input.strafe * input.strafe);
+    const float step = moveSpeed * dt / (magnitude > 1.0f ? magnitude : 1.0f);
+    const float deltaX = (-std::sin(state.yaw) * input.forward + std::cos(state.yaw) * input.strafe) * step;
+    const float deltaZ = (-std::cos(state.yaw) * input.forward - std::sin(state.yaw) * input.strafe) * step;
+
+    if (context.beforeHorizontalMove)
+        context.beforeHorizontalMove(state, deltaX, deltaZ, dt);
 
     const ZoneCollision::Mesh* collisionMesh = context.collisionMesh;
-    if (collisionMesh && !collisionMesh->Empty())
+    const bool haveCollision = collisionMesh && !collisionMesh->Empty();
+    if (input.jump && !state.jumping && (state.onGround || !haveCollision))
+    {
+        state.jumpOriginY = state.position[1];
+        state.verticalVelocity = -kJumpSpeed; // FFXI's world Y increases downward.
+        state.onGround = false;
+        state.jumping = true;
+    }
+    if (haveCollision)
     {
         ZoneCollision::MoveHorizontal(
             *collisionMesh, kCollisionRadius, kCollisionHeight, kStepHeight,
@@ -144,8 +164,9 @@ UpdateResult UpdateMovement(State& state, const InputSnapshot& input, float dt,
 
         const bool reachedFloor = ZoneCollision::UpdateVerticalMotion(
             *collisionMesh, kCollisionRadius, kStepHeight,
-            0.35f, 80.0f, 28.0f, 80.0f, dt,
-            state.position, state.verticalVelocity, state.onGround);
+            0.35f, 80.0f, kGravity, 80.0f, dt,
+            state.position, state.verticalVelocity, state.onGround, kCollisionHeight);
+        if (state.onGround) state.jumping = false;
         if (reachedFloor &&
             !ZoneCollision::OverlapsWallAt(
                 collisionMesh->Triangles(), collisionMesh->Index(),
@@ -166,8 +187,40 @@ UpdateResult UpdateMovement(State& state, const InputSnapshot& input, float dt,
 
     state.position[0] += deltaX;
     state.position[2] += deltaZ;
-    state.position[1] += input.vertical * moveSpeed * dt;
+    if (state.jumping)
+    {
+        state.verticalVelocity += kGravity * dt;
+        state.position[1] += state.verticalVelocity * dt;
+        if (state.verticalVelocity >= 0.0f && state.position[1] >= state.jumpOriginY)
+        {
+            state.position[1] = state.jumpOriginY;
+            state.verticalVelocity = 0.0f;
+            state.onGround = true;
+            state.jumping = false;
+        }
+    }
+    else
+        state.position[1] += input.vertical * moveSpeed * dt;
     return result;
+}
+
+const char* MovementAnimation(const State& state, const InputSnapshot& input)
+{
+    if (state.jumping) return "jmp";
+    // DAT motion names use the opposite left/right convention to player input.
+    if (input.strafe < 0.0f) return "mvr";
+    if (input.strafe > 0.0f) return "mvl";
+    if (input.forward < 0.0f) return "mvb_relaxed";
+    if (input.forward > 0.0f) return UsesRunAnimation(input) ? "run_relaxed" : "wlk_relaxed";
+    return "idl_relaxed";
+}
+
+float MovementAnimationRate(const State& state, const InputSnapshot& input)
+{
+    if (state.jumping || (input.forward == 0.0f && input.strafe == 0.0f))
+        return 1.0f;
+    const float rate = UsesRunAnimation(input) && input.fastRunning ? kFastRunSpeed / kRunSpeed : 1.0f;
+    return rate * (input.slow ? kSlowMultiplier : 1.0f);
 }
 
 bool Unstick(State& state, const ZoneCollision::Mesh& collisionMesh)

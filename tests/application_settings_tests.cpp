@@ -16,6 +16,7 @@
 #include "../DATura/zone_collision_geometry.h"
 #include "../DATura/zone_object_panel.h"
 
+#include "../DATura/npc_interaction.h"
 #include <cmath>
 #include <iostream>
 #include <string_view>
@@ -45,6 +46,7 @@ void TestDefaultState()
 {
     const ApplicationSettings::State settings;
 
+    Check(settings.doorInteractionMode == ApplicationSettings::DoorClassic, "doors default to Classic interaction");
     Check(settings.windowMode == ApplicationSettings::Windowed, "default window mode is windowed");
     Check(settings.resolutionIndex == 0, "default resolution index is zero");
     Check(settings.environmentalAnimationMode == ApplicationSettings::EnvironmentalAnimationSmooth,
@@ -247,10 +249,26 @@ void TestPlayerControllerMovement()
 
     const PlayerController::UpdateResult freeMove =
         PlayerController::UpdateMovement(player, input, 0.5f, {});
-    Check(NearlyEqual(player.position[2], -0.8f),
+    Check(NearlyEqual(player.position[2], -0.4f),
         "free player movement clamps long frame times");
     Check(!freeMove.reachedStableFloor && !freeMove.respawned,
         "free movement reports no collision outcome");
+
+    for (int direction = 0; direction < 4; ++direction)
+    {
+        PlayerController::State moving;
+        PlayerController::InputSnapshot keys;
+        keys.boost = true;
+        keys.forward = direction == 1 ? -1.0f : 1.0f;
+        keys.strafe = direction >= 2 ? 1.0f : 0.0f;
+        keys.slow = direction == 3;
+        for (int frame = 0; frame < 60; ++frame)
+            PlayerController::UpdateMovement(moving, keys, 1.0f / 60.0f, {});
+        const float distance = std::sqrt(moving.position[0] * moving.position[0] +
+            moving.position[2] * moving.position[2]);
+        Check(NearlyEqual(distance, direction == 0 ? 6.0f : direction == 3 ? 1.4f : 4.0f),
+            "run, backpedal, diagonal and slow movement cover the intended distance");
+    }
 
     input = {};
     input.turn = 1.0f;
@@ -264,8 +282,8 @@ void TestPlayerControllerMovement()
     input.slow = true;
     const float previousY = player.position[1];
     PlayerController::UpdateMovement(player, input, 0.1f, {});
-    Check(NearlyEqual(player.position[1] - previousY, 0.56f),
-        "free vertical movement applies boost and slow modifiers");
+    Check(NearlyEqual(player.position[1] - previousY, 0.14f),
+        "free vertical movement uses slowed walking speed");
 
     const float previousX = player.position[0];
     PlayerController::UpdateMovement(player, input, -1.0f, {});
@@ -308,6 +326,157 @@ void TestPlayerControllerMovement()
     Check(player.onGround && NearlyEqual(player.position[1], 0.0f) &&
           NearlyEqual(player.yaw, 0.75f),
         "unstick preserves yaw and restores stable grounding");
+
+    PlayerController::SetPose(player, 0, 0, 0, 0, true);
+    input = {};
+    input.strafe = 1;
+    PlayerController::UpdateMovement(player, input, 0.1f, collisionContext);
+    Check(NearlyEqual(player.position[0], 0.4f) && NearlyEqual(player.yaw, 0),
+        "right strafe moves sideways without turning");
+    input.strafe = -1;
+    PlayerController::UpdateMovement(player, input, 0.1f, collisionContext);
+    Check(NearlyEqual(player.position[0], 0), "left strafe reverses sideways displacement");
+    input.forward = 1;
+    PlayerController::UpdateMovement(player, input, 0.1f, collisionContext);
+    Check(NearlyEqual(std::sqrt(player.position[0] * player.position[0] +
+                               player.position[2] * player.position[2]), 0.4f),
+        "diagonal strafing does not increase movement speed");
+
+    PlayerController::SetPose(player, 0, 0, 0, 0, true);
+    input = {};
+    input.jump = true;
+    PlayerController::UpdateMovement(player, input, 0.001f, collisionContext);
+    Check(player.jumping && !player.onGround && player.position[1] < 0,
+        "Space impulse leaves the floor even within ground-snap tolerance");
+    const float launchVelocity = player.verticalVelocity;
+    PlayerController::UpdateMovement(player, input, 0.01f, collisionContext);
+    Check(player.verticalVelocity > launchVelocity, "a second press in the air does not reset jump velocity");
+    input.jump = false;
+    for (int frame = 0; frame < 120; ++frame)
+        PlayerController::UpdateMovement(player, input, 1.0f / 60.0f, collisionContext);
+    Check(player.onGround && !player.jumping && NearlyEqual(player.position[1], 0),
+        "jump falls back onto the collision floor");
+    input.jump = true;
+    PlayerController::UpdateMovement(player, input, 0.01f, collisionContext);
+    Check(player.jumping, "a new press after landing starts another jump");
+
+    Check(std::string_view(PlayerController::MovementAnimation(player, input)) == "jmp",
+        "airborne jump selects the jump clip");
+    PlayerController::SetPose(player, 0, 0, 0, 0, true);
+    input = {};
+    Check(std::string_view(PlayerController::MovementAnimation(player, input)) == "idl_relaxed",
+        "stationary player uses relaxed idle");
+    input.forward = -1;
+    Check(std::string_view(PlayerController::MovementAnimation(player, input)) == "mvb_relaxed",
+        "backward movement selects backward animation, not forward walk");
+    input.forward = 1;
+    Check(std::string_view(PlayerController::MovementAnimation(player, input)) == "wlk_relaxed",
+        "ordinary forward movement uses relaxed upper body");
+    input.boost = true;
+    Check(std::string_view(PlayerController::MovementAnimation(player, input)) == "run_relaxed",
+        "boosted forward movement uses relaxed run");
+    input.strafe = -1;
+    Check(std::string_view(PlayerController::MovementAnimation(player, input)) == "mvr",
+        "left strafe selects mvr even while moving diagonally");
+    input.strafe = 1;
+    Check(std::string_view(PlayerController::MovementAnimation(player, input)) == "mvl",
+        "right strafe selects mvl");
+
+    float ceilingPoints[9];
+    std::copy(std::begin(floorPoints), std::end(floorPoints), ceilingPoints);
+    for (int vertex = 0; vertex < 3; ++vertex)
+        ceilingPoints[vertex * 3 + 1] = -PlayerController::kCollisionHeight - 0.25f;
+    ZoneCollision::Triangle ceiling;
+    Check(ZoneCollision::BuildTriangle(ceilingPoints, false, ceiling), "jump test ceiling is valid");
+    collision.AddTriangle(ceiling, PlayerController::kCollisionRadius);
+    PlayerController::SetPose(player, 0, 0, 0, 0, true);
+    input = {};
+    input.jump = true;
+    PlayerController::UpdateMovement(player, input, 0.1f, collisionContext);
+    Check(NearlyEqual(player.position[1], -0.25f) && NearlyEqual(player.verticalVelocity, 0),
+        "jump head sweep stops against an overhead surface");
+    input.jump = false;
+    for (int frame = 0; frame < 60; ++frame)
+        PlayerController::UpdateMovement(player, input, 1.0f / 60.0f, collisionContext);
+    Check(player.onGround && NearlyEqual(player.position[1], 0), "ceiling contact falls back to the floor");
+}
+
+void TestMouseForward()
+{
+    for (bool leftFirst : { false, true })
+    {
+        for (bool releaseLeft : { false, true })
+        {
+            InputController::State input;
+            InputController::PlayerMouseButton(input, leftFirst, true, 10, 20);
+            Check(!InputController::MouseForwardActive(input), "one mouse button does not move the player");
+            InputController::PlayerMouseButton(input, !leftFirst, true, 10, 20);
+            Check(InputController::MouseForwardActive(input), "both mouse button orders enable forward movement");
+            const auto delta = InputController::MouseMoved(input, 25, 20);
+            Check(delta.x == 15 && delta.mode == InputController::DragMode::Orbit,
+                "mouse forward mode supplies horizontal steering deltas");
+            Check(!InputController::PlayerMouseButton(input, releaseLeft, false, 25, 20),
+                "releasing a movement chord never triggers a world click");
+            Check(!InputController::MouseForwardActive(input), "releasing either button stops mouse movement");
+            Check(!InputController::PlayerMouseButton(input, !releaseLeft, false, 25, 20),
+                "releasing the remaining button does not trigger a world click");
+        }
+    }
+    InputController::State input;
+    InputController::PlayerMouseButton(input, true, true, 0, 0);
+    Check(InputController::PlayerMouseButton(input, true, false, 0, 0),
+        "a standalone left click remains a world interaction");
+    for (bool loseFocus : { false, true })
+    {
+        InputController::PlayerMouseButton(input, true, true, 0, 0);
+        InputController::PlayerMouseButton(input, false, true, 0, 0);
+        if (loseFocus) InputController::FocusLost(input);
+        else InputController::CaptureChanged(input, reinterpret_cast<HWND>(1));
+        Check(!InputController::MouseForwardActive(input) && !input.pendingWorldClick,
+            "focus or capture loss cancels mouse movement and pending clicks");
+    }
+}
+
+void TestFastRunning()
+{
+    InputController::State keyboard;
+    Check(!InputController::Movement(keyboard).fastRunning, "extra-fast mode starts off");
+    InputController::KeyDown(keyboard, VK_MENU);
+    InputController::KeyDown(keyboard, VK_MENU);
+    InputController::KeyUp(keyboard, VK_MENU);
+    Check(InputController::Movement(keyboard).fastRunning,
+        "Alt toggles extra-fast mode once and retains it after release");
+
+    PlayerController::State player;
+    PlayerController::InputSnapshot input;
+    input.forward = 1.0f;
+    input.fastRunning = InputController::Movement(keyboard).fastRunning;
+    for (int frame = 0; frame < 60; ++frame)
+        PlayerController::UpdateMovement(player, input, 1.0f / 60.0f, {});
+    Check(NearlyEqual(player.position[2], -16.0f), "extra-fast running restores 16 units per second");
+    Check(std::string_view(PlayerController::MovementAnimation(player, input)) == "run_relaxed",
+        "extra-fast mode runs even when Shift mode is walking");
+    Check(NearlyEqual(PlayerController::MovementAnimationRate(player, input), 16.0f / 6.0f),
+        "extra-fast run animation keeps pace with movement");
+    input.slow = true;
+    Check(NearlyEqual(PlayerController::MovementAnimationRate(player, input), 16.0f / 6.0f * 0.35f),
+        "Ctrl slows extra-fast animation proportionally");
+    input.slow = false;
+    input.strafe = 1.0f;
+    Check(NearlyEqual(PlayerController::MovementAnimationRate(player, input), 1.0f),
+        "strafe retains its normal animation pace with extra-fast mode selected");
+    player.jumping = true;
+    input.strafe = 0.0f;
+    Check(NearlyEqual(PlayerController::MovementAnimationRate(player, input), 1.0f),
+        "extra-fast mode does not accelerate the jump animation");
+
+    InputController::KeyDown(keyboard, VK_SHIFT);
+    InputController::KeyUp(keyboard, VK_SHIFT);
+    InputController::FocusLost(keyboard);
+    Check(InputController::Movement(keyboard).fastRunning, "focus loss retains extra-fast mode");
+    InputController::KeyDown(keyboard, VK_MENU);
+    Check(!InputController::Movement(keyboard).fastRunning && InputController::Movement(keyboard).running,
+        "Alt turns extra-fast mode off and restores the selected Shift mode");
 }
 
 void TestInputController()
@@ -318,6 +487,26 @@ void TestInputController()
         "input controller starts without an active drag");
     Check(input.clientMouse.x == -1 && input.clientMouse.y == -1,
         "input controller starts without a client mouse position");
+
+    InputController::KeyDown(input, 'Q');
+    Check(InputController::Movement(input).strafe == -1 &&
+          InputController::Movement(input).vertical == 1,
+        "Q provides left strafe and preserves edit-mode camera ascent");
+    InputController::KeyDown(input, 'E');
+    Check(InputController::Movement(input).strafe == 0, "opposing strafe keys cancel");
+    InputController::KeyUp(input, 'Q');
+    Check(InputController::Movement(input).strafe == 1, "E provides right strafe");
+    InputController::KeyUp(input, 'E');
+    InputController::KeyDown(input, 0x20);
+    InputController::KeyUp(input, 0x20);
+    Check(InputController::ConsumeJump(input), "quick Space tap is retained until the next movement update");
+    Check(!InputController::ConsumeJump(input), "jump requests are consumed once");
+    InputController::KeyDown(input, 0x20);
+    Check(InputController::ConsumeJump(input), "new Space press requests a jump");
+    InputController::KeyDown(input, 0x20);
+    Check(!InputController::ConsumeJump(input), "keyboard auto-repeat does not request repeated jumps");
+    InputController::FocusLost(input);
+    Check(!input.jumpHeld && !InputController::ConsumeJump(input), "focus loss clears jump input");
 
     Check(InputController::KeyDown(input, 'W') == InputController::Action::None,
         "movement keys do not emit application actions");
@@ -339,6 +528,16 @@ void TestInputController()
     InputController::KeyDown(input, 0x11);
     movement = InputController::Movement(input);
     Check(movement.boost && movement.slow, "modifier keys are retained in movement snapshots");
+    Check(movement.running, "first Shift press toggles running on");
+    InputController::KeyDown(input, 0x10);
+    Check(InputController::Movement(input).running, "Shift auto-repeat does not toggle again");
+    InputController::KeyUp(input, 0x10);
+    Check(InputController::Movement(input).running && !InputController::Movement(input).boost,
+        "releasing Shift retains running but releases fly-camera boost");
+    InputController::KeyDown(input, 0x10);
+    Check(!InputController::Movement(input).running, "second Shift press toggles walking");
+    InputController::KeyUp(input, 0x10);
+    InputController::KeyDown(input, 0x10);
     Check(InputController::KeyDown(input, 'O') == InputController::Action::OpenDat,
         "control plus O emits the open-DAT action");
     InputController::KeyUp(input, 0x11);
@@ -350,8 +549,18 @@ void TestInputController()
         "G emits the unstick action");
     Check(InputController::KeyDown(input, 'V') == InputController::Action::CycleWeather,
         "V emits the weather-cycle action");
-    Check(InputController::KeyDown(input, 0x1B) == InputController::Action::Exit,
-        "Escape emits the exit action");
+    Check(InputController::KeyDown(input, 'T') ==
+            InputController::Action::ToggleCameraDebugOverlay,
+        "T emits the camera-debug toggle action");
+    Check(InputController::KeyDown(input, 'T') == InputController::Action::None,
+        "held T does not repeatedly toggle camera debug telemetry");
+    InputController::KeyUp(input, 'T');
+    Check(InputController::KeyDown(input, 'T') ==
+            InputController::Action::ToggleCameraDebugOverlay,
+        "T toggles camera debug telemetry again after release");
+    InputController::KeyUp(input, 'T');
+    Check(InputController::KeyDown(input, 0x1B) == InputController::Action::None,
+        "Escape does not emit a program exit action");
     Check(InputController::KeyDown(input, 0x08) == InputController::Action::Back,
         "Backspace emits the back action");
     Check(InputController::KeyDown(input, 0x0D) == InputController::Action::Confirm,
@@ -371,8 +580,8 @@ void TestInputController()
         "mouse leave clears the tracked client position");
 
     InputController::SetHardwareCursorEnabled(input, true);
-    Check(!input.cursorHidden,
-        "enabling the hardware cursor overrides the orbit hide request");
+    Check(input.cursorHidden,
+        "enabling the hardware cursor does not reveal an active orbit cursor");
     InputController::EndDrag(input);
     Check(input.dragMode == InputController::DragMode::None && !input.wantsCursorHidden,
         "ending a drag clears its capture and cursor intent");
@@ -387,6 +596,9 @@ void TestInputController()
     Check(movement.forward == 0.0f && movement.right == 0.0f &&
           !movement.boost && !movement.slow,
         "focus loss clears held movement and modifier keys");
+    Check(movement.running, "focus loss preserves the selected run mode");
+    InputController::KeyDown(input, 0x10);
+    Check(!InputController::Movement(input).running, "Shift toggles normally after focus returns");
 
     InputController::Shutdown(input);
     Check(input.window == nullptr, "input-controller shutdown releases its window association");
@@ -705,6 +917,7 @@ void TestHighPolyCreationPanelContract()
 void TestZoneObjectPanelStateContract()
 {
     const ZoneObjectPanel::State state;
+    const ZoneObjectPanel::RefreshData refresh;
     Check(!state.owner && !state.window && !state.zoneLabel &&
           !state.placedObjectList && !state.unreferencedObjectList &&
           !state.collisionObjectList && !state.drawBatchList &&
@@ -738,6 +951,10 @@ void TestZoneObjectPanelStateContract()
           ZoneObjectPanel::Command::ApplyTransform !=
               ZoneObjectPanel::Command::CenterSelected,
         "zone-object panel actions use distinct typed commands");
+    Check(std::string_view(refresh.zoneLabel).empty() && !refresh.overrides &&
+          !refresh.hiddenObjectNames && refresh.collisionTriangleCount == 0 &&
+          refresh.modelMeshCount == 0 && !refresh.editingEnabled,
+        "zone-object panel refresh inputs have safe detached defaults");
 }
 
 void TestOrbitCameraInputOperations()
@@ -771,8 +988,82 @@ void TestOrbitCameraInputOperations()
 }
 }
 
+void TestCollisionRegressions()
+{
+    auto add = [](ZoneCollision::Mesh& mesh, const float* points) {
+        ZoneCollision::Triangle triangle;
+        Check(ZoneCollision::BuildTriangle(points, false, triangle), "valid regression triangle");
+        mesh.AddTriangle(triangle, 0.0f);
+    };
+    for (bool reverse : { false, true })
+    {
+        ZoneCollision::Mesh mesh;
+        float wall[] = { 0,-10,-10, 0,10,-10, 0,0,10 };
+        if (reverse) for (int i = 0; i < 3; ++i) std::swap(wall[i], wall[3+i]);
+        add(mesh, wall);
+        for (float side : { -1.0f, 1.0f })
+        {
+            float position[] = { side * 1.0f, 0, 0 };
+            float velocity = 0;
+            bool grounded = false;
+            ZoneCollision::MoveHorizontal(mesh, 0.72f, 3.2f, 0.85f, 1.25f,
+                position, velocity, grounded, -side * 20.0f, 0);
+            Check(position[0] * side >= 0.719f, "thin wall blocks both windings and approach sides over long moves");
+            ZoneCollision::MoveHorizontal(mesh, 0.72f, 3.2f, 0.85f, 1.25f,
+                position, velocity, grounded, side * 0.2f, 0.2f);
+            Check(position[0] * side > 0.9f && position[2] > 0.19f, "player can move away from a wall");
+        }
+    }
+    ZoneCollision::Mesh ledge;
+    const float riser[] = { 0,-0.5f,-10, 0,10,-10, 0,-0.5f,10 };
+    const float top[] = { 0,-0.5f,-10, 10,-0.5f,-10, 0,-0.5f,10 };
+    add(ledge, riser); add(ledge, top);
+    float position[] = { -0.1f,0,0 };
+    float velocity = 0;
+    bool grounded = true;
+    ZoneCollision::MoveHorizontal(ledge, 0.72f, 3.2f, 0.85f, 1.25f,
+        position, velocity, grounded, 0.2f, 0);
+    Check(position[0] > 0.09f && NearlyEqual(position[1], -0.5f), "low ledge with deep riser is walkable");
+    Check(!ZoneCollision::OverlapsWallAt(ledge.Triangles(), ledge.Index(),
+        position[0], position[1], position[2], 0.72f, 3.2f, 0.85f), "ledge floor is safe at its edge");
+
+    ZoneCollision::Mesh gap;
+    const float farFloor[] = { 0.05f,0,-10, 10,0,-10, 0.05f,0,10 };
+    add(gap, farFloor);
+    position[0] = -0.1f; position[1] = 0; position[2] = 0; grounded = true;
+    ZoneCollision::MoveHorizontal(gap, 0.72f, 3.2f, 0.85f, 1.25f,
+        position, velocity, grounded, 0.1f, 0);
+    Check(position[0] > -0.01f && !grounded, "missing floor sample does not become an invisible wall");
+    ZoneCollision::MoveHorizontal(gap, 0.72f, 3.2f, 0.85f, 1.25f,
+        position, velocity, grounded, 0.1f, 0);
+    ZoneCollision::UpdateVerticalMotion(gap, 0.72f, 0.85f, 0.35f, 80, 28, 80,
+        0.016f, position, velocity, grounded, 3.2f);
+    Check(position[0] > 0.09f && grounded, "player crosses a narrow floor seam and regains support");
+}
+
 int main()
 {
+    NpcInteraction::State npcSelection;
+    npcSelection.targets = { { 10, 0, 0, 100, 100, 0.8f }, { 20, 25, 25, 75, 75, 0.2f } };
+    Check(!npcSelection.Click(50, 50) && npcSelection.selected == 20, "Nearest overlapping NPC is selected without talking");
+    Check(npcSelection.Click(50, 50), "Click selected NPC opens dialogue");
+    Check(!npcSelection.Click(10, 10) && npcSelection.selected == 10, "Click different NPC changes selection without dialogue");
+    Check(!npcSelection.Click(150, 150) && npcSelection.selected == 0, "Empty space clears NPC selection");
+    npcSelection.targets.clear();
+    Check(!npcSelection.Click(50, 50), "Unrendered NPC cannot be selected");
+
+    {
+        PlayerController::State player;
+        PlayerController::InputSnapshot input;
+        input.forward = 1;
+        PlayerController::SimulationContext context;
+        context.beforeHorizontalMove = [](const PlayerController::State& before, float dx, float dz, float dt) {
+            Check(NearlyEqual(before.position[2],0), "dynamic contact runs before player displacement");
+            Check(NearlyEqual(dx,0) && dz<0 && NearlyEqual(dt,0.1f), "dynamic contact receives clamped intended motion");
+        };
+        PlayerController::UpdateMovement(player,input,1.0f,context);
+    }
+    TestCollisionRegressions();
     TestDefaultState();
     TestResolutionOptions();
     TestWindowModes();
@@ -782,6 +1073,8 @@ int main()
     TestPlayerControllerState();
     TestPlayerControllerMovement();
     TestInputController();
+    TestFastRunning();
+    TestMouseForward();
     TestInteractionController();
     TestModelOwnershipContract();
     TestSceneModelLoaderContract();

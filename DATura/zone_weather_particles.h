@@ -9,6 +9,11 @@ struct noesisModel_t;
 
 namespace ZoneWeatherParticles
 {
+void DrawAtTime(IDirect3DDevice9 *device, noesisModel_t *model, bool environmentValid,
+          bool enableMipMapping, const char *weatherPath,
+          const std::vector<ff11GeneratorRecord_t> &generators,
+          const std::vector<ff11KeyframeRecord_t> &keyframes,
+          float cameraX, float cameraY, float cameraZ, double seconds, int minute);
 void Draw(IDirect3DDevice9 *device, noesisModel_t *model, bool environmentValid,
           bool enableMipMapping, const char *weatherPath,
           const std::vector<ff11GeneratorRecord_t> &generators,

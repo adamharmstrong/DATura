@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <vector>
 
 struct FFXICharRace;
 
@@ -39,4 +41,7 @@ namespace FFXIDatSet
     void BuildLowPoly(const LowPolyOptions& options, char* out, std::size_t outSize);
     bool BuildPlayer(const char* ffxiRoot, const PlayerOptions& options,
                      char* out, std::size_t outSize);
+    // Retail look IDs are logical file-table indices, not physical DAT offsets.
+    bool BuildNpc(const char* ffxiRoot, const std::vector<std::uint8_t>& look,
+                  char* out, std::size_t outSize);
 }

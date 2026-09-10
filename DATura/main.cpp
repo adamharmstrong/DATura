@@ -4,6 +4,11 @@
 ========================================================================================*/
 
 #include "stdafx.h"
+#include "ffxi_dat_resolver.h"
+#include "dat_replacement_dialog.h"
+#include "ffxi_coordinate_frame.h"
+#include "zone_transition.h"
+#include "zone_diagnostics_dialog.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
 #include "zone_dat_table.h"
@@ -18,13 +23,16 @@
 #include "ffxi_paths.h"
 #include "ffxi_path_info_dialog.h"
 #include "ffxi_title_screen_renderer.h"
+#include "ffxi_title_assets.h"
+#include "ffxi_title_ui_primitives.h"
 #include "title_scene_assets.h"
 #include "ffxi_nation_selection.h"
 #include "ffxi_nation_selection_renderer.h"
 #include "d3d9_device.h"
+#include "d3d_ui_renderer.h"
 #include "d3d_math.h"
-#include "d3d_model_buffers.h"
 #include "d3d_model_render_state.h"
+#include "model_renderer.h"
 #include "zone_model_transform.h"
 #include "zone_model_render_metadata.h"
 #include "zone_environment_identity.h"
@@ -37,22 +45,16 @@
 #include "zone_object_transform.h"
 #include "zone_object_highlight_renderer.h"
 #include "zone_object_transform_editor.h"
-#include "zone_object_list_columns.h"
-#include "zone_object_list_rows.h"
 #include "zone_object_list_selection.h"
-#include "zone_object_list_view.h"
-#include "zone_object_panel_loading.h"
-#include "zone_object_panel_edit_controls.h"
-#include "zone_object_panel_style.h"
 #include "zone_object_panel.h"
 #include "zone_object_tree_population.h"
-#include "zone_object_tree_builder.h"
 #include "zone_object_visibility.h"
 #include "win32_drawing.h"
 #include "win32_application.h"
 #include "win32_theme.h"
 #include "win32_owner_draw_menu.h"
 #include "application_menu.h"
+#include "ffxi_main_menu.h"
 #include "application_settings.h"
 #include "config_dialog.h"
 #include "input_controller.h"
@@ -82,15 +84,24 @@
 #include "ffxi_save_result_dialog.h"
 #include "npc_render_geometry.h"
 #include "npc_nameplate_renderer.h"
+#include "ffxi_bitmap_font.h"
+#include "npc_interaction.h"
+#include "npc_chat_window.h"
 #include "zone_collision_geometry.h"
+#include "zone_door_interaction.h"
+#include "zone_elevator.h"
 #include "orbit_camera.h"
 #include "player_controller.h"
 #include "player_model_loader.h"
 #include "bgw_player.h"
 #include "audio_player.h"
+#include "home_point_effect.h"
 #include "texture_viewer.h"
 #include "game_ui_config.h"
 #include "npc_placement.h"
+#include "ffxi_event_table.h"
+#include "ffxi_event_messages.h"
+#include "ffxi_lore_zone_dat_crossref.h"
 #include "resource.h"
 #include <commctrl.h>
 #include <windowsx.h>
@@ -102,28 +113,24 @@
 #include <string>
 #include <map>
 #include <algorithm>
+#include <cctype>
+
+// Keep the newly introduced developer-clock API visible even when Visual
+// Studio is holding an older precompiled-header/index snapshot.
+namespace ZoneEnvironmentState
+{
+void SetTimeOverride(int minuteOfDay);
+void ClearTimeOverride();
+}
 
 using NpcRenderGeometry::ProjectNpcNameplate;
-using ZoneObjectListView::SetSubItem;
-using ZoneObjectListColumns::SetupCollisionColumns;
-using ZoneObjectListColumns::SetupDrawBatchColumns;
-using ZoneObjectListColumns::SetupMapObjectColumns;
-using ZoneObjectListRows::InsertCollisionRow;
-using ZoneObjectListRows::InsertDrawBatchRow;
-using ZoneObjectListRows::InsertMapObjectRow;
 using ZoneObjectTransform::DebugTransform;
-using ZoneObjectListSelection::GetSelectedMapObjectIndex;
 using ZoneObjectListSelection::SetCheckStateForMapObjectIndex;
-using ZoneObjectPanelEditControls::SetUnreferencedEditorVisible;
-using ZoneObjectPanelStyle::ApplyListColors;
-using ZoneObjectPanelStyle::ApplyTreeColors;
 using ZoneObjectVisibility::SetListVisibility;
 using ZoneObjectVisibility::SetHidden;
 using ZoneObjectVisibility::ShowOnlySelectedMapObject;
 using ZoneObjectTreePopulation::PopulateExpandedNode;
 using ZoneEnvironmentIdentity::ContainsLowerToken;
-using ZoneEnvironmentIdentity::IsEnvironmentObjectName;
-using ZoneModelRenderMetadata::IsAnimatedWaterSurface;
 
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "comctl32.lib")
@@ -149,6 +156,7 @@ static FFXIModelLifetime::OwnedModel g_playerAsset;
 struct NpcRenderAsset
 {
     FFXIModelLifetime::OwnedModel resource;
+    std::unique_ptr<HomePoint::Effect> homePoint;
     float animationTime = 0.0f;
     float nameplateLocalY = -2.5f;
     bool visibleLastFrame = false;
@@ -158,47 +166,24 @@ struct NpcRenderInstance
 {
     FFXINpcPlacement::Placement placement;
     size_t assetIndex = 0;
+    double homePointActivatedAt = -1000.0;
 };
 
 static std::vector<NpcRenderAsset> g_npcRenderAssets;
 static std::vector<NpcRenderInstance> g_npcRenderInstances;
+static double g_homePointSeconds = 0.0;
 
 static std::vector<NpcNameplateRenderer::DrawItem> g_npcNameplates;
+static NpcInteraction::State g_npcInteraction;
 static TitleSceneAssets::State g_titleAssets;
 static GameUiConfig   g_gameUiConfig    = {};
 static LowPolyCharacterPanel::State g_lowPolyPanel;
 static HighPolyCreationPanel::State g_highPolyCreationPanel;
 static ZoneObjectPanel::State g_zoneObjectPanel;
-// Transitional references keep the behavior-heavy panel procedure stable while
-// its formerly independent globals move under one explicit lifetime owner.
-static HWND& g_hZoneObjectPanel = g_zoneObjectPanel.window;
-static HWND& g_hZoneLabel = g_zoneObjectPanel.zoneLabel;
+// Transitional references retain the application-owned visibility workflows.
 static HWND& g_hZoneObjectList = g_zoneObjectPanel.placedObjectList;
 static HWND& g_hZoneUnrefObjectList = g_zoneObjectPanel.unreferencedObjectList;
-static HWND& g_hZoneCollisionObjectList = g_zoneObjectPanel.collisionObjectList;
-static HWND& g_hZoneDrawBatchList = g_zoneObjectPanel.drawBatchList;
-static HWND& g_hZoneDataTree = g_zoneObjectPanel.dataTree;
-static HWND& g_hZoneRawDataTree = g_zoneObjectPanel.rawDataTree;
-static HWND& g_hZoneCollisionDataTree = g_zoneObjectPanel.collisionDataTree;
-static HWND& g_hZoneLoadingLabel = g_zoneObjectPanel.loadingLabel;
-static HWND& g_hZonePlacedShowAllButton = g_zoneObjectPanel.placedShowAllButton;
-static HWND& g_hZonePlacedHideAllButton = g_zoneObjectPanel.placedHideAllButton;
-static HWND& g_hZoneUnrefShowAllButton = g_zoneObjectPanel.unreferencedShowAllButton;
-static HWND& g_hZoneUnrefHideAllButton = g_zoneObjectPanel.unreferencedHideAllButton;
-static HWND& g_hZoneStatusLabel = g_zoneObjectPanel.statusLabel;
-static HWND (&g_hZoneUnrefEdits)[ZoneObjectPanel::kUnreferencedFieldCount] =
-    g_zoneObjectPanel.unreferencedEdits;
-static HWND (&g_hZoneUnrefLabels)[ZoneObjectPanel::kUnreferencedFieldCount] =
-    g_zoneObjectPanel.unreferencedLabels;
-static HWND& g_hZoneUnrefApplyButton = g_zoneObjectPanel.unreferencedApplyButton;
-static HWND& g_hZoneCollisionVisibleCheck = g_zoneObjectPanel.collisionVisibleCheck;
 static bool& g_populatingZoneObjectList = g_zoneObjectPanel.populatingObjectList;
-static int& g_zoneObjectColumnMode = g_zoneObjectPanel.placedColumnMode;
-static int& g_zoneUnrefObjectColumnMode = g_zoneObjectPanel.unreferencedColumnMode;
-static int& g_zoneCollisionObjectColumnMode = g_zoneObjectPanel.collisionColumnMode;
-static int& g_zoneDrawBatchColumnMode = g_zoneObjectPanel.drawBatchColumnMode;
-static int& g_zoneTreeSelectedMapObjectIndex = g_zoneObjectPanel.treeSelectedMapObjectIndex;
-static bool& g_zoneCombinedObjectTree = g_zoneObjectPanel.combinedObjectTree;
 static SceneLoadContext::State g_sceneLoadContext;
 static std::string g_loadedZoneLabel = "No zone loaded";
 static ApplicationSettings::State g_applicationSettings;
@@ -218,8 +203,16 @@ static ZoneRenderFrustum::Data g_zoneRenderFrustum = {};
 static float g_zoneVisibilityViewerPoint[3] = {};
 static bool g_zoneVisibilityViewerPointValid = false;
 static std::vector<unsigned char> g_zoneVisibleMapObjects;
+static float g_playModeFrameSeconds = 1.0f / 60.0f;
+static float g_adaptivePlayDrawDistance = 2000.0f;
 
 static std::map<std::string, DebugTransform> g_zoneObjectOverrides;
+static std::map<std::string, DebugTransform> g_zoneRuntimeOverrides;
+static ZoneDoorInteraction::State g_doors;
+static ZoneElevator::State g_metalworksElevator;
+static bool g_doorPhysicsUpdated = false;
+static D3DMATRIX g_pickView = {}, g_pickProjection = {};
+static int g_pickWidth = 0, g_pickHeight = 0;
 
 // Orbit camera state
 static OrbitCamera::State g_orbitCamera;
@@ -227,9 +220,68 @@ static float& g_camYaw = g_orbitCamera.yaw;
 static float& g_camPitch = g_orbitCamera.pitch;
 static float& g_camDist = g_orbitCamera.distance;
 static float (&g_camTarget)[3] = g_orbitCamera.target;
+static bool g_cameraDebugOverlayVisible = false;
+static bool g_developerConsoleOpen = false;
+static std::string g_developerConsoleInput;
+static std::vector<std::string> g_developerConsoleLog;
+static std::vector<std::string> g_developerConsoleHistory;
+static int g_developerConsoleScroll = 0;
+static int g_developerConsoleHistoryIndex = -1;
+
+static void ExecuteDeveloperCommand()
+{
+    std::string command = g_developerConsoleInput;
+    g_developerConsoleInput.clear();
+    if (command.empty()) return;
+    g_developerConsoleHistory.push_back(command);
+    g_developerConsoleHistoryIndex = -1;
+    g_developerConsoleLog.push_back("> " + command);
+    while (!command.empty() && std::isspace((unsigned char)command.front())) command.erase(command.begin());
+    if (command == "time reset")
+    {
+        ZoneEnvironmentState::ClearTimeOverride();
+        ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
+        g_developerConsoleLog.push_back("Time override cleared");
+    }
+    else if (_strnicmp(command.c_str(), "time", 4) == 0)
+    {
+        int hour = -1, minute = -1;
+        char meridiem[8] = {};
+        const int parsed = sscanf_s(command.c_str() + 4, "%d:%d %7s",
+            &hour, &minute, meridiem, (unsigned)_countof(meridiem));
+        const bool hasMeridiem = parsed == 3;
+        bool valid = parsed >= 2 && minute >= 0 && minute < 60;
+        if (valid && hasMeridiem)
+        {
+            if (_stricmp(meridiem, "AM") == 0)
+            {
+                valid = hour >= 1 && hour <= 12;
+                if (hour == 12) hour = 0;
+            }
+            else if (_stricmp(meridiem, "PM") == 0)
+            {
+                valid = hour >= 1 && hour <= 12;
+                if (hour != 12) hour += 12;
+            }
+            else valid = false;
+        }
+        else if (valid)
+            valid = hour >= 0 && hour < 24;
+        if (valid)
+        {
+            ZoneEnvironmentState::SetTimeOverride(hour * 60 + minute);
+            ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
+            g_developerConsoleLog.push_back("Time set to " + command.substr(5));
+        }
+        else g_developerConsoleLog.push_back("Usage: time HH:MM");
+    }
+    else g_developerConsoleLog.push_back("Unknown command: " + command);
+    g_developerConsoleScroll = 0;
+}
 
 // Mouse, keyboard, capture, and cursor state.
 static InputController::State g_input;
+static FFXIMainMenu::State g_ffxiMainMenu;
 
 // Edit/game mode and selected game music have one policy owner. The application
 // shell still performs the resulting player, menu, window, and audio operations.
@@ -250,6 +302,68 @@ static float (&g_zoneCollisionMin)[3] = g_zoneCollisionMesh.MinBounds();
 static float (&g_zoneCollisionMax)[3] = g_zoneCollisionMesh.MaxBounds();
 static bool& g_haveZoneCollisionBounds = g_zoneCollisionMesh.HasBounds();
 
+static float ClampPlayDrawDistance(const float distance)
+{
+    if (!std::isfinite(distance))
+        return 2000.0f;
+    return std::max(750.0f, std::min(distance, 8000.0f));
+}
+
+static float EffectivePlayDrawDistance(const float configuredDistance,
+                                       const bool unlimitedDistance,
+                                       const bool playMode)
+{
+    if (!playMode || unlimitedDistance)
+    {
+        return configuredDistance;
+    }
+
+    const float configuredCap = ClampPlayDrawDistance(configuredDistance);
+    if (g_adaptivePlayDrawDistance <= 0.0f ||
+        g_adaptivePlayDrawDistance > configuredCap)
+    {
+        g_adaptivePlayDrawDistance = std::min(configuredCap, 2000.0f);
+    }
+    return std::min(configuredCap, g_adaptivePlayDrawDistance);
+}
+
+static void UpdateAdaptivePlayDrawDistance(const float deltaSeconds,
+                                           const bool playMode)
+{
+    if (!playMode)
+    {
+        g_playModeFrameSeconds = 1.0f / 60.0f;
+        g_adaptivePlayDrawDistance = 2000.0f;
+        return;
+    }
+    if (!(deltaSeconds > 0.0f) || !std::isfinite(deltaSeconds))
+        return;
+
+    const float sample = std::min(deltaSeconds, 0.25f);
+    g_playModeFrameSeconds += (sample - g_playModeFrameSeconds) * 0.12f;
+
+    const float configuredDistance = ApplicationSettings::DrawDistanceOptionValue(
+        g_applicationSettings.drawDistanceIndex);
+    const bool unlimitedDistance = ApplicationSettings::DrawDistanceOptionIsUnlimited(
+        g_applicationSettings.drawDistanceIndex);
+    const float configuredCap = unlimitedDistance ? 8000.0f :
+        ClampPlayDrawDistance(configuredDistance);
+    if (g_adaptivePlayDrawDistance <= 0.0f)
+        g_adaptivePlayDrawDistance = std::min(configuredCap, 2000.0f);
+
+    if (g_playModeFrameSeconds > 0.040f)
+        g_adaptivePlayDrawDistance *= 0.82f;
+    else if (g_playModeFrameSeconds > 0.030f)
+        g_adaptivePlayDrawDistance *= 0.92f;
+    else if (g_playModeFrameSeconds < 0.020f)
+        g_adaptivePlayDrawDistance += 220.0f * sample;
+    else if (g_playModeFrameSeconds < 0.024f)
+        g_adaptivePlayDrawDistance += 80.0f * sample;
+
+    g_adaptivePlayDrawDistance = std::min(
+        ClampPlayDrawDistance(g_adaptivePlayDrawDistance), configuredCap);
+}
+
 // Registry keys used to persist a user-overridden path.
 static const char kAppRegKey[]   = "Software\\FFXIViewer";
 static const char kAppPathValue[]= "FFXIPath";
@@ -260,6 +374,17 @@ static const char kDefaultFFXIPath[] =
     "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\";
 static const char kTitleScreenZoneDat[] = "ROM/0/90.DAT"; // Konschtat Highlands
 static const int  kTitleScreenMusicId = 108;              // Vana'diel March
+// Authored title presentation. Keep these separate from the regular-zone
+// camera defaults: the title backdrop is loaded through the normal zone path,
+// but its opening composition is intentionally cinematic and deterministic.
+static constexpr float kTitleScreenCameraTarget[3] =
+{
+    -284.089f, -41.906f, 328.520f
+};
+static constexpr float kTitleScreenCameraYaw = 10.1700f;
+static constexpr float kTitleScreenCameraPitch = 0.1900f;
+static constexpr float kTitleScreenCameraDistance = 260.0f;
+static const char kTitleScreenWeatherToken[] = "/suny";
 
 // Active FFXI root path used to seed file browsers.
 // Starts as the hard-coded default; user may override via Settings menu.
@@ -267,10 +392,20 @@ static char g_ffxiPath[MAX_PATH] = {};
 static bool g_titleScreenActive = false;
 static bool g_highPolyCreationActive = false;
 static bool g_nationSelectActive = false;
+static bool g_characterSelectActive = false;
+static bool g_characterDeleteActive = false;
 static int  g_selectedNationIndex = 0;
 
+struct SavedCharacterPreview
+{
+    FFXIModelLifetime::OwnedModel asset;
+    std::string name;
+};
+static std::vector<SavedCharacterPreview> g_savedCharacterPreviews;
+static int g_selectedCharacterPreview = 0;
+
 static FFXICreationSelection g_creationSelection = {};
-static int g_creationAnimationIndex = 0;
+static int g_creationAnimationIndex = 2;
 static char g_creationCharacterName[64] = "Adventurer";
 static int  g_playerFaceVariant = 0;
 
@@ -280,7 +415,7 @@ static CreationSqleMotionInfo g_creationBodyMotion = {};
 static CreationSqleMotionInfo g_creationHeadMotion = {};
 static float g_creationAnimTime = 0.0f;
 static float g_creationHorizontalPlacement[3] = {};
-static bool g_creationAnimatedCamera = false;
+static bool g_creationAnimatedCamera = true;
 static FFXICreationCamera::Track g_creationCameraTrack = {};
 
 static PlayerEquipState g_playerEquip =
@@ -369,7 +504,7 @@ static void InitFFXIPath()
 {
     FFXIInstallPath::InitializePath(kAppRegKey, kAppPathValue, kDefaultFFXIPath,
                                     g_ffxiPath, sizeof(g_ffxiPath));
-
+    DatReplacementDialog::Initialize(g_ffxiPath,kAppRegKey);
 }
 
 // Open a folder-browser dialog so the user can manually choose the FFXI root.
@@ -382,8 +517,11 @@ static void PromptSetFFXIPath()
             g_ffxiPath, sizeof(g_ffxiPath)))
     {
         FFXIInstallPath::SavePath(kAppRegKey, kAppPathValue, g_ffxiPath);
+        FFXIDatResolver::SetInstallRoot(g_ffxiPath);
         AudioPlayer_SetRootPath(g_ffxiPath);
         TextureViewer_SetRootPath(g_ffxiPath);
+        FFXIBitmapFont::SetRootPath(g_ffxiPath);
+        NpcNameplateRenderer::ClearCachedTextures();
 
         ShowFFXIPathInfoDialog("Path Saved", "FFXI path set to:", g_ffxiPath);
     }
@@ -394,8 +532,11 @@ static void ResetFFXIPathToDefault()
 {
     FFXIInstallPath::ClearSavedPath(kAppRegKey, kAppPathValue);
     strcpy_s(g_ffxiPath, kDefaultFFXIPath);
+    FFXIDatResolver::SetInstallRoot(g_ffxiPath);
     AudioPlayer_SetRootPath(g_ffxiPath);
     TextureViewer_SetRootPath(g_ffxiPath);
+    FFXIBitmapFont::SetRootPath(g_ffxiPath);
+    NpcNameplateRenderer::ClearCachedTextures();
 
     ShowFFXIPathInfoDialog("Path Reset", "Path reset to default:", g_ffxiPath);
 }
@@ -408,9 +549,12 @@ static void AutoDetectFFXIPath()
     if (FFXIInstallPath::DetectFromRegistry(detected, sizeof(detected)))
     {
         strcpy_s(g_ffxiPath, detected);
+        FFXIDatResolver::SetInstallRoot(g_ffxiPath);
         FFXIInstallPath::SavePath(kAppRegKey, kAppPathValue, g_ffxiPath);
         AudioPlayer_SetRootPath(g_ffxiPath);
         TextureViewer_SetRootPath(g_ffxiPath);
+        FFXIBitmapFont::SetRootPath(g_ffxiPath);
+        NpcNameplateRenderer::ClearCachedTextures();
 
         ShowFFXIPathInfoDialog("Auto-Detect", "Detected FFXI path:", g_ffxiPath);
     }
@@ -482,6 +626,10 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
     case ConfigDialog::Command::ShowPath:
         ShowCurrentFFXIPathDialog();
         break;
+    case ConfigDialog::Command::DoorInteractionChanged:
+        g_doors.SetPhysics(g_applicationSettings.doorInteractionMode == ApplicationSettings::DoorPhysics);
+        InvalidateRect(g_hWnd, NULL, FALSE);
+        break;
     case ConfigDialog::Command::MipMappingChanged:
     case ConfigDialog::Command::BumpMappingChanged:
     case ConfigDialog::Command::LightingQualityChanged:
@@ -510,12 +658,25 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
     case ConfigDialog::Command::ColorThemeChanged:
         SetColorTheme(event.value);
         break;
+    case ConfigDialog::Command::ChatLogChanged:
+        NpcChatWindow::SetSize(g_gameUiConfig.chatLogWidthPercent, g_gameUiConfig.chatLogHeightPercent);
+        NpcChatWindow::SetTimeout(g_gameUiConfig.chatLogTimeoutSeconds);
+        if (!GameUiConfig_SaveChatLog(g_gameUiConfig))
+            MessageBoxA(ConfigDialog::Window(g_configDialog),
+                "The chat log timeout changed for this session, but the settings file could not be saved.",
+                "DATura Config", MB_OK | MB_ICONWARNING);
+        break;
+    case ConfigDialog::Command::PlayerNameplateChanged:
+        NpcNameplateRenderer::ClearCachedTextures();
+        InvalidateRect(g_hWnd, NULL, FALSE);
+        if (!GameUiConfig_SavePlayerNameplate(g_gameUiConfig))
+            MessageBoxA(ConfigDialog::Window(g_configDialog),
+                "The nameplate changed for this session, but the settings file could not be saved.",
+                "DATura Config", MB_OK | MB_ICONWARNING);
+        break;
     case ConfigDialog::Command::CollisionVisibilityChanged:
-        if (g_hZoneCollisionVisibleCheck)
-        {
-            SendMessageA(g_hZoneCollisionVisibleCheck, BM_SETCHECK,
-                g_applicationSettings.showCollisionGeometry ? BST_CHECKED : BST_UNCHECKED, 0);
-        }
+        ZoneObjectPanel::SetCollisionVisible(
+            g_zoneObjectPanel, g_applicationSettings.showCollisionGeometry);
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
     case ConfigDialog::Command::SoundSettingsChanged:
@@ -623,6 +784,174 @@ static void LoadDatFile(const char *path, bool userContentLoad = true, bool rend
 static void UnloadNpcModels();
 static void LoadNpcModelsForCurrentZone();
 static void UpdateNpcAnimations(float dt);
+static void TransitionPlayerZone(const ZoneTransition::Line& line, const PlayerController::State& previousPlayer);
+static int g_transitionZoneId = -1;
+static const ZoneTransition::Line* g_failedZoneTransition = nullptr;
+
+namespace
+{
+enum class ZoneTransitionPhase
+{
+    None,
+    FadingOut,
+    Loading,
+    FadingIn,
+};
+
+struct ZoneTransitionRuntime
+{
+    ZoneTransitionPhase phase = ZoneTransitionPhase::None;
+    const ZoneTransition::Line* line = nullptr;
+    PlayerController::State previousPlayer = {};
+    float opacity = 0.0f;
+};
+
+struct LoadingOverlayState
+{
+    HANDLE thread = NULL;
+    HANDLE ready = NULL;
+    HWND window = NULL;
+    RECT screenRect = {};
+};
+
+static ZoneTransitionRuntime g_zoneTransitionRuntime;
+static LoadingOverlayState g_loadingOverlay;
+static const wchar_t kLoadingOverlayClassName[] = L"DATuraZoneLoadingOverlay";
+static const float kZoneTransitionFadeSeconds = 0.35f;
+
+static bool IsZoneTransitionActive()
+{
+    return g_zoneTransitionRuntime.phase != ZoneTransitionPhase::None;
+}
+
+static LRESULT CALLBACK LoadingOverlayWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg)
+    {
+    case WM_CREATE:
+        SetTimer(hWnd, 1, 125, NULL);
+        return 0;
+
+    case WM_TIMER:
+        InvalidateRect(hWnd, NULL, FALSE);
+        return 0;
+
+    case WM_PAINT:
+        {
+            PAINTSTRUCT ps = {};
+            HDC dc = BeginPaint(hWnd, &ps);
+            RECT bounds = {};
+            GetClientRect(hWnd, &bounds);
+            HBRUSH black = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+            FillRect(dc, &bounds, black);
+
+            const ULONGLONG tick = GetTickCount64();
+            const int dotCount = static_cast<int>((tick / 350) % 4);
+            char text[16] = "Loading";
+            for (int i = 0; i < dotCount; ++i)
+                strcat_s(text, ".");
+
+            HFONT font = CreateFontA(-22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                DEFAULT_PITCH | FF_SWISS, "Arial");
+            const int textHeight = 22;
+            const SIZE loadingMaxSize = FFXIBitmapFont::Measure(L"Loading...", textHeight);
+            const int textWidth = (std::max)(static_cast<int>(loadingMaxSize.cx), 96);
+            const int rightMargin = 32;
+            const int bottomMargin = 24;
+            RECT textBounds = bounds;
+            textBounds.right -= rightMargin;
+            textBounds.left = (std::max)(textBounds.left, textBounds.right - textWidth);
+            textBounds.top = (std::max)(textBounds.top, textBounds.bottom - 48);
+            textBounds.bottom -= bottomMargin;
+            Win32Drawing::DrawShadowText(dc, font, text, textBounds,
+                DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX,
+                RGB(255, 255, 255), 2);
+            DeleteObject(font);
+            EndPaint(hWnd, &ps);
+        }
+        return 0;
+
+    case WM_CLOSE:
+        DestroyWindow(hWnd);
+        return 0;
+
+    case WM_DESTROY:
+        KillTimer(hWnd, 1);
+        PostQuitMessage(0);
+        return 0;
+    }
+    return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+static DWORD WINAPI LoadingOverlayThreadProc(void* parameter)
+{
+    LoadingOverlayState* state = static_cast<LoadingOverlayState*>(parameter);
+    HINSTANCE instance = GetModuleHandleW(NULL);
+    WNDCLASSEXW windowClass = {};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.lpfnWndProc = LoadingOverlayWndProc;
+    windowClass.hInstance = instance;
+    windowClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    windowClass.lpszClassName = kLoadingOverlayClassName;
+    windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
+    RegisterClassExW(&windowClass);
+
+    const int width = state->screenRect.right - state->screenRect.left;
+    const int height = state->screenRect.bottom - state->screenRect.top;
+    state->window = CreateWindowExW(
+        WS_EX_TOOLWINDOW,
+        kLoadingOverlayClassName, L"", WS_POPUP,
+        state->screenRect.left, state->screenRect.top, width, height,
+        g_hWnd, NULL, instance, NULL);
+    if (state->window)
+    {
+        ShowWindow(state->window, SW_SHOWNOACTIVATE);
+        UpdateWindow(state->window);
+    }
+    SetEvent(state->ready);
+
+    MSG message = {};
+    while (GetMessageW(&message, NULL, 0, 0) > 0)
+    {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    state->window = NULL;
+    return 0;
+}
+
+static void StartLoadingOverlay()
+{
+    if (g_loadingOverlay.thread || !g_hWnd)
+        return;
+
+    RECT client = {};
+    GetClientRect(g_hWnd, &client);
+    POINT topLeft = { client.left, client.top };
+    POINT bottomRight = { client.right, client.bottom };
+    ClientToScreen(g_hWnd, &topLeft);
+    ClientToScreen(g_hWnd, &bottomRight);
+    g_loadingOverlay.screenRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
+    g_loadingOverlay.ready = CreateEventW(NULL, TRUE, FALSE, NULL);
+    g_loadingOverlay.thread = CreateThread(NULL, 0, LoadingOverlayThreadProc, &g_loadingOverlay, 0, NULL);
+    if (g_loadingOverlay.ready)
+        WaitForSingleObject(g_loadingOverlay.ready, 1000);
+}
+
+static void StopLoadingOverlay()
+{
+    if (g_loadingOverlay.window)
+        PostMessageW(g_loadingOverlay.window, WM_CLOSE, 0, 0);
+    if (g_loadingOverlay.thread)
+        WaitForSingleObject(g_loadingOverlay.thread, 2000);
+    if (g_loadingOverlay.thread)
+        CloseHandle(g_loadingOverlay.thread);
+    if (g_loadingOverlay.ready)
+        CloseHandle(g_loadingOverlay.ready);
+    g_loadingOverlay = {};
+}
+}
 
 static void SetLoadedZoneLabelFromNameAndPath(const char *name, const char *path)
 {
@@ -632,8 +961,7 @@ static void SetLoadedZoneLabelFromNameAndPath(const char *name, const char *path
     g_loadedZoneLabel = SceneLoadContext::FormatLoadedLabel(
         name, discoveredName, path, relativePath);
 
-    if (g_hZoneLabel)
-        SetWindowTextA(g_hZoneLabel, g_loadedZoneLabel.c_str());
+    ZoneObjectPanel::SetZoneLabel(g_zoneObjectPanel, g_loadedZoneLabel.c_str());
 }
 
 static void SetLoadedZoneLabelFromPath(const char *path)
@@ -689,6 +1017,25 @@ static void ShowResourceDatBrowser()
     FFXIResourceBrowser::ShowDatFile(g_hWnd, g_ffxiPath);
 }
 
+static void ShowZoneGeometryDiagnostics()
+{
+    if (!g_zoneAsset.Model())
+    {
+        MessageBoxA(g_hWnd, "Load a zone before capturing geometry diagnostics.", "Zone diagnostics", MB_OK);
+        return;
+    }
+    try
+    {
+        // Match the renderer's LOD query even in zones without a PVS table.
+        const FFXICoordinateFrame::Vector nativeViewer = {
+            g_zoneVisibilityViewerPoint[0],g_zoneVisibilityViewerPoint[1],g_zoneVisibilityViewerPoint[2]};
+        ZoneDiagnosticsDialog::Show(g_hWnd, ZoneSceneDiagnostics::Capture(*g_zoneAsset.Model(),
+            g_zoneCollisionMesh, g_hiddenZoneObjects, g_zoneRuntimeOverrides, g_sceneLoadContext.Path(),
+            !g_applicationSettings.mirrorWorldZones, nativeViewer));
+    }
+    catch (const std::exception& error) { MessageBoxA(g_hWnd,error.what(),"Zone diagnostic capture failed",MB_OK|MB_ICONERROR); }
+}
+
 //========================================================================================
 // Matrix math (no D3DX dependency)
 //========================================================================================
@@ -731,7 +1078,8 @@ static void BuildZoneCollisionFromDAT()
         if (!ZoneCollision::BuildTriangle(src, !g_applicationSettings.mirrorWorldZones, tri))
             continue;
 
-        g_zoneCollisionMesh.AddTriangle(tri, PlayerController::kCollisionRadius);
+        const float doorPadding = g_doors.BindCollision(i, (int)g_zoneCollisionTris.size(), tri);
+        g_zoneCollisionMesh.AddTriangle(tri, PlayerController::kCollisionRadius + doorPadding);
     }
 }
 
@@ -810,12 +1158,12 @@ static bool SpawnPlayerAtZoneHomePoint()
         if (placement.name.compare(0, 10, "Home Point") != 0)
             continue;
 
-        // NPC/Home Point coordinates are in the normal server-facing world
-        // orientation. The raw mirrored-zone option leaves MapGeo's native X
-        // axis in place, so mirror the spawn (and heading) to keep it on the
-        // same authored Home Point rather than the opposite side of the map.
-        const bool rawMirroredZone = g_applicationSettings.mirrorWorldZones;
-        float spawnX = rawMirroredZone ? -placement.transform.x : placement.transform.x;
+        // NPC/Home Point coordinates use the same native X orientation as the
+        // zone's authored MapGeo placements. Normal viewer mode mirrors the
+        // completed zone model, so apply that identical mirror to entities.
+        // The raw mirrored-zone option leaves both sources untouched.
+        const bool mirrorEntities = !g_applicationSettings.mirrorWorldZones;
+        float spawnX = mirrorEntities ? -placement.transform.x : placement.transform.x;
         float spawnY = placement.transform.y;
         float spawnZ = placement.transform.z;
         bool onGround = false;
@@ -837,7 +1185,7 @@ static bool SpawnPlayerAtZoneHomePoint()
             }
         }
 
-        const float spawnYaw = rawMirroredZone ? -placement.transform.headingRadians :
+        const float spawnYaw = mirrorEntities ? -placement.transform.headingRadians :
                                                 placement.transform.headingRadians;
         PlayerController::SetPose(g_player, spawnX, spawnY, spawnZ, spawnYaw, onGround);
         UpdatePlayerCameraTarget();
@@ -898,6 +1246,11 @@ static void SyncAppMusic()
     context.titleScreenActive = g_titleScreenActive;
     context.titleMusicId = kTitleScreenMusicId;
 
+    if (!context.soundsEnabled || (!context.playSoundsInBackground && !context.applicationOwnsForeground) ||
+        !IsGameMode() || g_titleScreenActive || g_nationSelectActive)
+        for (auto& asset : g_npcRenderAssets)
+            if (asset.homePoint) asset.homePoint->StopSound();
+
     const InteractionController::PlaybackDecision decision =
         InteractionController::DecidePlayback(g_interaction, context);
     switch (decision.action)
@@ -924,6 +1277,7 @@ static void SetGameModeMusic(int musicId)
 
 static void SetInteractionMode(const InteractionController::Mode mode)
 {
+    InputController::ConsumeJump(g_input);
     const InteractionController::ModeTransition transition =
         InteractionController::SetMode(g_interaction, mode);
     g_player.cameraActive = transition.playerCameraActive;
@@ -941,6 +1295,9 @@ static void SetInteractionMode(const InteractionController::Mode mode)
 
 static void ToggleEditGameMode()
 {
+    g_npcInteraction = {};
+    g_doors.selected = -1;
+    NpcChatWindow::Reset();
     if (IsEditMode())
     {
         if (!g_playerAsset)
@@ -972,20 +1329,70 @@ static PlayerController::InputSnapshot CapturePlayerInputSnapshot()
     PlayerController::InputSnapshot input;
     input.turn = -movement.right;
     input.forward = movement.forward;
-    input.vertical = movement.vertical;
-    input.boost = movement.boost;
+    input.strafe = movement.strafe;
+    input.boost = movement.running;
+    input.fastRunning = movement.fastRunning;
+    if (InputController::MouseForwardActive(g_input))
+    {
+        input.forward = 1.0f;
+        input.turn = 0.0f;
+        input.strafe = 0.0f;
+    }
     input.slow = movement.slow;
     return input;
 }
 
 static void UpdatePlayerMovement(const float dt)
 {
+    if (IsZoneTransitionActive())
+        return;
+
     if (!g_hWnd || GetForegroundWindow() != g_hWnd)
         return;
 
-    const PlayerController::SimulationContext context = { &g_zoneCollisionMesh };
-    PlayerController::UpdateMovement(
-        g_player, CapturePlayerInputSnapshot(), dt, context);
+    PlayerController::SimulationContext context = { &g_zoneCollisionMesh };
+    if (g_doors.physics)
+        context.beforeHorizontalMove = [](const PlayerController::State& player, float dx, float dz, float step) {
+            g_doors.UpdatePhysics(step, g_zoneCollisionMesh, player.position, dx, dz,
+                PlayerController::kCollisionRadius, PlayerController::kCollisionHeight);
+            g_doorPhysicsUpdated = true;
+        };
+    auto input = CapturePlayerInputSnapshot();
+    if (InputController::MouseForwardActive(g_input))
+    {
+        // The camera remains a normal orbit camera. The character follows its
+        // horizontal heading while the mouse chord supplies forward input.
+        g_player.yaw = g_camYaw;
+        input.turn = 0.0f;
+        input.forward = 1.0f;
+        input.strafe = 0.0f;
+    }
+    input.jump = InputController::ConsumeJump(g_input);
+    const ZoneTransition::Point previous = { g_player.position[0], g_player.position[1], g_player.position[2] };
+    const auto previousPlayer = g_player;
+    if (g_failedZoneTransition)
+    {
+        const auto native = FFXICoordinateFrame::SceneToNativeDat(previous,
+            !g_applicationSettings.mirrorWorldZones);
+        const auto& line = *g_failedZoneTransition;
+        const float side = (native[0]-line.threshold[0])*line.outward[0] +
+            (native[2]-line.threshold[2])*line.outward[2];
+        if (side < -2) g_failedZoneTransition = nullptr;
+    }
+    const auto movement = PlayerController::UpdateMovement(
+        g_player, input, dt, context);
+    if (g_zoneAsset && g_playerAsset && !movement.respawned)
+    {
+        const ZoneTransition::Point current = { g_player.position[0], g_player.position[1], g_player.position[2] };
+        if (const auto* line = ZoneTransition::Crossed(g_transitionZoneId, previous, current,
+                !g_applicationSettings.mirrorWorldZones))
+        {
+            if (line != g_failedZoneTransition)
+                TransitionPlayerZone(*line, previousPlayer);
+            else
+                g_player = previousPlayer;
+        }
+    }
     UpdatePlayerCameraTarget();
 }
 
@@ -994,17 +1401,34 @@ static void UpdatePlayerAnimation(float dt)
     if (!g_playerAsset || !GraphicsDevice())
         return;
 
-    const bool moving = InputController::IsMovementActive(g_input);
-
-    if (!g_playerEquip.animationPlaying && (!IsGameMode() || !moving))
+    noesisModel_t *model = g_playerAsset.Model();
+    if (!IsGameMode() && !g_playerEquip.animationPlaying)
     {
         g_playerAnimTime = 0.0f;
-        g_playerAsset.Model()->RestoreBindPose(GraphicsDevice());
+        model->RestoreBindPose(GraphicsDevice());
         return;
     }
 
-    g_playerAnimTime += dt;
-    g_playerAsset.Model()->UpdateAnimation(g_playerAnimTime, GraphicsDevice());
+    const bool active = g_hWnd && GetForegroundWindow() == g_hWnd;
+    const auto input = active ? CapturePlayerInputSnapshot() : PlayerController::InputSnapshot{};
+    const char *motion = IsGameMode() ? PlayerController::MovementAnimation(g_player, input) : "wlk";
+
+    noesisAnim_t *clip = model->FindAnimation(motion);
+    if (!clip)
+        clip = model->FindAnimation("idl_relaxed");
+    if (!clip)
+    {
+        model->RestoreBindPose(GraphicsDevice());
+        g_playerAnimTime = 0.0f;
+        return;
+    }
+    if (model->pAnim != clip)
+    {
+        model->pAnim = clip;
+        g_playerAnimTime = 0.0f;
+    }
+    g_playerAnimTime += dt * (IsGameMode() ? PlayerController::MovementAnimationRate(g_player, input) : 1.0f);
+    model->UpdateAnimation(g_playerAnimTime, GraphicsDevice());
 }
 
 static void UpdateHighPolyCreationAnimation(float dt)
@@ -1022,7 +1446,10 @@ static void UpdateCameraMovement(float dt)
     if (IsGameMode())
         UpdatePlayerMovement(dt);
     else
+    {
+        InputController::ConsumeJump(g_input);
         UpdateFlyCameraMovement(dt);
+    }
 }
 
 static void EndMouseLook()
@@ -1058,252 +1485,25 @@ static void GetRenderCameraPosition(float &x, float &y, float &z)
     OrbitCamera::GetPosition(g_orbitCamera, x, y, z);
 }
 
-#if 0 // Retained temporarily as a reference while the optimized renderer replaces this path.
-static void RenderModelLegacy(noesisModel_t *pModel, bool allowObjectOverrides = false)
-{
-    if (!pModel || !GraphicsDevice()) return;
-
-    GraphicsDevice()->SetFVF(FFXI_VERTEX_FVF);
-    D3DMATRIX baseWorld = {};
-    GraphicsDevice()->GetTransform(D3DTS_WORLD, &baseWorld);
-    D3DModelRenderState::ApplyFixedFunctionModelState(
-        GraphicsDevice(), g_applicationSettings.enableMipMapping);
-	if (allowObjectOverrides)
-		ZoneEnvironmentFog::Apply(GraphicsDevice(), g_zoneEnvironment);
-
-    // Baseline render states — no fixed-function lighting, depth test on
-    GraphicsDevice()->SetRenderState(D3DRS_LIGHTING,        FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ZENABLE,         TRUE);
-    GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE,    TRUE);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE,FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-
-    // Texture sampler — bilinear
-    const noesisMatData_t *pMD = pModel->pMatData;
-
-    for (size_t i = 0; i < pModel->submeshes.size(); ++i)
-    {
-        noesisModel_t::Submesh &sm = pModel->submeshes[i];
-        if (!sm.pVB || !sm.pIB || sm.triCount == 0) continue;
-        if (allowObjectOverrides && IsEnvironmentObjectName(sm.objectName)) continue;
-        if (allowObjectOverrides && !IsZoneObjectVisible(sm.objectName)) continue;
-
-        // Resolve material → texture
-        IDirect3DTexture9 *pTex = nullptr;
-        bool twoSided = true; // FFXI defaults to two-sided
-        float alphaRef = 0.0f;
-        bool softBlend = false;
-		bool expandDxt3Alpha = false;
-        if (pMD && !sm.materialName.empty())
-        {
-            const noesisMaterial_t *pMat = pMD->FindMaterial(sm.materialName.c_str());
-            if (pMat)
-            {
-                if (pMat->texIdx >= 0 && pMat->texIdx < pMD->texCount)
-                {
-                    const noesisTex_t *pTexObj = pMD->textures[pMat->texIdx];
-					if (pTexObj)
-					{
-						pTex = pTexObj->pD3DTex;
-						expandDxt3Alpha = pTexObj->texType == NOESISTEX_DXT3;
-					}
-                }
-                twoSided = (pMat->flags & NMATFLAG_TWOSIDED) != 0;
-                alphaRef = pMat->alphaTest;
-                softBlend = !pMat->noDefaultBlend;
-            }
-        }
-
-        if (softBlend)
-            continue;
-
-        ZoneObjectTransform::ApplyWorldTransform(
-            GraphicsDevice(), sm.objectName, allowObjectOverrides, g_zoneObjectOverrides, baseWorld);
-
-        // Per-submesh render states (opaque pass only — softBlend meshes are skipped above)
-        // The runtime world transform reverses FFXI's original winding before
-        // D3D sees it. In DATura's rendered coordinate space, exterior faces
-        // are counter-clockwise, so cull clockwise triangles for a back-face
-        // cull request.
-        GraphicsDevice()->SetRenderState(D3DRS_CULLMODE,
-            twoSided ? D3DCULL_NONE : D3DCULL_CW);
-        GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-        GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-        GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-        GraphicsDevice()->SetRenderState(D3DRS_DEPTHBIAS, 0);
-		GraphicsDevice()->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-
-        if (alphaRef > 0.0f)
-        {
-            GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
-            GraphicsDevice()->SetRenderState(D3DRS_ALPHAREF,  (DWORD)(alphaRef * 255.0f));
-            GraphicsDevice()->SetRenderState(D3DRS_ALPHAFUNC,  D3DCMP_GREATER);
-        }
-        else
-        {
-            GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-        }
-
-		const bool shaderActive = pTex && D3DModelRenderState::SetFfxiTexturePixelShader(
-			GraphicsDevice(), alphaRef > 0.0f, expandDxt3Alpha);
-        D3DModelRenderState::SetTextureStageForOptionalTexture(GraphicsDevice(), pTex,
-			shaderActive ? D3DTOP_SELECTARG1 :
-            (alphaRef > 0.0f ? D3DTOP_MODULATE4X : D3DTOP_MODULATE2X));
-        D3DModelRenderState::SetTextureScroll(
-            GraphicsDevice(), allowObjectOverrides && IsAnimatedWaterSurface(sm), 0.012f, 0.006f);
-        GraphicsDevice()->SetStreamSource(0, sm.pVB, 0, (UINT)sizeof(FFXIVertex));
-        GraphicsDevice()->SetIndices(sm.pIB);
-        GraphicsDevice()->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0,
-                                         (UINT)sm.vertCount, 0, (UINT)sm.triCount);
-    }
-
-    struct SoftBlendSubmesh
-    {
-        size_t index;
-        float distanceSq;
-    };
-    std::vector<SoftBlendSubmesh> softBlendSubmeshes;
-    float cameraX = 0.0f;
-    float cameraY = 0.0f;
-    float cameraZ = 0.0f;
-    GetRenderCameraPosition(cameraX, cameraY, cameraZ);
-
-    // FFXI's 0x8000 zone layers do not write depth. Keep them in the same
-    // transparent pass, but draw the farthest surfaces first so overlapping
-    // crag detail layers compose instead of depending on DAT record order.
-    for (size_t i = 0; i < pModel->submeshes.size(); ++i)
-    {
-        const noesisModel_t::Submesh &sm = pModel->submeshes[i];
-        if (!sm.pVB || !sm.pIB || sm.triCount == 0) continue;
-        if (allowObjectOverrides && IsEnvironmentObjectName(sm.objectName)) continue;
-        if (allowObjectOverrides && !IsZoneObjectVisible(sm.objectName)) continue;
-        if (!pMD || sm.materialName.empty()) continue;
-
-        const noesisMaterial_t *pMat = pMD->FindMaterial(sm.materialName.c_str());
-        if (!pMat || pMat->noDefaultBlend)
-            continue;
-
-        float centerX = 0.0f;
-        float centerY = 0.0f;
-        float centerZ = 0.0f;
-        if (!sm.cpuVerts.empty())
-        {
-            const FFXIVertex *samples[] =
-            {
-                &sm.cpuVerts.front(),
-                &sm.cpuVerts[sm.cpuVerts.size() / 2],
-                &sm.cpuVerts.back()
-            };
-            for (int sampleIndex = 0; sampleIndex < 3; ++sampleIndex)
-            {
-                centerX += samples[sampleIndex]->pos[0];
-                centerY += samples[sampleIndex]->pos[1];
-                centerZ += samples[sampleIndex]->pos[2];
-            }
-            centerX /= 3.0f;
-            centerY /= 3.0f;
-            centerZ /= 3.0f;
-        }
-
-        const float dx = centerX - cameraX;
-        const float dy = centerY - cameraY;
-        const float dz = centerZ - cameraZ;
-        SoftBlendSubmesh draw = { i, dx * dx + dy * dy + dz * dz };
-        softBlendSubmeshes.push_back(draw);
-    }
-    std::stable_sort(softBlendSubmeshes.begin(), softBlendSubmeshes.end(),
-        [](const SoftBlendSubmesh &a, const SoftBlendSubmesh &b)
-        {
-            return a.distanceSq > b.distanceSq;
-        });
-
-    for (size_t drawIndex = 0; drawIndex < softBlendSubmeshes.size(); ++drawIndex)
-    {
-        noesisModel_t::Submesh &sm = pModel->submeshes[softBlendSubmeshes[drawIndex].index];
-        if (!sm.pVB || !sm.pIB || sm.triCount == 0) continue;
-        if (allowObjectOverrides && !IsZoneObjectVisible(sm.objectName)) continue;
-
-        IDirect3DTexture9 *pTex = nullptr;
-        bool twoSided = true;
-        bool softBlend = false;
-		bool expandDxt3Alpha = false;
-		if (pMD && !sm.materialName.empty())
-        {
-            const noesisMaterial_t *pMat = pMD->FindMaterial(sm.materialName.c_str());
-            if (pMat)
-            {
-                if (pMat->texIdx >= 0 && pMat->texIdx < pMD->texCount)
-                {
-                    const noesisTex_t *pTexObj = pMD->textures[pMat->texIdx];
-					if (pTexObj)
-					{
-						pTex = pTexObj->pD3DTex;
-						expandDxt3Alpha = pTexObj->texType == NOESISTEX_DXT3;
-					}
-                }
-                twoSided = (pMat->flags & NMATFLAG_TWOSIDED) != 0;
-                softBlend = !pMat->noDefaultBlend;
-            }
-        }
-
-        if (!softBlend)
-            continue;
-
-        ZoneObjectTransform::ApplyWorldTransform(
-            GraphicsDevice(), sm.objectName, allowObjectOverrides, g_zoneObjectOverrides, baseWorld);
-
-        GraphicsDevice()->SetRenderState(D3DRS_CULLMODE,
-            twoSided ? D3DCULL_NONE : D3DCULL_CW);
-        GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-        GraphicsDevice()->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-        GraphicsDevice()->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-        GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-		GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-		// 0x8000 is true source-alpha blending. Its zero-alpha texels naturally
-		// contribute nothing; alpha testing here would create a second, incorrect
-		// cutout rule on textured rock and decal layers.
-        GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-		// Blended zone layers only need a small coplanar nudge. A large slope-scale
-		// bias lets terrain decals win depth tests against nearby 3D structures.
-		GraphicsDevice()->SetRenderState(D3DRS_DEPTHBIAS, D3DModelRenderState::FloatBits(-0.000001f));
-		GraphicsDevice()->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-
-		const bool shaderActive = pTex && D3DModelRenderState::SetFfxiTexturePixelShader(
-			GraphicsDevice(), true, expandDxt3Alpha);
-		D3DModelRenderState::SetTextureStageForOptionalTexture(
-			GraphicsDevice(), pTex, shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
-		D3DModelRenderState::SetTextureScroll(
-			GraphicsDevice(), allowObjectOverrides && IsAnimatedWaterSurface(sm), -0.009f, 0.004f);
-        GraphicsDevice()->SetStreamSource(0, sm.pVB, 0, (UINT)sizeof(FFXIVertex));
-        GraphicsDevice()->SetIndices(sm.pIB);
-        GraphicsDevice()->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0,
-                                         (UINT)sm.vertCount, 0, (UINT)sm.triCount);
-    }
-
-    // Clean up texture binding
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-	GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-    GraphicsDevice()->SetRenderState(D3DRS_DEPTHBIAS, 0);
-	GraphicsDevice()->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-    GraphicsDevice()->SetTexture(0, nullptr);
-	D3DModelRenderState::SetTextureScroll(GraphicsDevice(), false);
-	GraphicsDevice()->SetPixelShader(nullptr);
-    GraphicsDevice()->SetTransform(D3DTS_WORLD, &baseWorld);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE2X);
-    GraphicsDevice()->SetStreamSource(0, nullptr, 0, 0);
-    GraphicsDevice()->SetIndices(nullptr);
-}
-
-#endif
-
-static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false)
+static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false,
+                        ModelRenderer::GeometryPass pass = ModelRenderer::GeometryPass::All,
+                        bool drawDynamicActorShadow = true)
 {
     if (!pModel || !GraphicsDevice())
         return;
 
+    ModelRenderer::Context rendererContext = {};
+    rendererContext.device = GraphicsDevice();
+    rendererContext.geometryPass = pass;
+    rendererContext.minuteOfDay = ZoneEnvironmentState::CurrentMinuteOfDay();
+    rendererContext.lightingQuality = g_applicationSettings.lightingQuality;
+    rendererContext.vegetationAnimationMode = g_applicationSettings.environmentalAnimationMode;
+    rendererContext.rendersZoneObjects = allowObjectOverrides;
+    rendererContext.dynamicActorShadows =
+        drawDynamicActorShadow &&
+        g_applicationSettings.lightingQuality == ApplicationSettings::LightingDynamicShadows;
+    rendererContext.enableMipMapping = g_applicationSettings.enableMipMapping;
+    rendererContext.indoorZone = g_zoneEnvironment.valid && g_zoneEnvironment.indoor;
     ZoneModelRenderMetadata::Prepare(pModel, GraphicsDevice());
     GraphicsDevice()->SetFVF(FFXI_VERTEX_FVF);
     D3DMATRIX baseWorld = {};
@@ -1311,218 +1511,20 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
 
     // The dynamic tier adds an inexpensive planar pass for standalone actors. Zone terrain
     // has uneven ground, so projecting an entire zone onto a single plane would be wrong.
-    if (!allowObjectOverrides &&
-        g_applicationSettings.lightingQuality == ApplicationSettings::LightingDynamicShadows)
-    {
-        float groundY = 0.0f;
-        bool hasGround = false;
-        for (const noesisModel_t::Submesh &submesh : pModel->submeshes)
-        {
-            // Character DAT submeshes do not consistently populate render bounds;
-            // use their CPU vertices so the actor pass is never silently skipped.
-            const std::vector<FFXIVertex> &vertices = !submesh.cpuVerts.empty()
-                ? submesh.cpuVerts
-                : submesh.cpuBindVerts;
-            for (const FFXIVertex &vertex : vertices)
-            {
-                if (!hasGround || vertex.pos[1] < groundY)
-                {
-                    groundY = vertex.pos[1];
-                    hasGround = true;
-                }
-            }
-        }
-
-        if (hasGround)
-        {
-            const float angle = (static_cast<float>(ZoneEnvironmentState::CurrentMinuteOfDay()) / 1440.0f) *
-                6.2831853f;
-            const float lightX = -0.45f * cosf(angle);
-            const float lightY = -0.35f - 0.65f * fmaxf(sinf(angle - 1.5707963f), 0.15f);
-            const float lightZ = 0.45f * sinf(angle);
-            D3DMATRIX shadow = {};
-            shadow._11 = lightY;
-            shadow._21 = -lightX;
-            shadow._23 = -lightZ;
-            shadow._31 = 0.0f;
-            shadow._33 = lightY;
-            shadow._41 = lightX * groundY;
-            shadow._42 = groundY * lightY;
-            shadow._43 = lightZ * groundY;
-            shadow._44 = lightY;
-
-            const D3DMATRIX shadowWorld = D3DMath::Multiply(baseWorld, shadow);
-            D3DMATERIAL9 shadowMaterial = {};
-            shadowMaterial.Diffuse = { 0.0f, 0.0f, 0.0f, 0.32f };
-            shadowMaterial.Ambient = shadowMaterial.Diffuse;
-            GraphicsDevice()->SetFVF(FFXI_VERTEX_FVF);
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &shadowWorld);
-            GraphicsDevice()->SetMaterial(&shadowMaterial);
-            GraphicsDevice()->SetRenderState(D3DRS_LIGHTING, FALSE);
-            GraphicsDevice()->SetRenderState(D3DRS_COLORVERTEX, FALSE);
-            GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-            GraphicsDevice()->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-            GraphicsDevice()->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-            GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-            // The projected vertices deliberately land on the receiver plane. An
-            // equal-depth test plus a tiny bias prevents the terrain depth from
-            // rejecting the entire shadow pass.
-            GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-            GraphicsDevice()->SetRenderState(D3DRS_DEPTHBIAS,
-                D3DModelRenderState::FloatBits(-0.00001f));
-            GraphicsDevice()->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-            GraphicsDevice()->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-            GraphicsDevice()->SetTexture(0, nullptr);
-            GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-            GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
-            GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-            GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
-            for (size_t index : pModel->opaqueSubmeshOrder)
-                D3DModelBuffers::DrawSubmesh(GraphicsDevice(), pModel, pModel->submeshes[index]);
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &baseWorld);
-        }
-    }
-    D3DModelRenderState::ApplyFixedFunctionModelState(
-        GraphicsDevice(), g_applicationSettings.enableMipMapping);
+    ModelRenderer::DrawActorPlanarShadow(rendererContext, pModel, baseWorld);
+    ModelRenderer::PrepareFixedFunctionPass(rendererContext, baseWorld);
     if (allowObjectOverrides)
         ZoneEnvironmentFog::Apply(GraphicsDevice(), g_zoneEnvironment);
 
-    D3DModelRenderState::ApplyDynamicLighting(
-        GraphicsDevice(), g_applicationSettings.lightingQuality,
-        ZoneEnvironmentState::CurrentMinuteOfDay(),
-        allowObjectOverrides && g_zoneEnvironment.valid && g_zoneEnvironment.indoor);
-    GraphicsDevice()->SetRenderState(D3DRS_ZENABLE, TRUE);
-    GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESS);
-    GraphicsDevice()->SetRenderState(D3DRS_DEPTHBIAS, 0);
-    GraphicsDevice()->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-    GraphicsDevice()->SetTransform(D3DTS_WORLD, &baseWorld);
-
-    bool textureAnimationEnabled = false;
-    float textureAnimationU = 0.0f;
-    float textureAnimationV = 0.0f;
-    D3DModelRenderState::SetTextureScroll(GraphicsDevice(), false);
-    auto updateTextureAnimation = [&](bool enabled, float speedU, float speedV)
-    {
-        if (enabled == textureAnimationEnabled &&
-            (!enabled || (speedU == textureAnimationU && speedV == textureAnimationV)))
-            return;
-        D3DModelRenderState::SetTextureScroll(GraphicsDevice(), enabled, speedU, speedV);
-        textureAnimationEnabled = enabled;
-        textureAnimationU = speedU;
-        textureAnimationV = speedV;
-    };
-
-    D3DModelRenderState::MaterialBindingCache materialCache;
-
-    ZoneObjectVisibility::RenderContext renderVisibility;
-    renderVisibility.hiddenNames = &g_hiddenZoneObjects;
-    renderVisibility.viewerPointValid = g_zoneVisibilityViewerPointValid;
-    renderVisibility.visibleMapObjects = &g_zoneVisibleMapObjects;
-    renderVisibility.overrides = &g_zoneObjectOverrides;
-    renderVisibility.frustum = &g_zoneRenderFrustum;
-
-    const bool editedObjectTransforms = allowObjectOverrides && !g_zoneObjectOverrides.empty();
-    const bool canUseOpaqueBatches = !pModel->opaqueBatches.empty() &&
-        (!allowObjectOverrides || (g_hiddenZoneObjects.empty() && g_zoneObjectOverrides.empty() &&
-                                   g_zoneVisibleMapObjects.empty()));
-    if (canUseOpaqueBatches)
-    {
-        for (const noesisModel_t::OpaqueBatch &batch : pModel->opaqueBatches)
-        {
-            if (allowObjectOverrides &&
-                !ZoneRenderFrustum::IntersectsBounds(
-                    g_zoneRenderFrustum, batch.boundsMin, batch.boundsMax, batch.hasBounds))
-                continue;
-            D3DModelRenderState::ApplyOpaqueMaterial(
-                GraphicsDevice(), materialCache, batch.pMaterial, batch.pTexture);
-            updateTextureAnimation(allowObjectOverrides && batch.animatedWater, 0.012f, 0.006f);
-            D3DModelBuffers::DrawOpaqueBatch(GraphicsDevice(), pModel, batch);
-        }
-    }
-    else
-    {
-        for (size_t index : pModel->opaqueSubmeshOrder)
-        {
-            noesisModel_t::Submesh &sm = pModel->submeshes[index];
-            if (!D3DModelBuffers::HasDrawBuffers(pModel, sm)) continue;
-            if (allowObjectOverrides && sm.environmentObject) continue;
-            if (!ZoneObjectVisibility::PassesRenderVisibility(
-                    pModel, sm, allowObjectOverrides, renderVisibility)) continue;
-            if (editedObjectTransforms)
-                ZoneObjectTransform::ApplyWorldTransform(
-                    GraphicsDevice(), sm.objectName, true, g_zoneObjectOverrides, baseWorld);
-            D3DModelRenderState::ApplyOpaqueMaterial(
-                GraphicsDevice(), materialCache, sm.pResolvedMaterial, sm.pResolvedTexture);
-            updateTextureAnimation(allowObjectOverrides && sm.animatedWater, 0.012f, 0.006f);
-            D3DModelBuffers::DrawSubmesh(GraphicsDevice(), pModel, sm);
-        }
-    }
-
-    struct SortedSoftBlend
-    {
-        size_t index;
-        float distanceSq;
-    };
-    std::vector<SortedSoftBlend> visibleSoftBlend;
-    visibleSoftBlend.reserve(pModel->softBlendSubmeshOrder.size());
-    float cameraX, cameraY, cameraZ;
-    GetRenderCameraPosition(cameraX, cameraY, cameraZ);
-    for (size_t index : pModel->softBlendSubmeshOrder)
-    {
-        const noesisModel_t::Submesh &sm = pModel->submeshes[index];
-        if (!D3DModelBuffers::HasDrawBuffers(pModel, sm)) continue;
-        if (allowObjectOverrides && sm.environmentObject) continue;
-        if (!ZoneObjectVisibility::PassesRenderVisibility(
-                pModel, sm, allowObjectOverrides, renderVisibility)) continue;
-        const float dx = sm.boundsCenter[0] - cameraX;
-        const float dy = sm.boundsCenter[1] - cameraY;
-        const float dz = sm.boundsCenter[2] - cameraZ;
-        visibleSoftBlend.push_back({ index, dx * dx + dy * dy + dz * dz });
-    }
-    std::stable_sort(visibleSoftBlend.begin(), visibleSoftBlend.end(),
-        [](const SortedSoftBlend &a, const SortedSoftBlend &b)
-        {
-            return a.distanceSq > b.distanceSq;
-        });
-
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    GraphicsDevice()->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    GraphicsDevice()->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_DEPTHBIAS, D3DModelRenderState::FloatBits(-0.000001f));
-    materialCache.Invalidate();
-
-    for (const SortedSoftBlend &draw : visibleSoftBlend)
-    {
-        noesisModel_t::Submesh &sm = pModel->submeshes[draw.index];
-        if (editedObjectTransforms)
-            ZoneObjectTransform::ApplyWorldTransform(
-                GraphicsDevice(), sm.objectName, true, g_zoneObjectOverrides, baseWorld);
-        D3DModelRenderState::ApplyTransparentMaterial(
-            GraphicsDevice(), materialCache, sm.pResolvedMaterial, sm.pResolvedTexture);
-        updateTextureAnimation(allowObjectOverrides && sm.animatedWater, -0.009f, 0.004f);
-        D3DModelBuffers::DrawSubmesh(GraphicsDevice(), pModel, sm);
-    }
-
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-    GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESS);
-    GraphicsDevice()->SetRenderState(D3DRS_DEPTHBIAS, 0);
-    GraphicsDevice()->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-    GraphicsDevice()->SetTexture(0, nullptr);
-    updateTextureAnimation(false, 0.0f, 0.0f);
-    GraphicsDevice()->SetPixelShader(nullptr);
-    GraphicsDevice()->SetTransform(D3DTS_WORLD, &baseWorld);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE2X);
-    GraphicsDevice()->SetStreamSource(0, nullptr, 0, 0);
-    GraphicsDevice()->SetIndices(nullptr);
+    rendererContext.visibility.hiddenNames = &g_hiddenZoneObjects;
+    rendererContext.visibility.viewerPointValid = g_zoneVisibilityViewerPointValid;
+    rendererContext.visibility.lodViewerPoint = g_zoneVisibilityViewerPoint;
+    rendererContext.visibility.visibleMapObjects = &g_zoneVisibleMapObjects;
+    rendererContext.visibility.overrides = &g_zoneRuntimeOverrides;
+    rendererContext.visibility.frustum = &g_zoneRenderFrustum;
+    GetRenderCameraPosition(rendererContext.cameraPosition[0],
+        rendererContext.cameraPosition[1], rendererContext.cameraPosition[2]);
+    ModelRenderer::DrawGeometry(rendererContext, pModel, baseWorld);
 }
 
 //========================================================================================
@@ -1594,6 +1596,8 @@ static void ShowSceneModelLoadError(const SceneModelLoader::Error error)
 
 static void UnloadZoneModel()
 {
+    g_transitionZoneId = -1;
+    g_failedZoneTransition = nullptr;
     ClearZoneCollision();
     UnloadNpcModels();
     FFXINpcPlacement::Clear();
@@ -1631,6 +1635,9 @@ static void ResetZoneModelLoadState(const char *path)
     UnloadZoneModel();
     g_hiddenZoneObjects.clear();
     g_zoneObjectOverrides.clear();
+    g_zoneRuntimeOverrides.clear();
+    g_doors = {};
+    g_pickWidth = g_pickHeight = 0;
     gFF11LastMapObjects.clear();
     gFF11LastZoneVisibilityLeaves.clear();
     gFF11LastZoneVisibilityRecords.clear();
@@ -1701,8 +1708,11 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     // Checked exposes that mirrored orientation as requested by the UI option.
     if (!g_applicationSettings.mirrorWorldZones)
         ZoneModelTransform::MirrorOnX(g_zoneAsset.Model(), GraphicsDevice());
+    g_doors.Initialize(g_zoneAsset.Model(), !g_applicationSettings.mirrorWorldZones);
+    g_doors.SetPhysics(g_applicationSettings.doorInteractionMode == ApplicationSettings::DoorPhysics);
     BuildZoneCollisionFromDAT();
     const int zoneId = FFXIPath::FindZoneIDByModelPath(g_ffxiPath, path);
+    g_transitionZoneId = userContentLoad ? zoneId : -1;
     if (userContentLoad)
     {
         // NPC DAT parsing replaces the parser diagnostics. Keep this zone's
@@ -1718,7 +1728,7 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
         FFXINpcPlacement::ResetForZone(zoneId);
     RefreshZoneObjectPanel();
     ResetZoneCameraFromCollision();
-    if (userContentLoad)
+    if (userContentLoad && !preserveGameScreen)
     {
         SpawnPlayerAtZoneHomePoint();
         SetInteractionMode(InteractionController::Mode::Edit);
@@ -1731,6 +1741,221 @@ static void LoadDatFile(const SceneLoadContext::Request& request)
         request.path.c_str(), request.options.userContentLoad,
         request.options.renderEnvironment, request.options.renderUnreferenced,
         request.options.preserveGameScreen);
+}
+
+static void CompletePlayerZoneTransitionLoad()
+{
+    const ZoneTransition::Line& line = *g_zoneTransitionRuntime.line;
+    const PlayerController::State previousPlayer = g_zoneTransitionRuntime.previousPlayer;
+    const auto resolution = SceneRequestResolver::ResolveZone(g_ffxiPath, line.toZone);
+    if (!resolution.Succeeded())
+    {
+        g_player = previousPlayer;
+        g_failedZoneTransition = &line;
+        MessageBoxA(g_hWnd, "The destination zone DAT could not be resolved. Check the configured FFXI installation.",
+            "Zone transition", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    const auto source = g_sceneLoadContext.Snapshot();
+    const float cameraDistance = g_camDist;
+    const float cameraPitch = g_camPitch;
+    const float cameraYaw = g_camYaw;
+    auto destination = resolution.request;
+    destination.options.preserveGameScreen = true;
+    LoadDatFile(destination);
+    if (!g_zoneAsset)
+    {
+        // The shared loader reports the error. Restore the source scene and
+        // pre-crossing checkpoint instead of leaving the player in an empty zone.
+        auto sourceRequest = source;
+        sourceRequest.options.preserveGameScreen = true;
+        LoadDatFile(sourceRequest);
+        SetLoadedSceneContext(source);
+        g_player = previousPlayer;
+        g_failedZoneTransition = &line;
+        g_camDist = cameraDistance;
+        g_camPitch = cameraPitch;
+        g_camYaw = cameraYaw;
+        SetInteractionMode(InteractionController::Mode::Game);
+        const auto* music = FFXIZoneMusic_FindByID(line.fromZone);
+        SetGameModeMusic(SelectZoneMusicId(music));
+        return;
+    }
+    SetLoadedSceneContext(destination);
+
+    const bool mirrorX = !g_applicationSettings.mirrorWorldZones;
+    auto arrival = FFXICoordinateFrame::NativeDatToScene(line.arrival, mirrorX);
+    float x = arrival[0], y = arrival[1], z = arrival[2];
+    bool grounded = ZoneCollision::FindNearestSafeFloor(
+        g_zoneCollisionTris, g_zoneCollisionGrid, PlayerController::kCollisionRadius,
+        PlayerController::kCollisionHeight, PlayerController::kStepHeight,
+        x, y, z, &x, &y, &z);
+    // Keep grounding local to the authored entrance, not an unrelated room.
+    grounded = grounded && std::fabs(x-arrival[0]) <= 2 &&
+        std::fabs(z-arrival[2]) <= 2 && std::fabs(y-arrival[1]) <= 4;
+    if (grounded) arrival = { x, y, z };
+    PlayerController::SetPose(g_player, arrival[0], arrival[1], arrival[2],
+        ZoneTransition::ArrivalYaw(line, mirrorX), grounded);
+    PlayerController::SetRespawnPoint(g_player);
+    g_camYaw = g_player.yaw;
+    g_camDist = cameraDistance;
+    g_camPitch = cameraPitch;
+    g_playerAnimTime = 0;
+    SetInteractionMode(InteractionController::Mode::Game);
+    const auto* music = FFXIZoneMusic_FindByID(line.toZone);
+    SetGameModeMusic(SelectZoneMusicId(music));
+}
+
+static void TransitionPlayerZone(const ZoneTransition::Line& line, const PlayerController::State& previousPlayer)
+{
+    const auto resolution = SceneRequestResolver::ResolveZone(g_ffxiPath, line.toZone);
+    if (!resolution.Succeeded())
+    {
+        g_player = previousPlayer;
+        g_failedZoneTransition = &line;
+        MessageBoxA(g_hWnd, "The destination zone DAT could not be resolved. Check the configured FFXI installation.",
+            "Zone transition", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    g_player = previousPlayer;
+    g_zoneTransitionRuntime.phase = ZoneTransitionPhase::FadingOut;
+    g_zoneTransitionRuntime.line = &line;
+    g_zoneTransitionRuntime.previousPlayer = previousPlayer;
+    g_zoneTransitionRuntime.opacity = 0.0f;
+}
+
+static void UpdateZoneTransition(float dt)
+{
+    if (!IsZoneTransitionActive())
+        return;
+
+    if (!(dt > 0.0f) || !std::isfinite(dt))
+        dt = 1.0f / 60.0f;
+
+    switch (g_zoneTransitionRuntime.phase)
+    {
+    case ZoneTransitionPhase::FadingOut:
+        g_zoneTransitionRuntime.opacity += dt / kZoneTransitionFadeSeconds;
+        if (g_zoneTransitionRuntime.opacity >= 1.0f)
+        {
+            g_zoneTransitionRuntime.opacity = 1.0f;
+            g_zoneTransitionRuntime.phase = ZoneTransitionPhase::Loading;
+        }
+        break;
+
+    case ZoneTransitionPhase::Loading:
+        StartLoadingOverlay();
+        CompletePlayerZoneTransitionLoad();
+        StopLoadingOverlay();
+        g_zoneTransitionRuntime.phase = ZoneTransitionPhase::FadingIn;
+        g_zoneTransitionRuntime.opacity = 1.0f;
+        break;
+
+    case ZoneTransitionPhase::FadingIn:
+        g_zoneTransitionRuntime.opacity -= dt / kZoneTransitionFadeSeconds;
+        if (g_zoneTransitionRuntime.opacity <= 0.0f)
+            g_zoneTransitionRuntime = {};
+        break;
+
+    case ZoneTransitionPhase::None:
+    default:
+        break;
+    }
+}
+
+static void DrawZoneTransitionOverlay()
+{
+    if (!g_hWnd || !GraphicsDevice() || g_zoneTransitionRuntime.opacity <= 0.0f)
+        return;
+
+    int renderW = 0;
+    int renderH = 0;
+    D3D9Device::GetViewportOrClientSize(GraphicsDevice(), g_hWnd, &renderW, &renderH);
+    const int alpha = (std::min)(255, (std::max)(0,
+        static_cast<int>(g_zoneTransitionRuntime.opacity * 255.0f + 0.5f)));
+    D3DUiRenderer::DrawSolidQuad(GraphicsDevice(), 0.0f, 0.0f,
+        static_cast<float>(renderW), static_cast<float>(renderH),
+        D3DCOLOR_ARGB(alpha, 0, 0, 0));
+}
+
+static void DrawZoneBoundaryDots(const D3DMATRIX& viewProjection, int width, int height)
+{
+    if (!IsGameMode() || g_zoneTransitionRuntime.phase != ZoneTransitionPhase::None || !GraphicsDevice()) return;
+    const ZoneTransition::Line* active = nullptr;
+    float nearest = 1.0e30f;
+    const bool mirrorX = !g_applicationSettings.mirrorWorldZones;
+    // Transition coordinates are stored in DATura's native DAT frame.  Only
+    // the optional world-X reflection belongs in this conversion; applying an
+    // additional (x,-y,-z) transform puts the markers on the wrong floor.
+    const auto playerNative = FFXICoordinateFrame::SceneToNativeDat(
+        { g_player.position[0], g_player.position[1], g_player.position[2] }, mirrorX);
+    for (const auto& line : ZoneTransition::lines)
+    {
+        if (line.fromZone != g_transitionZoneId) continue;
+        const float distance = std::fabs((playerNative[0] - line.threshold[0]) * line.outward[0] +
+            (playerNative[2] - line.threshold[2]) * line.outward[2]);
+        if (distance < nearest) { nearest = distance; active = &line; }
+    }
+    if (!active) return;
+    const auto native = active->threshold;
+    const float boundaryDistance = std::fabs((playerNative[0] - native[0]) * active->outward[0] +
+        (playerNative[2] - native[2]) * active->outward[2]);
+    constexpr float kMarkerFadeDistance = 35.0f;
+    if (boundaryDistance >= kMarkerFadeDistance) return;
+    const float distanceAlpha = 1.0f - boundaryDistance / kMarkerFadeDistance;
+    const float tangentX = active->outward[2];
+    const float tangentZ = -active->outward[0];
+    // Place the warning row just inside the current zone.  The transition
+    // remains at `threshold`; the player must pass the dots before crossing
+    // that plane and actually zoning.
+    constexpr float kMarkerInsideOffset = 1.5f;
+    const ULONGLONG tick = GetTickCount64();
+    const DWORD pulse = static_cast<DWORD>((150.0f + 80.0f * std::fabs(std::sin(static_cast<double>(tick) * 0.004))) * distanceAlpha);
+    for (int i = -8; i <= 8; ++i)
+    {
+        const float offset = static_cast<float>(i) * active->halfWidth * 0.20f;
+        // Native DAT Y grows downward.  A negative offset therefore lifts the
+        // guide above the floor instead of sinking it into the threshold.
+        constexpr float kBoundaryMarkerHeight = -1.0f;
+        const float dotY = playerNative[1] + kBoundaryMarkerHeight;
+        const float dotX = native[0] - active->outward[0] * kMarkerInsideOffset + tangentX * offset;
+        const float dotZ = native[2] - active->outward[2] * kMarkerInsideOffset + tangentZ * offset;
+        const auto scene = FFXICoordinateFrame::NativeDatToScene({ dotX, dotY, dotZ }, mirrorX);
+        const float radius = 0.035f + 0.010f * std::fabs(std::sin((static_cast<double>(tick) + i * 90.0) * 0.006));
+        // Each fan has one center, twelve perimeter vertices, and a closing
+        // perimeter vertex (15 total).  Keep two complete fans; the previous
+        // 28-vertex allocation let the second fan write element 28.
+        FFXIVertex verts[30] = {};
+        const float rightX = g_pickView._11, rightZ = g_pickView._13;
+        const float upX = g_pickView._21, upY = g_pickView._22, upZ = g_pickView._23;
+        auto build = [&](float r, DWORD color, FFXIVertex* out)
+        {
+            out[0].pos[0]=scene[0]; out[0].pos[1]=scene[1]; out[0].pos[2]=scene[2]; out[0].diffuse=color;
+            for (int n=0;n<=12;++n) { const float a=6.2831853f*n/12.0f; out[n+1].pos[0]=scene[0]+(rightX*std::cos(a)+upX*std::sin(a))*r; out[n+1].pos[1]=scene[1]+upY*std::sin(a)*r; out[n+1].pos[2]=scene[2]+(rightZ*std::cos(a)+upZ*std::sin(a))*r; out[n+1].diffuse=color; }
+            out[14] = out[1];
+        };
+        build(radius + 0.018f, D3DCOLOR_ARGB(pulse, 65, 135, 235), verts);
+        build(radius, D3DCOLOR_ARGB(pulse, 255, 255, 255), verts + 14);
+        const D3DMATRIX identity = D3DMath::BuildIdentity();
+        GraphicsDevice()->SetTransform(D3DTS_WORLD, &identity);
+        GraphicsDevice()->SetFVF(FFXI_VERTEX_FVF); GraphicsDevice()->SetTexture(0, nullptr);
+        GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+        GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+        GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+        GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+        GraphicsDevice()->SetRenderState(D3DRS_LIGHTING, FALSE);
+        // Test against the already-rendered world depth buffer so walls,
+        // pillars, and characters can hide markers that are behind them. Do
+        // not write marker depth; the dots remain a non-invasive overlay.
+        GraphicsDevice()->SetRenderState(D3DRS_ZENABLE, TRUE);
+        GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+        GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
+        GraphicsDevice()->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE); GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE); GraphicsDevice()->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA); GraphicsDevice()->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        GraphicsDevice()->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 12, verts, sizeof(FFXIVertex));
+        GraphicsDevice()->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 12, verts + 14, sizeof(FFXIVertex));
+    }
 }
 
 static void LoadTitleScreen()
@@ -1765,12 +1990,14 @@ static void LoadTitleScreen()
         FFXIParserDiagnostics::ScopedSnapshot parserDiagnostics;
         g_titleScreenActive = true;
 
-        g_camYaw = 0.72f;
-        g_camPitch = -0.34f;
-        // Preserve the title-screen framing while keeping the collision-aware
-        // target chosen by LoadDatFile. Never begin the backdrop camera underground.
-        if (g_camDist < 180.0f)
-            g_camDist = 180.0f;
+        // Replace the regular zone loader's collision-derived camera with the
+        // captured title presentation pose. Keeping the target as well as the
+        // orbit values fixed makes the opening composition deterministic.
+        for (int axis = 0; axis < 3; ++axis)
+            g_camTarget[axis] = kTitleScreenCameraTarget[axis];
+        g_camYaw = kTitleScreenCameraYaw;
+        g_camPitch = kTitleScreenCameraPitch;
+        g_camDist = kTitleScreenCameraDistance;
 
         const TitleSceneAssets::Paths paths =
         {
@@ -1784,13 +2011,14 @@ static void LoadTitleScreen()
     }
     ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, true);
 
-    // The retail-style title composition uses Konschtat's thunder sky. The
-    // generic zone default remains Fine; only the title backdrop selects thdr.
+    // The title presentation starts with Konschtat's authored sunny sky. The
+    // ordinary zone default remains independent of this title-only selection.
     UpdateZoneEnvironmentState();
     for (size_t weather = 0; weather < g_zoneEnvironmentCache.weatherGroups.size(); ++weather)
     {
         const ff11EnvironmentRecord_t *record = g_zoneEnvironmentCache.weatherGroups[weather];
-        if (record && ZoneEnvironmentIdentity::ContainsLowerToken(record->directoryPath, "/thdr"))
+        if (record && ZoneEnvironmentIdentity::ContainsLowerToken(
+                record->directoryPath, kTitleScreenWeatherToken))
         {
             g_zoneWeatherIndex = static_cast<int>(weather);
             ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
@@ -1994,38 +2222,9 @@ static FFXIModelLifetime::OwnedModel LoadNpcStandaloneModel(unsigned int modelId
 static FFXIModelLifetime::OwnedModel LoadNpcHumanoidModel(
     const std::vector<std::uint8_t> &look)
 {
-    if (look.size() != 20 || FFXINpcPlacement::LookU16(look, 0) != 1)
-        return {};
-
-    const int raceIndex = (int)look[3] - 1;
-    if (raceIndex < 0 || raceIndex >= kFFXICharRaceCount)
-        return {};
-    const FFXICharRace &race = kFFXICharRaces[raceIndex];
-    if (race.count < 9)
-        return {};
-
     char datSet[4096] = {};
-    strcat_s(datSet, "NOESIS_FF11_DAT_SET\nsetPathAbs \"");
-    strcat_s(datSet, g_ffxiPath);
-    strcat_s(datSet, "\"\n");
-    FFXIDatSet::AppendLine(datSet, sizeof(datSet), "__skeleton", race.entries[0].dat);
-    FFXIDatSet::AppendLine(datSet, sizeof(datSet), "__animation", race.entries[8].dat);
-    FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "face", race, 1, (int)look[2]);
-    FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "head", race, 2, (int)(FFXINpcPlacement::LookU16(look, 4) & 0x0FFF));
-    FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "body", race, 3, (int)(FFXINpcPlacement::LookU16(look, 6) & 0x0FFF));
-    FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "hands", race, 4, (int)(FFXINpcPlacement::LookU16(look, 8) & 0x0FFF));
-    FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "legs", race, 5, (int)(FFXINpcPlacement::LookU16(look, 10) & 0x0FFF));
-    FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "feet", race, 6, (int)(FFXINpcPlacement::LookU16(look, 12) & 0x0FFF));
-
-    const unsigned int mainId = FFXINpcPlacement::LookU16(look, 14) & 0x0FFF;
-    const unsigned int subId = FFXINpcPlacement::LookU16(look, 16) & 0x0FFF;
-    const unsigned int rangedId = FFXINpcPlacement::LookU16(look, 18) & 0x0FFF;
-    if (mainId > 0)
-        FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "main", race, 7, (int)mainId - 1);
-    if (subId > 0)
-        FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "sub", race, 7, (int)subId - 1);
-    if (rangedId > 0)
-        FFXIDatSet::AppendVariantLine(datSet, sizeof(datSet), "ranged", race, 7, (int)rangedId - 1);
+    if (!FFXIDatSet::BuildNpc(g_ffxiPath, look, datSet, sizeof(datSet)))
+        return {};
 
     FFXIModelLifetime::OwnedModel resource;
     resource.Adopt(nullptr, new noeRAPI_t(GraphicsDevice()));
@@ -2043,7 +2242,12 @@ static FFXIModelLifetime::OwnedModel LoadNpcHumanoidModel(
 
 static void UnloadNpcModels()
 {
+    g_homePointSeconds = 0.0;
+    g_npcInteraction = {};
+    g_doors.selected = -1;
+    NpcChatWindow::Reset();
     g_npcNameplates.clear();
+    g_npcInteraction.targets.clear();
     NpcNameplateRenderer::ClearCachedTextures();
     g_npcRenderInstances.clear();
     g_npcRenderAssets.clear();
@@ -2069,18 +2273,30 @@ static void LoadNpcModelsForCurrentZone()
         else
         {
             NpcRenderAsset asset;
-            if (placement.appearance.kind == FFXINpcPlacement::AppearanceKind::HumanoidLook)
+            if (placement.appearance.kind == FFXINpcPlacement::AppearanceKind::ModelId &&
+                placement.appearance.modelId == HomePoint::ModelId)
+            {
+                auto effect = std::make_unique<HomePoint::Effect>();
+                if (effect->Load(GraphicsDevice(), g_ffxiPath, g_applicationSettings.enableTextureCompression))
+                    asset.homePoint = std::move(effect);
+            }
+            else if (placement.appearance.kind == FFXINpcPlacement::AppearanceKind::HumanoidLook)
                 asset.resource = LoadNpcHumanoidModel(placement.appearance.rawLook);
             else if (placement.appearance.kind == FFXINpcPlacement::AppearanceKind::ModelId)
                 asset.resource = LoadNpcStandaloneModel(placement.appearance.modelId);
 
-            if (asset.resource)
+            if (asset.resource || asset.homePoint)
             {
                 // Assemble the initial skinned pose before measuring the head
                 // anchor; otherwise the first frame uses component bind space.
-                asset.resource.Model()->UpdateAnimation(0.0f, GraphicsDevice());
-                asset.nameplateLocalY =
-                    NpcRenderGeometry::ComputeNameplateLocalY(asset.resource.Model());
+                if (asset.homePoint)
+                    asset.nameplateLocalY = HomePoint::NameplateY;
+                else if (NpcRenderGeometry::SelectIdleAnimation(asset.resource.Model()))
+                    asset.resource.Model()->UpdateAnimation(0.0f, GraphicsDevice());
+                else
+                    asset.resource.Model()->RestoreBindPose(GraphicsDevice());
+                if (!asset.homePoint)
+                    asset.nameplateLocalY = NpcRenderGeometry::ComputeNameplateLocalY(asset.resource.Model());
                 assetIndex = g_npcRenderAssets.size();
                 g_npcRenderAssets.push_back(std::move(asset));
             }
@@ -2089,12 +2305,12 @@ static void LoadNpcModelsForCurrentZone()
         if (assetIndex != invalidAsset)
         {
             FFXINpcPlacement::Placement scenePlacement = placement;
-            if (g_applicationSettings.mirrorWorldZones)
-            {
-                scenePlacement.transform.x = -scenePlacement.transform.x;
-                scenePlacement.transform.headingRadians = -scenePlacement.transform.headingRadians;
-            }
-            SnapPlacementToZoneFloor(scenePlacement.transform);
+            scenePlacement.transform = FFXINpcPlacement::ToSceneTransform(
+                placement.transform, !g_applicationSettings.mirrorWorldZones);
+            // The crystal's authored ground ring must stay at the catalog's
+            // elevation; nearby steps/bridges can otherwise pull it off its base.
+            if (!g_npcRenderAssets[assetIndex].homePoint)
+                SnapPlacementToZoneFloor(scenePlacement.transform);
             g_npcRenderInstances.push_back({ std::move(scenePlacement), assetIndex });
         }
     }
@@ -2102,6 +2318,7 @@ static void LoadNpcModelsForCurrentZone()
 
 static void UpdateNpcAnimations(float dt)
 {
+    if (std::isfinite(dt) && dt > 0) g_homePointSeconds += dt;
     if (!GraphicsDevice())
         return;
     for (NpcRenderAsset &asset : g_npcRenderAssets)
@@ -2157,6 +2374,11 @@ static void SaveHighPolyCreationCharacter()
     ofn.lpstrTitle = "Save Character";
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
     ofn.lpstrDefExt = "noesis";
+    char characterDir[MAX_PATH] = {};
+    FFXIFileIO::GetExecutableDirectory(characterDir, sizeof(characterDir));
+    strcat_s(characterDir, "Characters");
+    CreateDirectoryA(characterDir, nullptr);
+    ofn.lpstrInitialDir = characterDir;
     if (!GetSaveFileNameA(&ofn))
         strcpy_s(savePath, defaultPath);
 
@@ -2181,6 +2403,27 @@ static void SaveHighPolyCreationCharacter()
         g_creationSelection.equipmentIndex,
     };
     FFXIDatSet::BuildLowPoly(lowPolyOptions, datSetText, sizeof(datSetText));
+    // Character roster files must resolve against DATura's configured FFXI
+    // root, not an optional PlayOnline registry key.
+    char escapedRoot[MAX_PATH * 2] = {};
+    for (const char* source = g_ffxiPath; *source && strlen(escapedRoot) + 2 < sizeof(escapedRoot); ++source)
+    {
+        if (*source == '\\') strcat_s(escapedRoot, "\\");
+        char character[2] = {*source, 0};
+        strcat_s(escapedRoot, character);
+    }
+    char* pathKey = strstr(datSetText, "setPathKey");
+    if (pathKey)
+    {
+        char* lineEnd = strchr(pathKey, '\n');
+        if (lineEnd)
+        {
+            char remainder[4096] = {};
+            strcpy_s(remainder, sizeof(remainder), lineEnd + 1);
+            sprintf_s(pathKey, sizeof(datSetText) - (pathKey - datSetText),
+                "setPathAbs\t\"%s\"\n%s", escapedRoot, remainder);
+        }
+    }
 
     const bool wroteNoesis = FFXIFileIO::WriteTextFile(noesisPath, noesisText);
     const bool wroteDatSet = FFXIFileIO::WriteTextFile(datSetPath, datSetText);
@@ -2207,6 +2450,101 @@ static void BeginNationSelectScene()
     g_selectedNationIndex = 0;
     EnsureNationSelectAssets();
     InvalidateRect(g_hWnd, NULL, FALSE);
+}
+
+static bool TextStartsWithNoCase(const std::string& text, const char* prefix)
+{
+    if (!prefix)
+        return false;
+    const std::size_t length = std::strlen(prefix);
+    if (text.size() < length)
+        return false;
+    for (std::size_t i = 0; i < length; ++i)
+    {
+        if (std::tolower(static_cast<unsigned char>(text[i])) !=
+            std::tolower(static_cast<unsigned char>(prefix[i])))
+            return false;
+    }
+    return true;
+}
+
+static bool IsObjectLikeNpcTarget(const FFXINpcPlacement::Placement& placement)
+{
+    const std::string& name = placement.name;
+    return name.empty() || name == "???" ||
+        TextStartsWithNoCase(name, "Target") ||
+        TextStartsWithNoCase(name, "Home Point") ||
+        TextStartsWithNoCase(name, "Survival Guide") ||
+        TextStartsWithNoCase(name, "Waypoint");
+}
+
+static std::string RetailNpcDialogueText(const FFXINpcPlacement::Placement& placement)
+{
+    auto trace = [](const std::string& text)
+    {
+        OutputDebugStringA(("[DATura NPC dialogue] " + text + "\n").c_str());
+    };
+    trace("begin entity=" + std::to_string(placement.entityId) + " name=" + placement.name);
+    const FFXILoreZoneDatEntry* zone = FFXILoreZoneDat_FindByZoneID(FFXINpcPlacement::ZoneId());
+    if (!zone || !g_ffxiPath || !g_ffxiPath[0])
+    {
+        trace("missing zone mapping or FFXI root; zone=" + std::to_string(FFXINpcPlacement::ZoneId()));
+        return std::string();
+    }
+    char eventPath[MAX_PATH] = {};
+    char messagePath[MAX_PATH] = {};
+    FFXIPath::BuildFullPath(g_ffxiPath, zone->eventDat, eventPath, sizeof(eventPath));
+    FFXIPath::BuildFullPath(g_ffxiPath, zone->dialogDat, messagePath, sizeof(messagePath));
+    trace(std::string("event=") + eventPath + " messages=" + messagePath);
+    std::vector<FFXIEventTable::EntityScripts> entities;
+    std::vector<FFXIEventMessages::Entry> messages;
+    if (!FFXIEventTable::Load(eventPath, entities))
+    {
+        trace("event table load failed");
+        return std::string();
+    }
+    trace("event blocks=" + std::to_string(entities.size()));
+    if (!FFXIEventMessages::Load(messagePath, messages))
+    {
+        trace("event message table load failed");
+        return std::string();
+    }
+    trace("message entries=" + std::to_string(messages.size()));
+    for (const auto& scripts : entities)
+    {
+        if (scripts.entityId != placement.entityId) continue;
+        trace("matched entity events=" + std::to_string(scripts.events.size()));
+        for (const auto& event : scripts.events)
+        {
+            const auto ids = FFXIEventTable::MessageIds(event);
+            for (const std::uint16_t id : ids)
+            {
+                trace("event=" + std::to_string(event.id) + " message=" + std::to_string(id));
+                if (id < messages.size() && !messages[id].text.empty())
+                {
+                    trace("resolved message");
+                    return messages[id].text;
+                }
+            }
+        }
+        trace("matched entity had no resolvable message");
+    }
+    trace("entity not found");
+    return std::string();
+}
+
+static std::string NpcDialogueText(const FFXINpcPlacement::Placement& placement)
+{
+    if (!placement.dialogue.empty())
+        return placement.dialogue;
+    if (!placement.starterQuestName.empty())
+        return "I can offer you the quest \"" + placement.starterQuestName + "\".";
+    const std::string retail = RetailNpcDialogueText(placement);
+    if (!retail.empty())
+        return retail;
+    if (!IsObjectLikeNpcTarget(placement))
+        return "My retail dialogue exists, but DATura has not mapped this NPC's event script yet.";
+    return std::string();
 }
 
 static void ReturnToTitleScreen()
@@ -2481,7 +2819,11 @@ static void BeginHighPolyCreationScene()
     LowPolyCharacterPanel::Hide(g_lowPolyPanel);
 
     g_nationSelectActive = false;
+    // Match the standard FFXI character-creation presentation on entry.
     g_creationSelection = {};
+    g_creationSelection.equipmentIndex = 1; // Initial Equipment
+    g_creationAnimationIndex = 2;           // Character creation sequence
+    g_creationAnimatedCamera = true;
 
     const FFXICreationEntry *pEntry = CurrentHighPolyCreationEntry();
     if (pEntry)
@@ -2489,42 +2831,14 @@ static void BeginHighPolyCreationScene()
     ShowHighPolyCreationPanel();
 }
 
-static bool ZoneObjectIsUnreferenced(int index)
-{
-    const char *displayName = Model_FF11_GetLastMapObjectDisplayName(index);
-    return displayName && strncmp(displayName, "env:", 4) == 0;
-}
-
 static void PopulateZoneDataTree()
 {
-    ZoneObjectTreeBuilder::Context context = {};
-    context.placedObjectList = g_hZoneObjectList;
-    context.unreferencedObjectList = g_hZoneUnrefObjectList;
-    context.dataTree = g_hZoneDataTree;
-    context.rawDataTree = g_hZoneRawDataTree;
-    context.collisionDataTree = g_hZoneCollisionDataTree;
-    context.combinedObjectTree = g_zoneCombinedObjectTree;
-    context.loadedZoneLabel = g_loadedZoneLabel.c_str();
-    ZoneObjectTreeBuilder::Build(context);
-}
-
-static void InsertZoneInfoRow(const char *name, const char *value)
-{
-    if (!g_hZoneObjectList)
-        return;
-    LVITEMA item = {};
-    item.mask = LVIF_TEXT;
-    item.iItem = ListView_GetItemCount(g_hZoneObjectList);
-    item.iSubItem = 0;
-    item.pszText = const_cast<char *>(name);
-    const int row = (int)SendMessageA(g_hZoneObjectList, LVM_INSERTITEMA, 0, (LPARAM)&item);
-    SetSubItem(g_hZoneObjectList, row, 1, value);
+    ZoneObjectPanel::RebuildTree(g_zoneObjectPanel, g_loadedZoneLabel.c_str());
 }
 
 static int GetSelectedZoneObjectIndex()
 {
-    return GetSelectedMapObjectIndex(
-        g_hZoneObjectList, g_hZoneUnrefObjectList, g_zoneTreeSelectedMapObjectIndex);
+    return ZoneObjectPanel::SelectedMapObjectIndex(g_zoneObjectPanel);
 }
 
 static const char *GetSelectedZoneObjectName()
@@ -2540,135 +2854,25 @@ static void UpdateZoneObjectEditControlState()
 
 static void RefreshZoneObjectPanel()
 {
-    if (!g_hZoneObjectList || !g_hZoneUnrefObjectList || !g_hZoneCollisionObjectList || !g_hZoneDrawBatchList ||
-        !g_hZoneDataTree || !g_hZoneRawDataTree || !g_hZoneCollisionDataTree)
-        return;
-
-    g_populatingZoneObjectList = true;
-    g_zoneTreeSelectedMapObjectIndex = -1;
-    SendMessageA(g_hZoneObjectList, WM_SETREDRAW, FALSE, 0);
-    SendMessageA(g_hZoneUnrefObjectList, WM_SETREDRAW, FALSE, 0);
-    SendMessageA(g_hZoneCollisionObjectList, WM_SETREDRAW, FALSE, 0);
-    SendMessageA(g_hZoneDrawBatchList, WM_SETREDRAW, FALSE, 0);
-    SendMessageA(g_hZoneDataTree, WM_SETREDRAW, FALSE, 0);
-    SendMessageA(g_hZoneRawDataTree, WM_SETREDRAW, FALSE, 0);
-    SendMessageA(g_hZoneCollisionDataTree, WM_SETREDRAW, FALSE, 0);
-    ListView_DeleteAllItems(g_hZoneObjectList);
-    ListView_DeleteAllItems(g_hZoneUnrefObjectList);
-    ListView_DeleteAllItems(g_hZoneCollisionObjectList);
-    ListView_DeleteAllItems(g_hZoneDrawBatchList);
-    SetupMapObjectColumns(g_hZoneObjectList, g_zoneObjectColumnMode, 0);
-    SetupMapObjectColumns(g_hZoneUnrefObjectList, g_zoneUnrefObjectColumnMode, 1);
-    SetupCollisionColumns(g_hZoneCollisionObjectList, g_zoneCollisionObjectColumnMode, 0);
-    SetupDrawBatchColumns(g_hZoneDrawBatchList, g_zoneDrawBatchColumnMode, 0);
-    ApplyListColors(g_hZoneObjectList, true);
-    ApplyListColors(g_hZoneUnrefObjectList, true);
-    ApplyListColors(g_hZoneCollisionObjectList, false);
-    ApplyListColors(g_hZoneDrawBatchList, false);
-    ApplyTreeColors(g_hZoneDataTree);
-    ApplyTreeColors(g_hZoneRawDataTree);
-    ApplyTreeColors(g_hZoneCollisionDataTree);
-
-    if (g_hZoneLabel)
-        SetWindowTextA(g_hZoneLabel, g_loadedZoneLabel.c_str());
-
-    const int mapObjectCount = Model_FF11_GetLastMapObjectCount();
-    for (int i = 0; i < mapObjectCount; ++i)
-    {
-        InsertMapObjectRow(ZoneObjectIsUnreferenced(i) ? g_hZoneUnrefObjectList : g_hZoneObjectList,
-                           i, g_zoneObjectOverrides, g_hiddenZoneObjects);
-    }
-    const int collisionMeshCount = Model_FF11_GetLastCollisionMeshCount();
-    for (int i = 0; i < collisionMeshCount; ++i)
-    {
-        InsertCollisionRow(g_hZoneCollisionObjectList, i);
-    }
-    const int drawBatchCount = Model_FF11_GetLastMapGeoDrawBatchCount();
-    for (int i = 0; i < drawBatchCount; ++i)
-    {
-        InsertDrawBatchRow(g_hZoneDrawBatchList, i);
-    }
-    PopulateZoneDataTree();
-
-    g_populatingZoneObjectList = false;
-    SetUnreferencedEditorVisible(g_hZoneUnrefLabels, g_hZoneUnrefEdits, 9,
-                                 g_hZoneUnrefApplyButton, true);
-    if (g_hZoneCollisionVisibleCheck)
-    {
-        char collisionText[128] = {};
-        sprintf_s(collisionText, "Show collision mesh (%d triangles)",
-                  (int)g_zoneCollisionTris.size());
-        SetWindowTextA(g_hZoneCollisionVisibleCheck, collisionText);
-        ShowWindow(g_hZoneCollisionVisibleCheck, SW_SHOW);
-    }
-    if (g_hZonePlacedShowAllButton)
-        ShowWindow(g_hZonePlacedShowAllButton, SW_SHOW);
-    if (g_hZonePlacedHideAllButton)
-        ShowWindow(g_hZonePlacedHideAllButton, SW_SHOW);
-    if (g_hZoneUnrefShowAllButton)
-        ShowWindow(g_hZoneUnrefShowAllButton, SW_SHOW);
-    if (g_hZoneUnrefHideAllButton)
-        ShowWindow(g_hZoneUnrefHideAllButton, SW_SHOW);
-    UpdateZoneObjectEditControlState();
-    if (g_hZoneStatusLabel)
-    {
-        const noesisModel_t* zoneModel = g_zoneAsset.Model();
-        const int meshCount = zoneModel ? (int)zoneModel->submeshes.size() : 0;
-        const int materialCount = (zoneModel && zoneModel->pMatData) ?
-            zoneModel->pMatData->matCount : 0;
-        const int textureCount = (zoneModel && zoneModel->pMatData) ?
-            zoneModel->pMatData->texCount : 0;
-        const int boneCount = zoneModel ? zoneModel->boneCount : 0;
-        char statusText[512] = {};
-        const int placedCount = g_hZoneObjectList ? ListView_GetItemCount(g_hZoneObjectList) : 0;
-        const int mapGeoResourceCount = g_hZoneUnrefObjectList ? ListView_GetItemCount(g_hZoneUnrefObjectList) : 0;
-        const int collisionGridEntryCount = g_hZoneCollisionObjectList ? ListView_GetItemCount(g_hZoneCollisionObjectList) : 0;
-        sprintf_s(statusText,
-                  "Map records: %d     Unreferenced MapGeo: %d     Draw batches: %d     Collision grid entries: %d     Meshes: %d     Textures: %d     Materials: %d     Bones: %d",
-                  placedCount, mapGeoResourceCount, drawBatchCount,
-                  collisionGridEntryCount, meshCount, textureCount, materialCount, boneCount);
-        SetWindowTextA(g_hZoneStatusLabel, statusText);
-    }
-    ZoneObjectTransformEditor::PopulateMapObjectFields(
-        g_hZoneUnrefEdits, 9, GetSelectedZoneObjectIndex(), g_zoneObjectOverrides);
-    SendMessageA(g_hZoneObjectList, WM_SETREDRAW, TRUE, 0);
-    SendMessageA(g_hZoneUnrefObjectList, WM_SETREDRAW, TRUE, 0);
-    SendMessageA(g_hZoneCollisionObjectList, WM_SETREDRAW, TRUE, 0);
-    SendMessageA(g_hZoneDrawBatchList, WM_SETREDRAW, TRUE, 0);
-    SendMessageA(g_hZoneDataTree, WM_SETREDRAW, TRUE, 0);
-    SendMessageA(g_hZoneRawDataTree, WM_SETREDRAW, TRUE, 0);
-    SendMessageA(g_hZoneCollisionDataTree, WM_SETREDRAW, TRUE, 0);
-    InvalidateRect(g_hZoneObjectList, NULL, TRUE);
-    InvalidateRect(g_hZoneUnrefObjectList, NULL, TRUE);
-    InvalidateRect(g_hZoneCollisionObjectList, NULL, TRUE);
-    InvalidateRect(g_hZoneDrawBatchList, NULL, TRUE);
-    InvalidateRect(g_hZoneDataTree, NULL, TRUE);
-    InvalidateRect(g_hZoneRawDataTree, NULL, TRUE);
-    InvalidateRect(g_hZoneCollisionDataTree, NULL, TRUE);
-    if (g_hZoneLoadingLabel)
-        ShowWindow(g_hZoneLoadingLabel, SW_HIDE);
+    ZoneObjectPanel::RefreshData data = {};
+    data.zoneLabel = g_loadedZoneLabel.c_str();
+    data.overrides = &g_zoneObjectOverrides;
+    data.hiddenObjectNames = &g_hiddenZoneObjects;
+    data.collisionTriangleCount = static_cast<int>(g_zoneCollisionTris.size());
+    const noesisModel_t* zoneModel = g_zoneAsset.Model();
+    data.modelMeshCount = zoneModel ? static_cast<int>(zoneModel->submeshes.size()) : 0;
+    data.modelMaterialCount = (zoneModel && zoneModel->pMatData)
+        ? zoneModel->pMatData->matCount : 0;
+    data.modelTextureCount = (zoneModel && zoneModel->pMatData)
+        ? zoneModel->pMatData->texCount : 0;
+    data.modelBoneCount = zoneModel ? zoneModel->boneCount : 0;
+    data.editingEnabled = IsEditMode();
+    ZoneObjectPanel::Refresh(g_zoneObjectPanel, data);
 }
 
 static void BeginZoneObjectPanelRefresh()
 {
-    ZoneObjectPanelLoading::Context context;
-    context.panel = g_hZoneObjectPanel;
-    context.zoneLabel = g_hZoneLabel;
-    context.placedList = g_hZoneObjectList;
-    context.unreferencedList = g_hZoneUnrefObjectList;
-    context.collisionList = g_hZoneCollisionObjectList;
-    context.drawBatchList = g_hZoneDrawBatchList;
-    context.dataTree = g_hZoneDataTree;
-    context.rawDataTree = g_hZoneRawDataTree;
-    context.collisionDataTree = g_hZoneCollisionDataTree;
-    context.loadingLabel = g_hZoneLoadingLabel;
-    context.loadedZoneLabel = g_loadedZoneLabel.c_str();
-    context.placedColumnMode = &g_zoneObjectColumnMode;
-    context.unreferencedColumnMode = &g_zoneUnrefObjectColumnMode;
-    context.collisionColumnMode = &g_zoneCollisionObjectColumnMode;
-    context.drawBatchColumnMode = &g_zoneDrawBatchColumnMode;
-    context.populateMessage = ZoneObjectPanel::kPopulateMessage;
-    ZoneObjectPanelLoading::Begin(context);
+    ZoneObjectPanel::BeginRefresh(g_zoneObjectPanel, g_loadedZoneLabel.c_str());
 }
 
 static void HandleZoneObjectPanelEvent(
@@ -2686,13 +2890,13 @@ static void HandleZoneObjectPanelEvent(
             event.treeItem, event.treeItemData, g_hiddenZoneObjects);
         return;
     case ZoneObjectPanel::EventType::TreeSelectionChanged:
-        g_zoneTreeSelectedMapObjectIndex =
+        ZoneObjectPanel::SetTreeSelectedMapObjectIndex(
+            g_zoneObjectPanel,
             event.mapObjectIndex >= 0 &&
             event.mapObjectIndex < Model_FF11_GetLastMapObjectCount()
-                ? event.mapObjectIndex : -1;
-        ZoneObjectTransformEditor::PopulateMapObjectFields(
-            g_hZoneUnrefEdits, ZoneObjectPanel::kUnreferencedFieldCount,
-            GetSelectedZoneObjectIndex(), g_zoneObjectOverrides);
+                ? event.mapObjectIndex : -1);
+        ZoneObjectPanel::PopulateTransformFields(
+            g_zoneObjectPanel, GetSelectedZoneObjectIndex(), g_zoneObjectOverrides);
         return;
     case ZoneObjectPanel::EventType::MapObjectVisibilityChanged:
         if (event.mapObjectIndex >= 0)
@@ -2705,9 +2909,8 @@ static void HandleZoneObjectPanelEvent(
         }
         return;
     case ZoneObjectPanel::EventType::MapObjectSelectionChanged:
-        ZoneObjectTransformEditor::PopulateMapObjectFields(
-            g_hZoneUnrefEdits, ZoneObjectPanel::kUnreferencedFieldCount,
-            GetSelectedZoneObjectIndex(), g_zoneObjectOverrides);
+        ZoneObjectPanel::PopulateTransformFields(
+            g_zoneObjectPanel, GetSelectedZoneObjectIndex(), g_zoneObjectOverrides);
         return;
     case ZoneObjectPanel::EventType::Command:
         break;
@@ -2736,7 +2939,7 @@ static void HandleZoneObjectPanelEvent(
         PopulateZoneDataTree();
         break;
     case ZoneObjectPanel::Command::ToggleCombinedTree:
-        g_zoneCombinedObjectTree = !g_zoneCombinedObjectTree;
+        ZoneObjectPanel::ToggleCombinedTree(g_zoneObjectPanel);
         PopulateZoneDataTree();
         if (panel)
         {
@@ -2926,6 +3129,62 @@ static void ReloadPlayerModelFromControls()
 // Render
 //========================================================================================
 
+static void BeginCharacterSelectScene()
+{
+    // Reuse the authored character-creation zone and camera setup.
+    g_creationSelection = {};
+    g_creationSelection.equipmentIndex = 1;
+    const FFXICreationEntry* creationEntry = CurrentHighPolyCreationEntry();
+    LoadCreationEntry(creationEntry);
+    UnloadCreationModel();
+    g_titleAssets.LoadUi(GraphicsDevice(), g_ffxiPath, g_gameUiConfig.title.uiDat,
+        g_applicationSettings.enableTextureCompression);
+    g_savedCharacterPreviews.clear();
+    char exeDir[MAX_PATH] = {}, pattern[MAX_PATH] = {};
+    FFXIFileIO::GetExecutableDirectory(exeDir, sizeof(exeDir));
+    sprintf_s(pattern, "%sCharacters\\*.ff11datset", exeDir);
+    WIN32_FIND_DATAA file = {};
+    HANDLE handle = FindFirstFileA(pattern, &file);
+    if (handle != INVALID_HANDLE_VALUE)
+    {
+        do
+        {
+            if (file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            char path[MAX_PATH] = {};
+            sprintf_s(path, "%sCharacters\\%s", exeDir, file.cFileName);
+            SceneModelLoader::Result result = SceneModelLoader::LoadDatSet(
+                GraphicsDevice(), path, g_applicationSettings.enableTextureCompression);
+            if (!result.Succeeded()) continue;
+            SavedCharacterPreview preview;
+            preview.asset = std::move(result.asset);
+            preview.name = file.cFileName;
+            const size_t dot = preview.name.find_last_of('.');
+            if (dot != std::string::npos) preview.name.erase(dot);
+            g_savedCharacterPreviews.push_back(std::move(preview));
+        } while (FindNextFileA(handle, &file));
+        FindClose(handle);
+    }
+    if (g_savedCharacterPreviews.empty())
+    {
+        char message[MAX_PATH + 128] = {};
+        sprintf_s(message, "No loadable character DAT sets were found in:\n%sCharacters\\\n\nSave a character there first, then try again.", exeDir);
+        MessageBoxA(g_hWnd, message, "Select Character", MB_OK | MB_ICONINFORMATION);
+    }
+    g_selectedCharacterPreview = 0;
+    g_titleScreenActive = false;
+    g_nationSelectActive = false;
+    g_highPolyCreationActive = false;
+    g_characterSelectActive = true;
+    InvalidateRect(g_hWnd, nullptr, FALSE);
+}
+
+static void BeginCharacterDeleteScene()
+{
+    BeginCharacterSelectScene();
+    g_characterSelectActive = false;
+    g_characterDeleteActive = true;
+}
+
 static void ActivateTitleButton(int buttonIndex)
 {
     switch (buttonIndex)
@@ -2939,13 +3198,11 @@ static void ActivateTitleButton(int buttonIndex)
         break;
 
     case 0:
-        MessageBoxA(g_hWnd, "Character selection is not implemented yet.",
-                    "DATura", MB_OK | MB_ICONINFORMATION);
+        BeginCharacterSelectScene();
         break;
 
     case 2:
-        MessageBoxA(g_hWnd, "Character deletion is not implemented yet.",
-                    "DATura", MB_OK | MB_ICONINFORMATION);
+        BeginCharacterDeleteScene();
         break;
 
     case 3:
@@ -3012,7 +3269,7 @@ static void DrawNationSelectTextures()
     FFXINationSelectionRenderer::DrawTextures(context);
 }
 
-static void DrawNationSelectOverlay()
+static void DrawNationSelectOverlay(HDC overlayDc = nullptr)
 {
     if (!g_nationSelectActive || !g_hWnd)
         return;
@@ -3021,7 +3278,7 @@ static void DrawNationSelectOverlay()
     {
         GraphicsDevice(), g_hWnd, g_applicationSettings.enableMipMapping,
         g_titleAssets.UiModel(),
-        g_gameUiConfig.nation, g_selectedNationIndex
+        g_gameUiConfig.nation, g_selectedNationIndex, overlayDc
     };
     FFXINationSelectionRenderer::DrawOverlay(context);
 }
@@ -3040,7 +3297,7 @@ static void DrawTitleScreenTextures()
     FFXITitleScreenRenderer::DrawTextures(context);
 }
 
-static void DrawTitleScreenOverlay()
+static void DrawTitleScreenOverlay(HDC overlayDc = nullptr)
 {
     if (!g_titleScreenActive || !g_hWnd)
         return;
@@ -3049,9 +3306,189 @@ static void DrawTitleScreenOverlay()
     {
         GraphicsDevice(), g_hWnd, g_applicationSettings.enableMipMapping,
         g_titleAssets.LogoModel(), g_titleAssets.AtlasModel(), g_titleAssets.UiModel(),
-        g_gameUiConfig.title, g_input.clientMouse
+        g_gameUiConfig.title, g_input.clientMouse, overlayDc
     };
     FFXITitleScreenRenderer::DrawOverlay(context);
+}
+
+static RECT CharacterRosterBackRect(int width, int height);
+static RECT CharacterRosterConfirmRect(int width, int height);
+
+static void DrawCharacterRosterOverlay(HDC dc)
+{
+    if ((!g_characterSelectActive && !g_characterDeleteActive) || !dc) return;
+    RECT panel = { 16, 70, 260, 360 };
+    HBRUSH brush = CreateSolidBrush(g_characterDeleteActive ? RGB(55, 12, 18) : RGB(12, 16, 28));
+    FillRect(dc, &panel, brush); DeleteObject(brush);
+    HFONT font = CreateFontA(-18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_SWISS, "Arial");
+    for (size_t i = 0; i < g_savedCharacterPreviews.size(); ++i)
+    {
+        RECT row = { 28, 84 + (int)i * 30, 248, 110 + (int)i * 30 };
+        if ((int)i == g_selectedCharacterPreview)
+        {
+            HBRUSH selected = CreateSolidBrush(RGB(65, 75, 135));
+            FillRect(dc, &row, selected); DeleteObject(selected);
+        }
+        Win32Drawing::DrawShadowText(dc, font, g_savedCharacterPreviews[i].name.c_str(), row,
+            DT_LEFT | DT_VCENTER | DT_SINGLELINE, RGB(240, 240, 250), 1);
+    }
+    RECT hint = { 270, 690, 1240, 720 };
+    Win32Drawing::DrawShadowText(dc, font,
+        g_characterDeleteActive ? "Enter deletes the selected character. Backspace returns." :
+        "Enter loads the selected character. Backspace returns.", hint,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(240, 240, 250), 1);
+    RECT client{};
+    GetClientRect(g_hWnd, &client);
+    RECT back = CharacterRosterBackRect(client.right, client.bottom);
+    Win32Drawing::DrawShadowText(dc, font, "Back", back,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(255, 255, 255), 1);
+    RECT confirm = CharacterRosterConfirmRect(client.right, client.bottom);
+    Win32Drawing::DrawShadowText(dc, font, "Confirm", confirm,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(255, 255, 255), 1);
+    DeleteObject(font);
+}
+
+static RECT CharacterRosterBackRect(int width, int height)
+{
+    const int w = 180, h = 32;
+    return { width - w * 2 - 42, height - 58, width - w - 42, height - 58 + h };
+}
+static RECT CharacterRosterConfirmRect(int width, int height)
+{
+    const int w = 180, h = 32;
+    return { width - w - 28, height - 58, width - 28, height - 58 + h };
+}
+
+static void DrawCameraDebugOverlay(HDC overlayDc = nullptr)
+{
+    if (!g_cameraDebugOverlayVisible || !g_hWnd)
+        return;
+
+    float eyeX = 0.0f;
+    float eyeY = 0.0f;
+    float eyeZ = 0.0f;
+    GetRenderCameraPosition(eyeX, eyeY, eyeZ);
+
+    constexpr float kRadiansToDegrees = 57.29577951308232f;
+    const FFXIZoneEntry* debugZone = FFXIZone::FindByID(g_transitionZoneId);
+    const char* debugZoneName = debugZone ? debugZone->name : (g_loadedZoneLabel.empty() ? "(unknown)" : g_loadedZoneLabel.c_str());
+    char text[768] = {};
+    sprintf_s(text,
+        "CAMERA DEBUG  [T to hide]\r\n"
+        "Zone:   %s  (ID %d)\r\n"
+        "Player: X % .3f   Y % .3f   Z % .3f\r\n"
+        "Eye:    X % .3f   Y % .3f   Z % .3f\r\n"
+        "Target: X % .3f   Y % .3f   Z % .3f\r\n"
+        "Yaw:    % .4f rad  (% .2f deg)\r\n"
+        "Pitch:  % .4f rad  (% .2f deg)\r\n"
+        "Distance: %.3f\r\n"
+        "Weather: %s",
+        debugZoneName, g_transitionZoneId,
+        g_player.position[0], g_player.position[1], g_player.position[2],
+        eyeX, eyeY, eyeZ,
+        g_camTarget[0], g_camTarget[1], g_camTarget[2],
+        g_camYaw, g_camYaw * kRadiansToDegrees,
+        g_camPitch, g_camPitch * kRadiansToDegrees,
+        g_camDist,
+        g_zoneEnvironment.weatherPath[0] ? g_zoneEnvironment.weatherPath : "(none)");
+
+    const bool ownsDc = overlayDc == nullptr;
+    HDC dc = ownsDc ? GetDC(g_hWnd) : overlayDc;
+    if (!dc)
+        return;
+
+    const int savedDc = SaveDC(dc);
+    HFONT font = CreateFontA(
+        -15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
+
+    // Measure the complete multiline string instead of relying on a fixed
+    // panel height. Extra pixels accommodate glyph descenders and the shadow.
+    RECT textBounds = { 18, 16, 18, 16 };
+    HFONT previousFont = static_cast<HFONT>(SelectObject(dc, font));
+    DrawTextA(dc, text, -1, &textBounds,
+        DT_LEFT | DT_TOP | DT_NOPREFIX | DT_CALCRECT);
+    SelectObject(dc, previousFont);
+    const std::wstring bitmapText(text, text + strlen(text));
+    if (FFXIBitmapFont::Supports(bitmapText))
+    {
+        const SIZE extent = FFXIBitmapFont::Measure(bitmapText, 15);
+        textBounds.right = textBounds.left + extent.cx;
+        textBounds.bottom = textBounds.top + extent.cy;
+    }
+    textBounds.right += 2;
+    textBounds.bottom += 2;
+
+    RECT backgroundBounds =
+    {
+        10, 10, textBounds.right + 8, textBounds.bottom + 6
+    };
+    HBRUSH background = CreateSolidBrush(RGB(12, 16, 22));
+    FillRect(dc, &backgroundBounds, background);
+    DeleteObject(background);
+
+    Win32Drawing::DrawShadowText(
+        dc, font, text, textBounds, DT_LEFT | DT_TOP | DT_NOPREFIX,
+        RGB(235, 240, 248), 1);
+    DeleteObject(font);
+
+    if (savedDc)
+        RestoreDC(dc, savedDc);
+    if (ownsDc)
+        ReleaseDC(g_hWnd, dc);
+}
+
+static void DrawFfxiMainMenuOverlay(HDC overlayDc = nullptr)
+{
+    if (!overlayDc || !IsGameMode())
+        return;
+    RECT client = {};
+    GetClientRect(g_hWnd, &client);
+    const bool showMogHouse = g_loadedZoneLabel.find("Mog House") != std::string::npos;
+    FFXIMainMenu::Draw(overlayDc, g_ffxiMainMenu,
+                       client.right - client.left, client.bottom - client.top, showMogHouse);
+}
+
+static void DrawFfxiMainMenuTextures()
+{
+    if (!g_ffxiMainMenu.open || !IsGameMode() || !g_hWnd) return;
+    int width = 0, height = 0;
+    D3D9Device::GetViewportOrClientSize(GraphicsDevice(), g_hWnd, &width, &height);
+    if (!g_titleAssets.HasUi())
+        g_titleAssets.LoadUi(GraphicsDevice(), g_ffxiPath, g_gameUiConfig.title.uiDat,
+            g_applicationSettings.enableTextureCompression);
+    const bool showMogHouse = g_loadedZoneLabel.find("Mog House") != std::string::npos;
+    FFXIMainMenu::DrawTextures(GraphicsDevice(), g_applicationSettings.enableMipMapping,
+        g_titleAssets.UiModel(), g_ffxiMainMenu, width, height, showMogHouse);
+}
+
+static void DrawDeveloperConsoleOverlay(HDC dc)
+{
+    if (!g_developerConsoleOpen || !dc) return;
+    RECT panel = { 12, 12, 820, 360 };
+    HBRUSH brush = CreateSolidBrush(RGB(10, 12, 18));
+    FillRect(dc, &panel, brush); DeleteObject(brush);
+    HFONT font = CreateFontA(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        FIXED_PITCH | FF_MODERN, "Consolas");
+    const int lineHeight = 19;
+    const int visibleLines = 15;
+    const int end = (int)g_developerConsoleLog.size() - g_developerConsoleScroll;
+    const int start = std::max(0, end - visibleLines);
+    for (int i = start; i < end; ++i)
+    {
+        RECT line = { 24, 24 + (i - start) * lineHeight, 808, 24 + (i - start + 1) * lineHeight };
+        Win32Drawing::DrawShadowText(dc, font, g_developerConsoleLog[i].c_str(), line,
+            DT_LEFT | DT_SINGLELINE, RGB(220, 230, 240), 1);
+    }
+    RECT line = { 24, 320, 808, 348 };
+    std::string input = "> " + g_developerConsoleInput;
+    Win32Drawing::DrawShadowText(dc, font, input.c_str(), line,
+        DT_LEFT | DT_SINGLELINE, RGB(255, 220, 120), 1);
+    DeleteObject(font);
 }
 
 static float BoundsDerivedZoneFarPlane(const noesisModel_t* model,
@@ -3117,9 +3554,31 @@ static void Render()
         1.0f, 0);
 
     g_npcNameplates.clear();
+    g_npcInteraction.targets.clear();
+    g_zoneRuntimeOverrides = g_zoneObjectOverrides;
+    for (const auto& entry : g_doors.transforms)
+        g_zoneRuntimeOverrides.insert(entry);
     if (SUCCEEDED(GraphicsDevice()->BeginScene()))
     {
         // ---- Camera setup ----
+        if (g_characterSelectActive || g_characterDeleteActive)
+        {
+            g_camTarget[0] = 0.0f;
+            // Aim at the character's torso rather than the ground plane so
+            // the roster framing does not leave excessive space below them.
+            // Raise the target slightly to better center taller characters
+            // in the preview (previously 1.0f was too low).
+            g_camTarget[1] = -1.6f; // Camera position height <-------------------------------------------------------------------------------------
+            g_camTarget[2] = 0.0f;
+            // Character previews face along the X axis, so place the camera
+            // on that axis to show their fronts instead of their profiles.
+            g_camYaw = 3.14159265f * 0.5f;
+            g_camPitch = -0.10f;
+            // Keep the previews large enough to inspect while allowing a
+            // wider lineup to fit as more saved characters are added.
+            g_camDist = std::max(6.0f,
+                4.0f + (float)g_savedCharacterPreviews.size() * 1.0f);
+        }
         // Orbit camera position is derived by the camera module.
         float renderCameraEye[3] = {};
         GetRenderCameraPosition(renderCameraEye[0], renderCameraEye[1],
@@ -3162,29 +3621,32 @@ static void Render()
         const bool unlimitedDrawDistance = g_titleScreenActive ||
             ApplicationSettings::DrawDistanceOptionIsUnlimited(
                 g_applicationSettings.drawDistanceIndex);
+        const float effectiveDrawDistance = EffectivePlayDrawDistance(
+            configuredDrawDistance, unlimitedDrawDistance, IsGameMode());
         const float terrainProjectionDistance = unlimitedDrawDistance ?
             BoundsDerivedZoneFarPlane(zoneModel, renderCameraEye[0],
                                       renderCameraEye[1], renderCameraEye[2]) :
             ((zoneModel && g_zoneEnvironment.valid) ?
-                std::min(configuredDrawDistance, g_zoneEnvironment.drawDistance) :
-                configuredDrawDistance);
+                std::min(effectiveDrawDistance, g_zoneEnvironment.drawDistance) :
+                effectiveDrawDistance);
+        const float nearPlane = zoneModel ? D3DMath::ZoneNearPlane : 0.01f;
         D3DMATRIX proj = D3DMath::BuildPerspectiveFovLH(
             useCreationCamera ? creationCameraFov : 3.14159265f * 0.25f,
-			aspect, 0.01f, terrainProjectionDistance);
+			aspect, nearPlane, terrainProjectionDistance);
 		const float skyProjectionDistance = (zoneModel && g_zoneEnvironment.valid) ?
 			std::max(terrainProjectionDistance, g_zoneEnvironment.skyRadius * 1.125f) :
 			terrainProjectionDistance;
         D3DMATRIX skyProj = D3DMath::BuildPerspectiveFovLH(
-            3.14159265f * 0.25f, aspect, 0.01f, skyProjectionDistance);
+            3.14159265f * 0.25f, aspect, nearPlane, skyProjectionDistance);
+        g_pickView = view; g_pickProjection = proj;
+        g_pickWidth = static_cast<int>(w); g_pickHeight = static_cast<int>(h2);
         const D3DMATRIX viewProjection = D3DMath::Multiply(view, proj);
         ZoneRenderFrustum::Build(g_zoneRenderFrustum, view, proj);
-        const float visibilityXSign = g_applicationSettings.mirrorWorldZones ? 1.0f : -1.0f;
         // Retail selects the active cell from the player, not the third-person
         // eye. In DATura the orbit target is the equivalent position; the eye
         // can be high above and outside every finite cell volume.
-        g_zoneVisibilityViewerPoint[0] = renderCameraTarget[0] * visibilityXSign;
-        g_zoneVisibilityViewerPoint[1] = renderCameraTarget[1];
-        g_zoneVisibilityViewerPoint[2] = renderCameraTarget[2];
+        FFXICoordinateFrame::SceneToNativeDat(renderCameraTarget,
+            !g_applicationSettings.mirrorWorldZones, g_zoneVisibilityViewerPoint);
         g_zoneVisibilityViewerPointValid = Model_FF11_HasZoneVisibilityData();
         g_zoneVisibleMapObjects.clear();
         if (g_zoneVisibilityViewerPointValid)
@@ -3228,14 +3690,7 @@ static void Render()
                                 renderCameraEye[0], renderCameraEye[1], renderCameraEye[2]);
 			GraphicsDevice()->SetTransform(D3DTS_PROJECTION, &proj);
 			GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
-            RenderModel(zoneModel, true);
-            ZoneWeatherParticles::Draw(
-                GraphicsDevice(), zoneModel, g_zoneEnvironment.valid,
-                g_applicationSettings.enableMipMapping, g_zoneEnvironment.weatherPath,
-                gFF11LastGeneratorRecords, gFF11LastKeyframeRecords,
-                renderCameraEye[0], renderCameraEye[1], renderCameraEye[2]);
-            ZoneObjectHighlightRenderer::Draw(
-                GraphicsDevice(), zoneModel, g_highlightedZoneObject, g_zoneObjectOverrides);
+            RenderModel(zoneModel, true, ModelRenderer::GeometryPass::Opaque);
         }
 
         if (creationModel)
@@ -3253,21 +3708,78 @@ static void Render()
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
         }
 
-        if (g_applicationSettings.showCollisionGeometry)
-            ZoneCollision::DrawOverlay(GraphicsDevice(), g_zoneCollisionMesh);
+        if (g_characterSelectActive || g_characterDeleteActive)
+        {
+            const float spacing = 4.0f;
+            const float center = (float)(g_savedCharacterPreviews.size() - 1) * spacing * 0.5f;
+            for (size_t i = 0; i < g_savedCharacterPreviews.size(); ++i)
+            {
+                if (!g_savedCharacterPreviews[i].asset) continue;
+                D3DMATRIX previewWorld = world;
+                previewWorld._41 += (float)i * spacing - center;
+                GraphicsDevice()->SetTransform(D3DTS_WORLD, &previewWorld);
+                RenderModel(g_savedCharacterPreviews[i].asset.Model());
+            }
+            GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+            noesisTex_t* rosterButton = FFXITitleAssets::FindTitleTexture(
+                g_titleAssets.UiModel(), "buttonto");
+            if (rosterButton && rosterButton->pD3DTex)
+            {
+                POINT mouse = D3D9Device::MapClientPointToViewport(
+                    g_hWnd, (int)w, (int)h2, g_input.clientMouse);
+                const RECT button = CharacterRosterBackRect((int)w, (int)h2);
+                D3DUiRenderer::DrawSolidQuad(GraphicsDevice(),
+                    (float)button.left, (float)button.top,
+                    (float)(button.right - button.left),
+                    (float)(button.bottom - button.top), 0xFF111522);
+                FFXITitleUiPrimitives::DrawButton(GraphicsDevice(), g_applicationSettings.enableMipMapping,
+                    rosterButton, (float)button.left, (float)button.top,
+                    (float)(button.right - button.left), (float)(button.bottom - button.top),
+                    PtInRect(&button, mouse) != FALSE);
+                const RECT confirm = CharacterRosterConfirmRect((int)w, (int)h2);
+                D3DUiRenderer::DrawSolidQuad(GraphicsDevice(),
+                    (float)confirm.left, (float)confirm.top,
+                    (float)(confirm.right - confirm.left),
+                    (float)(confirm.bottom - confirm.top), 0xFF111522);
+                FFXITitleUiPrimitives::DrawButton(GraphicsDevice(), g_applicationSettings.enableMipMapping,
+                    rosterButton, (float)confirm.left, (float)confirm.top,
+                    (float)(confirm.right - confirm.left), (float)(confirm.bottom - confirm.top),
+                    PtInRect(&confirm, mouse) != FALSE);
+            }
+        }
 
         for (NpcRenderAsset &asset : g_npcRenderAssets)
             asset.visibleLastFrame = false;
+
+        std::vector<HomePoint::Instance> homePoints;
+        std::vector<const NpcRenderInstance*> visibleHomePoints;
+        for (const auto& npc : g_npcRenderInstances)
+            if (npc.placement.visible && npc.assetIndex < g_npcRenderAssets.size() &&
+                g_npcRenderAssets[npc.assetIndex].homePoint)
+                homePoints.push_back({npc.placement.entityId,
+                    {npc.placement.transform.x, npc.placement.transform.y, npc.placement.transform.z},
+                    npc.homePointActivatedAt});
+        const float listenerRight[3] = {view._11, view._21, view._31};
+        const HWND soundForeground = GetForegroundWindow();
+        const bool homePointAudioAllowed = IsGameMode() && !g_titleScreenActive && !g_nationSelectActive &&
+            g_applicationSettings.enableSounds &&
+            (g_applicationSettings.playSoundsInBackground || soundForeground == g_hWnd ||
+             soundForeground == ConfigDialog::Window(g_configDialog) || AudioPlayer_OwnsWindow(soundForeground));
+        for (auto& asset : g_npcRenderAssets)
+            if (asset.homePoint)
+                asset.homePoint->UpdateSound(homePoints, g_player.position, listenerRight,
+                    homePointAudioAllowed, g_applicationSettings.maxSimultaneousSounds);
 
         for (const NpcRenderInstance &npc : g_npcRenderInstances)
         {
             if (npc.assetIndex >= g_npcRenderAssets.size() || !npc.placement.visible)
                 continue;
             NpcRenderAsset &asset = g_npcRenderAssets[npc.assetIndex];
-            if (!asset.resource)
+            if (!asset.resource && !asset.homePoint)
                 continue;
             FFXINpcPlacement::Transform transform = npc.placement.transform;
-            transform.headingRadians += 3.1415926535f * 0.5f;
+            // Catalog headings and character DATs both face +X at zero. The
+            // player's camera-relative quarter-turn does not apply to NPCs.
             D3DMATRIX npcWorld = FFXINpcPlacement::BuildWorldTransform(transform);
 
             NpcNameplateRenderer::DrawItem nameplate;
@@ -3286,23 +3798,46 @@ static void Render()
                 g_zoneVisibilityViewerPoint[1],
                 g_zoneVisibilityViewerPoint[2]
             };
-            const float npcVisibilityPoint[3] =
-            {
-                transform.x * visibilityXSign,
-                transform.y,
-                transform.z
-            };
-            if (!Model_FF11_IsZonePointVisible(cameraVisibilityPoint, npcVisibilityPoint))
+            const auto npcVisibilityPoint = FFXICoordinateFrame::SceneToNativeDat(
+                {transform.x, transform.y, transform.z}, !g_applicationSettings.mirrorWorldZones);
+            if (!Model_FF11_IsZonePointVisible(cameraVisibilityPoint, npcVisibilityPoint.data()))
                 continue;
+
+            if (IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
+            {
+                float feetX, feetY, feetDepth, unusedX, unusedY, unusedZ;
+                if (ProjectNpcNameplate(npcWorld, 0.0f, viewProjection, w, h2,
+                    &feetX, &feetY, &feetDepth, &unusedX, &unusedY, &unusedZ))
+                {
+                    const float radius = (std::max)(12.0f, std::fabs(feetY - nameplate.screenY) * 0.3f);
+                    g_npcInteraction.targets.push_back({ npc.placement.entityId,
+                        (std::min)(feetX, nameplate.screenX) - radius,
+                        (std::min)(feetY, nameplate.screenY) - 20.0f,
+                        (std::max)(feetX, nameplate.screenX) + radius,
+                        (std::max)(feetY, nameplate.screenY) + 4.0f, nameplate.depth });
+                }
+            }
 
             asset.visibleLastFrame = true;
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &npcWorld);
-            RenderModel(asset.resource.Model());
+            if (asset.homePoint)
+                visibleHomePoints.push_back(&npc);
+            else
+            {
+                // A planar shadow redraws every opaque submesh. Keep the playable
+                // character shadow, but avoid multiplying that full extra pass by
+                // every NPC in a populated zone.
+                RenderModel(asset.resource.Model(), false, ModelRenderer::GeometryPass::All, false);
+            }
 
             if (!npc.placement.name.empty() &&
                 !FFXIPath::StringEqualsNoCase(npc.placement.name.c_str(), "blank"))
             {
                 nameplate.name = npc.placement.name;
+                nameplate.roleTitle = npc.placement.roleTitle;
+                nameplate.starterQuestAvailable = npc.placement.starterQuestAvailable;
+                if (IsGameMode() && g_npcInteraction.selected == npc.placement.entityId)
+                    nameplate.name = "> " + nameplate.name + " <";
                 const float dx = worldX - renderCameraEye[0];
                 const float dy = worldY - renderCameraEye[1];
                 const float dz = worldZ - renderCameraEye[2];
@@ -3320,19 +3855,133 @@ static void Render()
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &playerWorld);
             RenderModel(playerModel);
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+
+            // Use the posed mesh after animation to keep the label above the
+            // current race/equipment, with the same camera-distance scaling as NPCs.
+            NpcNameplateRenderer::DrawItem playerLabel;
+            const float playerNameplateY =
+                NpcRenderGeometry::ComputeNameplateLocalY(playerModel);
+            float labelX, labelY, labelZ;
+            const auto& appearance = g_gameUiConfig.playerNameplate;
+            if (appearance.enabled && ProjectNpcNameplate(playerWorld, playerNameplateY, viewProjection,
+                w, h2, &playerLabel.screenX, &playerLabel.screenY, &playerLabel.depth,
+                &labelX, &labelY, &labelZ))
+            {
+                playerLabel.name = appearance.name[0] ? appearance.name : g_creationCharacterName;
+                if (playerLabel.name.empty()) playerLabel.name = "Adventurer";
+                playerLabel.nameColor = 0xFFFFFFFF;
+                playerLabel.icon = appearance.icon;
+                playerLabel.jobMaster = appearance.jobMaster;
+                playerLabel.roleTitle = GameUiConfig_PlayerSubtitle(appearance);
+                playerLabel.iconColor = D3DCOLOR_XRGB(GetRValue(appearance.linkshellColor),
+                    GetGValue(appearance.linkshellColor), GetBValue(appearance.linkshellColor));
+                const float dx = labelX - renderCameraEye[0];
+                const float dy = labelY - renderCameraEye[1];
+                const float dz = labelZ - renderCameraEye[2];
+                playerLabel.distanceSquared = dx * dx + dy * dy + dz * dz;
+                g_npcNameplates.push_back(std::move(playerLabel));
+            }
         }
 
+        // Water and other translucent zone surfaces blend after actors have
+        // populated depth and color, preserving submerged/foreground occlusion.
+        if (zoneModel)
+        {
+            GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+            RenderModel(zoneModel, true, ModelRenderer::GeometryPass::Transparent);
+            ZoneObjectHighlightRenderer::Draw(
+                GraphicsDevice(), zoneModel, g_highlightedZoneObject, g_zoneRuntimeOverrides);
+        }
+        // Crystal layers blend against completed actor/terrain depth. Rendering
+        // them in the opaque NPC loop would let a later actor erase the aura.
+        std::sort(visibleHomePoints.begin(), visibleHomePoints.end(), [&](const auto* a, const auto* b)
+        {
+            const auto distance = [&](const auto* npc)
+            {
+                const auto& t = npc->placement.transform;
+                const float dx = t.x - renderCameraEye[0], dy = t.y - renderCameraEye[1], dz = t.z - renderCameraEye[2];
+                return dx*dx + dy*dy + dz*dz;
+            };
+            return distance(a) > distance(b);
+        });
+        GraphicsDevice()->SetTransform(D3DTS_PROJECTION, &proj);
+        for (const auto* npc : visibleHomePoints)
+        {
+            const auto npcWorld = FFXINpcPlacement::BuildWorldTransform(npc->placement.transform);
+            g_npcRenderAssets[npc->assetIndex].homePoint->Draw(GraphicsDevice(), npcWorld,
+                renderCameraEye, g_homePointSeconds, npc->homePointActivatedAt,
+                g_applicationSettings.enableMipMapping);
+        }
+        if (g_applicationSettings.showCollisionGeometry)
+            ZoneCollision::DrawOverlay(GraphicsDevice(), g_zoneCollisionMesh);
+
+        // Precipitation blends against the completed scene and depth-tests against
+        // actors as well as terrain. Drawing it before actors erases foreground drops.
+        if (zoneModel)
+        {
+            ZoneWeatherParticles::Draw(
+                GraphicsDevice(), zoneModel, g_zoneEnvironment.valid,
+                g_applicationSettings.enableMipMapping, g_zoneEnvironment.weatherPath,
+                gFF11LastGeneratorRecords, gFF11LastKeyframeRecords,
+                renderCameraEye[0], renderCameraEye[1], renderCameraEye[2]);
+            GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+        }
+
+        if (IsGameMode() && g_doors.selected >= 0 && g_doors.selected < (int)g_doors.doors.size())
+        {
+            const auto& door = g_doors.doors[g_doors.selected];
+            auto marker = D3DMath::BuildIdentity();
+            marker._41 = door.center[0]; marker._42 = door.minY - 0.25f; marker._43 = door.center[2];
+            NpcNameplateRenderer::DrawItem label;
+            float wx, wy, wz;
+            if (ProjectNpcNameplate(marker, 0, viewProjection, w, h2,
+                &label.screenX, &label.screenY, &label.depth, &wx, &wy, &wz))
+            {
+                label.name = "> Door <";
+                const float dx = door.center[0] - g_player.position[0];
+                const float dz = door.center[2] - g_player.position[2];
+                label.roleTitle = g_doors.physics ? "Walk into door to push" : door.targetAngle != 0 ? "Open" :
+                    (door.angle != 0 ? "Closing" :
+                    (dx*dx + dz*dz > 36 ? "Move closer to open" : "Click again to open"));
+                label.distanceSquared = dx*dx + dz*dz;
+                g_npcNameplates.push_back(std::move(label));
+            }
+        }
         if (!g_titleScreenActive && !g_nationSelectActive)
             NpcNameplateRenderer::Draw(GraphicsDevice(), g_npcNameplates);
         DrawTitleScreenTextures();
         DrawNationSelectTextures();
+        DrawFfxiMainMenuTextures();
+        DrawZoneBoundaryDots(viewProjection, w, h2);
+        DrawZoneTransitionOverlay();
 
         GraphicsDevice()->EndScene();
     }
 
+    // The title/nation labels are GDI-rendered.  Paint them into the
+    // lockable backbuffer before Present so they cannot flicker independently
+    // of the Direct3D title artwork on the window surface.
+    IDirect3DSurface9* backBuffer = nullptr;
+    HDC overlayDc = nullptr;
+    if (SUCCEEDED(GraphicsDevice()->GetBackBuffer(
+            0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)) && backBuffer)
+    {
+        backBuffer->GetDC(&overlayDc);
+        if (overlayDc)
+        {
+            DrawTitleScreenOverlay(overlayDc);
+            DrawCharacterRosterOverlay(overlayDc);
+            DrawNationSelectOverlay(overlayDc);
+            DrawCameraDebugOverlay(overlayDc);
+            DrawFfxiMainMenuOverlay(overlayDc);
+            DrawDeveloperConsoleOverlay(overlayDc);
+            backBuffer->ReleaseDC(overlayDc);
+        }
+        backBuffer->Release();
+    }
+
+    NpcChatWindow::Draw(GraphicsDevice());
     g_graphicsRuntime.Present();
-    DrawTitleScreenOverlay();
-    DrawNationSelectOverlay();
 }
 
 //========================================================================================
@@ -3552,6 +4201,12 @@ static bool HandleApplicationMenuCommand(
     case ApplicationMenu::Action::ShowCurrentZoneResources:
         ShowCurrentZoneResourceBrowser();
         return true;
+    case ApplicationMenu::Action::ShowZoneGeometryDiagnostics:
+        ShowZoneGeometryDiagnostics();
+        return true;
+    case ApplicationMenu::Action::ShowDatReplacements:
+        DatReplacementDialog::Show(g_hWnd);
+        return true;
     case ApplicationMenu::Action::OpenResourceDat:
         ShowResourceDatBrowser();
         return true;
@@ -3583,10 +4238,15 @@ static void HandleInputAction(const InputController::Action action, HWND window)
 {
     switch (action)
     {
-    case InputController::Action::Exit:
-        PostQuitMessage(0);
-        break;
     case InputController::Action::Back:
+        if (g_characterSelectActive || g_characterDeleteActive)
+        {
+            g_characterSelectActive = false;
+            g_characterDeleteActive = false;
+            g_savedCharacterPreviews.clear();
+            LoadTitleScreen();
+            return;
+        }
         if (g_nationSelectActive)
         {
             g_nationSelectActive = false;
@@ -3595,6 +4255,30 @@ static void HandleInputAction(const InputController::Action action, HWND window)
         }
         break;
     case InputController::Action::Confirm:
+        if (g_characterSelectActive && !g_savedCharacterPreviews.empty())
+        {
+            UnloadPlayerModel();
+            g_playerAsset = std::move(g_savedCharacterPreviews[g_selectedCharacterPreview].asset);
+            g_savedCharacterPreviews.clear();
+            g_characterSelectActive = false;
+            SetInteractionMode(InteractionController::Mode::Game);
+            InvalidateRect(window, nullptr, FALSE);
+            return;
+        }
+        if (g_characterDeleteActive && !g_savedCharacterPreviews.empty())
+        {
+            const std::string name = g_savedCharacterPreviews[g_selectedCharacterPreview].name;
+            if (MessageBoxA(window, "Delete the selected character? This cannot be undone.",
+                "Delete Character Warning", MB_YESNO | MB_ICONWARNING) == IDYES)
+            {
+                char exeDir[MAX_PATH] = {}, path[MAX_PATH] = {};
+                FFXIFileIO::GetExecutableDirectory(exeDir, sizeof(exeDir));
+                sprintf_s(path, "%sCharacters\\%s.ff11datset", exeDir, name.c_str()); DeleteFileA(path);
+                sprintf_s(path, "%sCharacters\\%s.noesis", exeDir, name.c_str()); DeleteFileA(path);
+                BeginCharacterDeleteScene();
+            }
+            return;
+        }
         if (g_nationSelectActive)
             LoadSelectedNationScene();
         break;
@@ -3613,6 +4297,10 @@ static void HandleInputAction(const InputController::Action action, HWND window)
         SendMessageA(window, WM_COMMAND,
             ApplicationMenu::CommandId(ApplicationMenu::Action::CycleWeather), 0);
         break;
+    case InputController::Action::ToggleCameraDebugOverlay:
+        g_cameraDebugOverlayVisible = !g_cameraDebugOverlayVisible;
+        InvalidateRect(window, NULL, FALSE);
+        break;
     case InputController::Action::None:
         break;
     }
@@ -3624,8 +4312,27 @@ static void HandleInputAction(const InputController::Action action, HWND window)
 
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if (g_developerConsoleOpen && msg != WM_KEYDOWN && msg != WM_CHAR &&
+        msg != WM_KEYUP && msg != WM_MOUSEWHEEL && msg != WM_PAINT &&
+        msg != WM_ERASEBKGND && msg != WM_DESTROY)
+        return 0;
     switch (msg)
     {
+    // The client area is owned by the continuously rendered D3D9 frame.  Do
+    // not let the class background brush erase it during an invalidation;
+    // that produces a visible black flash over the title/nation UI while the
+    // next frame is being presented.
+    case WM_ERASEBKGND:
+        return 1;
+
+    case WM_PAINT:
+        {
+            PAINTSTRUCT paint = {};
+            BeginPaint(hWnd, &paint);
+            EndPaint(hWnd, &paint);
+        }
+        return 0;
+
     case WM_MEASUREITEM:
         {
             MEASUREITEMSTRUCT *measure = (MEASUREITEMSTRUCT *)lParam;
@@ -3659,6 +4366,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
 
     case WM_SIZE:
+        NpcChatWindow::Layout(hWnd);
         // Ignore if minimized or if the device doesn't exist yet
         if (g_graphicsRuntime.IsInitialized() && wParam != SIZE_MINIMIZED)
         {
@@ -3675,7 +4383,115 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             return 0;
         break;
 
+    case WM_LBUTTONUP:
+        if (!IsGameMode()) break;
+        if (g_ffxiMainMenu.open)
+        {
+            RECT client = {};
+            GetClientRect(hWnd, &client);
+            HDC dc = GetDC(hWnd);
+            POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            const bool clickedTab = FFXIMainMenu::ClickTab(
+                g_ffxiMainMenu, dc, client.right, client.bottom, point);
+            if (dc) ReleaseDC(hWnd, dc);
+            if (clickedTab)
+            {
+                InvalidateRect(hWnd, NULL, FALSE);
+                return 0;
+            }
+            return 0;
+        }
+        if (!InputController::PlayerMouseButton(g_input, true, false,
+                GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam))) return 0;
+        if (IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
+        {
+            int width = 0, height = 0;
+            D3D9Device::GetViewportOrClientSize(GraphicsDevice(), hWnd, &width, &height);
+            POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            point = D3D9Device::MapClientPointToViewport(hWnd, width, height, point);
+            ZoneObjectVisibility::RenderContext visibility;
+            visibility.hiddenNames = &g_hiddenZoneObjects;
+            visibility.viewerPointValid = g_zoneVisibilityViewerPointValid;
+            visibility.lodViewerPoint = g_zoneVisibilityViewerPoint;
+            visibility.visibleMapObjects = &g_zoneVisibleMapObjects;
+            visibility.overrides = &g_zoneRuntimeOverrides;
+            visibility.frustum = &g_zoneRenderFrustum;
+            const auto doorHit = g_doors.Pick(g_zoneAsset.Model(), visibility,
+                g_pickView, g_pickProjection, g_pickWidth, g_pickHeight, (float)point.x, (float)point.y);
+            float npcDepth = 1.0f;
+            for (const auto& target : g_npcInteraction.targets)
+                if (point.x >= target.left && point.x <= target.right &&
+                    point.y >= target.top && point.y <= target.bottom)
+                    npcDepth = (std::min)(npcDepth, target.depth);
+            if (doorHit.door >= 0 && doorHit.depth <= npcDepth)
+            {
+                g_npcInteraction.selected = 0;
+                g_doors.Click(doorHit.door, g_player.position);
+                return 0;
+            }
+            g_doors.selected = -1;
+            if (g_npcInteraction.Click((float)point.x, (float)point.y))
+            {
+                for (auto& npc : g_npcRenderInstances)
+                {
+                    if (npc.placement.entityId != g_npcInteraction.selected ||
+                        npc.assetIndex >= g_npcRenderAssets.size()) continue;
+                    auto& asset = g_npcRenderAssets[npc.assetIndex];
+                    if (!asset.homePoint) break;
+                    HomePoint::Instance instance{npc.placement.entityId,
+                        {npc.placement.transform.x, npc.placement.transform.y, npc.placement.transform.z}};
+                    float distanceSquared = 0;
+                    for (int axis = 0; axis < 3; ++axis)
+                        distanceSquared += (instance.position[axis] - g_player.position[axis]) *
+                                           (instance.position[axis] - g_player.position[axis]);
+                    if (distanceSquared <= HomePoint::InteractionDistance * HomePoint::InteractionDistance &&
+                        g_homePointSeconds - npc.homePointActivatedAt >= 1.0)
+                    {
+                        npc.homePointActivatedAt = g_homePointSeconds;
+                        const float right[3] = {g_pickView._11, g_pickView._21, g_pickView._31};
+                        asset.homePoint->ActivateSound(instance, g_player.position, right);
+                    }
+                    return 0;
+                }
+                FFXINpcPlacement::Placement placement;
+                if (FFXINpcPlacement::Find(g_npcInteraction.selected, placement))
+                    NpcChatWindow::Show(hWnd, placement.name, NpcDialogueText(placement));
+            }
+            return 0;
+        }
+        return 0;
+
     case WM_LBUTTONDOWN:
+        if (g_characterSelectActive || g_characterDeleteActive)
+        {
+            POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            int rosterWidth = 0, rosterHeight = 0;
+            D3D9Device::GetViewportOrClientSize(GraphicsDevice(), hWnd, &rosterWidth, &rosterHeight);
+            RECT back = CharacterRosterBackRect(rosterWidth, rosterHeight);
+            if (PtInRect(&back, point))
+            {
+                HandleInputAction(InputController::Action::Back, hWnd);
+                return 0;
+            }
+            RECT confirm = CharacterRosterConfirmRect(rosterWidth, rosterHeight);
+            if (PtInRect(&confirm, point))
+            {
+                HandleInputAction(InputController::Action::Confirm, hWnd);
+                return 0;
+            }
+            const int row = (GET_Y_LPARAM(lParam) - 84) / 30;
+            if (GET_X_LPARAM(lParam) >= 28 && GET_X_LPARAM(lParam) < 248 &&
+                row >= 0 && row < (int)g_savedCharacterPreviews.size())
+                g_selectedCharacterPreview = row;
+            return 0;
+        }
+        if (IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
+        {
+            InputController::PlayerMouseButton(g_input, true, true,
+                GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            UpdatePlayerCameraTarget();
+            return 0;
+        }
         if (g_nationSelectActive)
         {
             int uiW = 0, uiH = 0;
@@ -3688,6 +4504,19 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             {
                 g_selectedNationIndex = nationIndex;
                 InvalidateRect(hWnd, NULL, FALSE);
+                return 0;
+            }
+            const auto actionButtons = FFXINationSelectionRenderer::GetActionButtonRects(
+                g_gameUiConfig.nation, uiW, uiH);
+            POINT viewportPoint = D3D9Device::MapClientPointToViewport(g_hWnd, uiW, uiH, pt);
+            if (PtInRect(&actionButtons.confirm, viewportPoint))
+            {
+                LoadSelectedNationScene();
+                return 0;
+            }
+            if (PtInRect(&actionButtons.back, viewportPoint))
+            {
+                HandleInputAction(InputController::Action::Back, hWnd);
                 return 0;
             }
         }
@@ -3709,11 +4538,24 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     // ---- Mouse camera orbit ----
     case WM_RBUTTONDOWN:
+        if (IsGameMode())
+        {
+            InputController::PlayerMouseButton(g_input, false, true,
+                GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            UpdatePlayerCameraTarget();
+            return 0;
+        }
         InputController::BeginOrbit(
             g_input, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         return 0;
 
     case WM_RBUTTONUP:
+        if (IsGameMode())
+        {
+            InputController::PlayerMouseButton(g_input, false, false,
+                GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            return 0;
+        }
         EndMouseLook();
         return 0;
 
@@ -3767,6 +4609,14 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
 
     case WM_MOUSEWHEEL:
+        if (g_developerConsoleOpen)
+        {
+            const int direction = GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? 1 : -1;
+            const int maxScroll = std::max(0, (int)g_developerConsoleLog.size() - 15);
+            g_developerConsoleScroll = std::max(0, std::min(maxScroll,
+                g_developerConsoleScroll + direction));
+            return 0;
+        }
         OrbitCamera::Zoom(
             g_orbitCamera,
             static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
@@ -3774,12 +4624,89 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
 
     // ---- Keyboard ----
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+        if (wParam == VK_MENU && IsGameMode())
+        {
+            if (msg == WM_SYSKEYDOWN)
+                InputController::KeyDown(g_input, VK_MENU);
+            else
+                InputController::KeyUp(g_input, VK_MENU);
+            return 0;
+        }
+        break;
+
     case WM_KEYDOWN:
+        if (wParam == VK_OEM_3)
+        {
+            g_developerConsoleOpen = !g_developerConsoleOpen;
+            return 0;
+        }
+        if (g_developerConsoleOpen && wParam == VK_ESCAPE)
+        { g_developerConsoleOpen = false; return 0; }
+        if (g_developerConsoleOpen && wParam == VK_BACK)
+        { if (!g_developerConsoleInput.empty()) g_developerConsoleInput.pop_back(); return 0; }
+        if (g_developerConsoleOpen && (wParam == VK_UP || wParam == VK_DOWN))
+        {
+            if (!g_developerConsoleHistory.empty())
+            {
+                if (wParam == VK_UP)
+                    g_developerConsoleHistoryIndex = std::min((int)g_developerConsoleHistory.size() - 1, g_developerConsoleHistoryIndex + 1);
+                else
+                    g_developerConsoleHistoryIndex = std::max(-1, g_developerConsoleHistoryIndex - 1);
+                g_developerConsoleInput = g_developerConsoleHistoryIndex >= 0
+                    ? g_developerConsoleHistory[g_developerConsoleHistory.size() - 1 - g_developerConsoleHistoryIndex] : "";
+            }
+            return 0;
+        }
+        if (g_developerConsoleOpen && wParam == VK_RETURN)
+        { ExecuteDeveloperCommand(); return 0; }
+        if (g_developerConsoleOpen)
+            return 0;
+        // FFXI consumes Escape from the chat log first.  Each press removes
+        // one visible line; only a later press, after the log is hidden, may
+        // open the main menu.
+        if (wParam == VK_ESCAPE && IsGameMode() && NpcChatWindow::HandleEscape(lParam))
+            return 0;
+        if (wParam == VK_ESCAPE && IsGameMode() &&
+            (g_doors.selected >= 0 || g_npcInteraction.selected))
+        {
+            g_npcInteraction.selected = 0;
+            g_doors.selected = -1;
+            return 0;
+        }
+        if (IsGameMode())
+        {
+            const bool menuKey = wParam == VK_SUBTRACT || wParam == VK_OEM_MINUS;
+            const FFXIMainMenu::Action menuAction = menuKey
+                ? FFXIMainMenu::HandleKey(g_ffxiMainMenu, VK_ESCAPE)
+                : FFXIMainMenu::HandleKey(g_ffxiMainMenu, static_cast<unsigned int>(wParam));
+            if (menuAction != FFXIMainMenu::Action::None)
+            {
+                InvalidateRect(hWnd, NULL, FALSE);
+                return 0;
+            }
+            const bool menuNavigationKey =
+                wParam == VK_UP || wParam == VK_DOWN || wParam == VK_LEFT ||
+                wParam == VK_RIGHT || wParam == VK_RETURN || wParam == VK_ESCAPE ||
+                menuKey;
+            if (g_ffxiMainMenu.open && menuNavigationKey)
+                return 0;
+        }
         HandleInputAction(
             InputController::KeyDown(g_input, static_cast<unsigned int>(wParam)), hWnd);
         return 0;
 
+    case WM_CHAR:
+        if (g_developerConsoleOpen && wParam >= 32 && wParam < 127 && wParam != '`' && wParam != '~')
+        {
+            g_developerConsoleInput.push_back((char)wParam);
+            return 0;
+        }
+        break;
+
     case WM_KEYUP:
+        if (g_developerConsoleOpen) return 0;
         InputController::KeyUp(g_input, static_cast<unsigned int>(wParam));
         return 0;
 
@@ -3803,11 +4730,12 @@ static void InitializeMainWindowState()
     ApplyColorTheme(g_hWnd);
     SetWindowTextW(g_hWnd, kWindowTitle);
     InitFFXIPath();
+    FFXIBitmapFont::SetRootPath(g_ffxiPath);
     ApplicationMenu::Initialize(g_applicationMenu, g_hWnd, g_ffxiPath, g_themeState);
     SetMenu(g_hWnd,
         ApplicationMenu::Build(g_applicationMenu, g_applicationSettings, IsGameMode()));
     ConfigDialog::Initialize(
-        g_configDialog, g_hWnd, g_ffxiPath, g_applicationSettings, g_themeState,
+        g_configDialog, g_hWnd, g_ffxiPath, g_applicationSettings, g_themeState, g_gameUiConfig,
         HandleConfigDialogEvent, ConfigDialogIsGameMode);
     LowPolyCharacterPanel::Initialize(
         g_lowPolyPanel, g_hWnd, g_playerEquip, g_playerFaceVariant,
@@ -3831,12 +4759,28 @@ static bool InitializeGraphicsState()
 
 static void RunApplicationFrame(void*, const float deltaSeconds)
 {
+    UpdateAdaptivePlayDrawDistance(deltaSeconds, IsGameMode());
+
     if (deltaSeconds > 0.0f)
     {
+        if (g_transitionZoneId == ZoneElevator::kMetalworksZone &&
+            ZoneElevator::Update(g_metalworksElevator, deltaSeconds,
+                                 g_player.position, g_player.onGround))
+        {
+            g_player.verticalVelocity = 0.0f;
+            g_player.jumping = false;
+            PlayerController::SetLastSafePoint(g_player);
+        }
+        g_doorPhysicsUpdated = false;
+        g_doors.Update(deltaSeconds, g_zoneCollisionMesh);
         UpdateCameraMovement(deltaSeconds);
+        if (g_doors.physics && !g_doorPhysicsUpdated)
+            g_doors.UpdatePhysics(deltaSeconds, g_zoneCollisionMesh,
+                IsGameMode() && g_playerAsset ? g_player.position : nullptr);
         UpdatePlayerAnimation(deltaSeconds);
         UpdateNpcAnimations(deltaSeconds);
         UpdateHighPolyCreationAnimation(deltaSeconds);
+        UpdateZoneTransition(deltaSeconds);
     }
 
     Render();
@@ -3872,6 +4816,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*
 {
     InitColorTheme();
     GameUiConfig_Load(g_gameUiConfig);
+    NpcChatWindow::SetSize(g_gameUiConfig.chatLogWidthPercent, g_gameUiConfig.chatLogHeightPercent);
+    NpcChatWindow::SetTimeout(g_gameUiConfig.chatLogTimeoutSeconds);
     Win32Application::InitializeCommonControls(
         ICC_LISTVIEW_CLASSES | ICC_TREEVIEW_CLASSES | ICC_TAB_CLASSES);
 

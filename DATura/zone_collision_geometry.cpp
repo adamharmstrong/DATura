@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "zone_collision_geometry.h"
+#include "ffxi_coordinate_frame.h"
 
 #include <cmath>
 #include <algorithm>
@@ -51,6 +52,8 @@ SpatialIndex::SpatialIndex(const float cellSize)
 void SpatialIndex::Clear()
 {
     cells_.clear();
+    queryMarks_.clear();
+    queryMark_ = 0;
 }
 
 int SpatialIndex::GridCoordinate(const float value) const
@@ -65,6 +68,8 @@ long long SpatialIndex::GridKey(const int x, const int z)
 
 void SpatialIndex::AddTriangle(const int triangleIndex, const Triangle& triangle, const float expansionRadius)
 {
+    if (triangleIndex >= 0 && static_cast<size_t>(triangleIndex) >= queryMarks_.size())
+        queryMarks_.resize(static_cast<size_t>(triangleIndex) + 1, 0);
     const int minX = GridCoordinate(triangle.minX - expansionRadius);
     const int maxX = GridCoordinate(triangle.maxX + expansionRadius);
     const int minZ = GridCoordinate(triangle.minZ - expansionRadius);
@@ -80,6 +85,12 @@ void SpatialIndex::Query(const float x, const float z, const float radius,
                          std::vector<int>& outIndices) const
 {
     outIndices.clear();
+    ++queryMark_;
+    if (queryMark_ == 0)
+    {
+        std::fill(queryMarks_.begin(), queryMarks_.end(), 0);
+        ++queryMark_;
+    }
     const int minX = GridCoordinate(x - radius);
     const int maxX = GridCoordinate(x + radius);
     const int minZ = GridCoordinate(z - radius);
@@ -93,8 +104,13 @@ void SpatialIndex::Query(const float x, const float z, const float radius,
                 continue;
             for (const int triangleIndex : cell->second)
             {
-                if (std::find(outIndices.begin(), outIndices.end(), triangleIndex) == outIndices.end())
-                    outIndices.push_back(triangleIndex);
+                if (triangleIndex < 0 || static_cast<size_t>(triangleIndex) >= queryMarks_.size() ||
+                    queryMarks_[static_cast<size_t>(triangleIndex)] == queryMark_)
+                {
+                    continue;
+                }
+                queryMarks_[static_cast<size_t>(triangleIndex)] = queryMark_;
+                outIndices.push_back(triangleIndex);
             }
         }
     }
@@ -198,20 +214,10 @@ bool BuildTriangle(const float* sourcePoints, const bool mirrorX, Triangle& outT
 
     outTriangle = {};
     for (int vertex = 0; vertex < 3; ++vertex)
-        for (int axis = 0; axis < 3; ++axis)
-            outTriangle.p[vertex][axis] = sourcePoints[vertex * 3 + axis];
-
-    if (mirrorX)
-    {
-        for (int vertex = 0; vertex < 3; ++vertex)
-            outTriangle.p[vertex][0] = -outTriangle.p[vertex][0];
-        for (int axis = 0; axis < 3; ++axis)
-        {
-            const float temp = outTriangle.p[1][axis];
-            outTriangle.p[1][axis] = outTriangle.p[2][axis];
-            outTriangle.p[2][axis] = temp;
-        }
-    }
+        FFXICoordinateFrame::NativeDatToScene(sourcePoints + vertex * 3, mirrorX,
+                                            outTriangle.p[vertex]);
+    FFXICoordinateFrame::ReverseTriangleWindingIfReflected(
+        outTriangle.p[1], outTriangle.p[2], mirrorX);
 
     const float edge0[3] =
     {
@@ -348,7 +354,7 @@ bool OverlapsWallAt(const std::vector<Triangle>& triangles, const SpatialIndex& 
     std::vector<int> candidates;
     index.Query(x, z, playerRadius + 0.25f, candidates);
     const float playerTopY = y - playerHeight;
-    const float playerBottomY = y + stepHeight;
+    const float playerBottomY = y - 0.001f;
     for (const int triangleIndex : candidates)
     {
         if (triangleIndex < 0 || triangleIndex >= static_cast<int>(triangles.size()))
@@ -361,11 +367,9 @@ bool OverlapsWallAt(const std::vector<Triangle>& triangles, const SpatialIndex& 
             continue;
         }
 
-        const float triangleHeight = triangle.maxY - triangle.minY;
-        const bool shortStepFace =
-            triangleHeight <= (stepHeight + 0.25f) &&
-            triangle.minY >= y - (stepHeight + 0.25f) &&
-            triangle.maxY <= y + (stepHeight + 0.25f);
+        // Only the height above the feet matters, not how far the face
+        // extends below the ground. World Y increases downward.
+        const bool shortStepFace = triangle.minY >= y - stepHeight;
         if (!shortStepFace)
             return true;
     }
@@ -391,19 +395,15 @@ void ResolveHorizontalCollision(const std::vector<Triangle>& triangles, const Sp
                 continue;
 
             const float playerTopY = playerY - playerHeight;
-            const float playerBottomY = playerY + stepHeight;
+            const float playerBottomY = playerY - 0.001f;
             if (playerBottomY < triangle.minY || playerTopY > triangle.maxY ||
                 !PointNearTriangleXZ(newX, newZ, triangle, playerRadius))
             {
                 continue;
             }
 
-            const float triangleHeight = triangle.maxY - triangle.minY;
             const bool shortStepFace =
-                playerOnGround &&
-                triangleHeight <= (stepHeight + 0.25f) &&
-                triangle.minY >= playerY - (stepHeight + 0.25f) &&
-                triangle.maxY <= playerY + (stepHeight + 0.25f);
+                playerOnGround && triangle.minY >= playerY - stepHeight;
             if (shortStepFace)
                 continue;
 
@@ -417,7 +417,9 @@ void ResolveHorizontalCollision(const std::vector<Triangle>& triangles, const Sp
 
             float oldDistance = (oldX - triangle.p[0][0]) * normalX + (oldZ - triangle.p[0][2]) * normalZ;
             float newDistance = (newX - triangle.p[0][0]) * normalX + (newZ - triangle.p[0][2]) * normalZ;
-            if (std::fabs(oldDistance) < std::fabs(newDistance))
+            // Keep the player on the side they started on, independently of
+            // triangle winding or whether this move crosses the plane.
+            if (oldDistance < 0.0f || (oldDistance == 0.0f && newDistance > 0.0f))
             {
                 normalX = -normalX;
                 normalZ = -normalZ;
@@ -528,12 +530,14 @@ bool TryMoveHorizontal(const Mesh& mesh, const float playerRadius, const float p
         const bool hasFloor = FindFloorAt(mesh.Triangles(), mesh.Index(), playerRadius,
                                           newX, newZ, position[1] - stepHeight,
                                           position[1] + maxStepDown, &floorY, floorNormal);
-        if (!hasFloor || floorY < position[1] - stepHeight || floorY > position[1] + maxStepDown)
-            return false;
-
-        position[1] = floorY;
-        verticalVelocity = 0.0f;
-        onGround = true;
+        if (hasFloor)
+        {
+            position[1] = floorY;
+            verticalVelocity = 0.0f;
+        }
+        // A missing center sample is not a wall. Cross seams and let vertical
+        // motion handle unsupported ground and drops.
+        onGround = hasFloor;
     }
 
     position[0] = newX;
@@ -550,8 +554,9 @@ void MoveHorizontal(const Mesh& mesh, const float playerRadius, const float play
     if (distance <= 0.0001f)
         return;
 
-    const int steps = static_cast<int>(std::ceil(distance / 0.35f));
-    const int clampedSteps = steps < 1 ? 1 : (steps > 24 ? 24 : steps);
+    // Keep each move smaller than the radius so thin walls cannot be skipped.
+    const float maxStep = std::max(0.001f, std::min(0.35f, playerRadius * 0.5f));
+    const int clampedSteps = std::max(1, static_cast<int>(std::ceil(distance / maxStep)));
     const float stepX = deltaX / static_cast<float>(clampedSteps);
     const float stepZ = deltaZ / static_cast<float>(clampedSteps);
     for (int step = 0; step < clampedSteps; ++step)
@@ -568,7 +573,8 @@ void MoveHorizontal(const Mesh& mesh, const float playerRadius, const float play
 bool UpdateVerticalMotion(const Mesh& mesh, const float playerRadius, const float stepHeight,
                           const float initialGroundStep, const float floorSearchDistance,
                           const float gravity, const float maximumFallSpeed, const float dt,
-                          float position[3], float& verticalVelocity, bool& onGround)
+                          float position[3], float& verticalVelocity, bool& onGround,
+                          const float playerHeight)
 {
     float floorY = 0.0f;
     float floorNormal[3] = {};
@@ -581,9 +587,44 @@ bool UpdateVerticalMotion(const Mesh& mesh, const float playerRadius, const floa
     verticalVelocity += gravity * dt;
     if (verticalVelocity > maximumFallSpeed)
         verticalVelocity = maximumFallSpeed;
+    const float previousY = position[1];
     position[1] += verticalVelocity * dt;
 
-    if (hasFloor && position[1] >= floorY - 0.04f)
+    if (verticalVelocity < 0.0f && playerHeight > 0.0f)
+    {
+        // Sweep the top of the player upward, stopping at the first overhead
+        // surface. Collision DATs use both windings for horizontal surfaces.
+        const float oldHeadY = previousY - playerHeight;
+        const float newHeadY = position[1] - playerHeight;
+        float ceilingY = newHeadY;
+        bool hitCeiling = false;
+        std::vector<int> candidates;
+        mesh.Index().Query(position[0], position[2], playerRadius, candidates);
+        for (int index : candidates)
+        {
+            const Triangle& triangle = mesh.Triangles()[index];
+            if (std::fabs(triangle.normal[1]) < 0.35f ||
+                !PointNearTriangleXZ(position[0], position[2], triangle, playerRadius))
+                continue;
+            const float y = triangle.p[0][1] -
+                (triangle.normal[0] * (position[0] - triangle.p[0][0]) +
+                 triangle.normal[2] * (position[2] - triangle.p[0][2])) / triangle.normal[1];
+            if (y >= newHeadY && y <= oldHeadY && (!hitCeiling || y > ceilingY))
+            {
+                ceilingY = y;
+                hitCeiling = true;
+            }
+        }
+        if (hitCeiling)
+        {
+            position[1] = ceilingY + playerHeight;
+            verticalVelocity = 0.0f;
+            onGround = false;
+            return false;
+        }
+    }
+
+    if (hasFloor && verticalVelocity >= 0.0f && position[1] >= floorY - 0.04f)
     {
         position[1] = floorY;
         verticalVelocity = 0.0f;

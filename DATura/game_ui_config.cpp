@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "game_ui_config.h"
+#include "ffxi_stat_system.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -78,6 +79,16 @@ static int ReadInt(const char *path, const char *section, const char *key, int f
     return atoi(value);
 }
 
+static int ReadJob(const char* path, const char* key, int fallback, bool allowNone)
+{
+    char value[16] = {};
+    ReadString(path, "Player.Nameplate", key,
+        FFXIStats::JobName(static_cast<FFXIStats::Job>(fallback)), value, sizeof(value));
+    for (int job = allowNone ? 0 : 1; job < FFXIStats::kJob_Count; ++job)
+        if (_stricmp(value, FFXIStats::JobName(static_cast<FFXIStats::Job>(job))) == 0) return job;
+    return fallback;
+}
+
 static float ReadFloat(const char *path, const char *section, const char *key, float fallback)
 {
     char defaultText[32] = {};
@@ -115,6 +126,15 @@ static COLORREF ReadRgb(const char *path, const char *section, const char *key, 
 void GameUiConfig_SetDefaults(GameUiConfig &config)
 {
     ZeroMemory(&config, sizeof(config));
+    config.chatLogTimeoutSeconds = 15;
+    config.chatLogWidthPercent = 50;
+    config.chatLogHeightPercent = 25;
+    config.playerNameplate.enabled = true;
+    config.playerNameplate.linkshellColor = RGB(160, 128, 224);
+    config.playerNameplate.subtitleMode = PlayerSubtitleMode::Linkshell;
+    config.playerNameplate.mainJob = FFXIStats::kJob_WAR;
+    config.playerNameplate.mainLevel = 1;
+    config.playerNameplate.subLevel = 1;
     GameUiTitleConfig &t = config.title;
     CopyText(t.logoDat, sizeof(t.logoDat), "ROM6/0/96.DAT");
     CopyText(t.atlasDat, sizeof(t.atlasDat), "ROM/119/50.DAT");
@@ -186,6 +206,24 @@ bool GameUiConfig_Load(GameUiConfig &config)
     if (!FindConfigPath(config.loadedPath, sizeof(config.loadedPath)))
         return false;
     const char *p = config.loadedPath;
+    config.chatLogWidthPercent = std::clamp(ReadInt(p, "ChatLog", "WidthPercent", 50), 20, 100);
+    config.chatLogHeightPercent = std::clamp(ReadInt(p, "ChatLog", "HeightPercent", 25), 10, 75);
+    config.chatLogTimeoutSeconds = std::clamp(ReadInt(p, "ChatLog", "TimeoutSeconds", 15), 1, 300);
+    auto& player = config.playerNameplate;
+    player.enabled = ReadInt(p, "Player.Nameplate", "Enabled", 1) != 0;
+    ReadString(p, "Player.Nameplate", "Name", "", player.name, sizeof(player.name));
+    ReadString(p, "Player.Nameplate", "Icon", "none", player.icon, sizeof(player.icon));
+    player.linkshellColor = ReadRgb(p, "Player.Nameplate", "LinkshellColor", player.linkshellColor);
+    player.jobMaster = ReadInt(p, "Player.Nameplate", "JobMaster", 0) != 0;
+    char subtitle[32] = {};
+    ReadString(p, "Player.Nameplate", "Subtitle", "linkshell", subtitle, sizeof(subtitle));
+    player.subtitleMode = _stricmp(subtitle, "jobs") == 0 ? PlayerSubtitleMode::Jobs :
+        (_stricmp(subtitle, "linkshell") == 0 ? PlayerSubtitleMode::Linkshell : PlayerSubtitleMode::None);
+    ReadString(p, "Player.Nameplate", "LinkshellName", "", player.linkshellName, sizeof(player.linkshellName));
+    player.mainJob = ReadJob(p, "MainJob", FFXIStats::kJob_WAR, false);
+    player.subJob = ReadJob(p, "SubJob", FFXIStats::kJob_None, true);
+    player.mainLevel = std::clamp(ReadInt(p, "Player.Nameplate", "MainLevel", 1), 1, 99);
+    player.subLevel = std::clamp(ReadInt(p, "Player.Nameplate", "SubLevel", 1), 1, 99);
     GameUiTitleConfig &t = config.title;
     ReadString(p, "Title.Assets", "LogoDat", t.logoDat, t.logoDat, sizeof(t.logoDat));
     ReadString(p, "Title.Assets", "AtlasDat", t.atlasDat, t.atlasDat, sizeof(t.atlasDat));
@@ -301,6 +339,74 @@ bool GameUiConfig_Load(GameUiConfig &config)
     n.statusFontMinimumHeight = ReadInt(p, "Nation.Status", "FontMinimumHeight", n.statusFontMinimumHeight);
     config.loaded = true;
     return true;
+}
+
+bool GameUiConfig_SaveChatLog(const GameUiConfig &config)
+{
+    char path[MAX_PATH] = {};
+    if (config.loadedPath[0]) CopyText(path, sizeof(path), config.loadedPath);
+    else
+    {
+        if (!GetModuleFileNameA(nullptr, path, MAX_PATH)) return false;
+        char* slash = strrchr(path, '\\');
+        if (!slash) return false;
+        slash[1] = 0;
+        strcat_s(path, kConfigFileName);
+    }
+    const bool widthSaved = WritePrivateProfileStringA("ChatLog", "WidthPercent",
+        std::to_string(std::clamp(config.chatLogWidthPercent, 20, 100)).c_str(), path) != FALSE;
+    const bool heightSaved = WritePrivateProfileStringA("ChatLog", "HeightPercent",
+        std::to_string(std::clamp(config.chatLogHeightPercent, 10, 75)).c_str(), path) != FALSE;
+    return WritePrivateProfileStringA("ChatLog", "TimeoutSeconds",
+        std::to_string(std::clamp(config.chatLogTimeoutSeconds, 1, 300)).c_str(), path) != FALSE && widthSaved && heightSaved;
+}
+
+bool GameUiConfig_SavePlayerNameplate(const GameUiConfig &config)
+{
+    char path[MAX_PATH] = {};
+    if (config.loadedPath[0]) CopyText(path, sizeof(path), config.loadedPath);
+    else
+    {
+        if (!GetModuleFileNameA(nullptr, path, MAX_PATH)) return false;
+        char* slash = strrchr(path, '\\');
+        if (!slash) return false;
+        slash[1] = 0;
+        strcat_s(path, kConfigFileName);
+    }
+    // Write only the controls changed here; preserve the rest of the UI config.
+    const bool iconSaved = WritePrivateProfileStringA("Player.Nameplate", "Icon",
+        config.playerNameplate.icon, path) != FALSE;
+    const bool starsSaved = WritePrivateProfileStringA("Player.Nameplate", "JobMaster",
+        config.playerNameplate.jobMaster ? "1" : "0", path) != FALSE;
+    const auto& player = config.playerNameplate;
+    bool saved = iconSaved && starsSaved;
+    const auto write = [&](const char* key, const char* value) {
+        if (!WritePrivateProfileStringA("Player.Nameplate", key, value, path)) saved = false;
+    };
+    write("Subtitle", player.subtitleMode == PlayerSubtitleMode::Jobs ? "jobs" :
+        (player.subtitleMode == PlayerSubtitleMode::Linkshell ? "linkshell" : "none"));
+    write("LinkshellName", player.linkshellName);
+    write("MainJob", FFXIStats::JobName(static_cast<FFXIStats::Job>(player.mainJob)));
+    write("SubJob", FFXIStats::JobName(static_cast<FFXIStats::Job>(player.subJob)));
+    write("MainLevel", std::to_string(player.mainLevel).c_str());
+    write("SubLevel", std::to_string(player.subLevel).c_str());
+    return saved;
+}
+
+std::string GameUiConfig_PlayerSubtitle(const GameUiPlayerNameplateConfig &player)
+{
+    if (player.subtitleMode == PlayerSubtitleMode::Linkshell) return player.linkshellName;
+    if (player.subtitleMode != PlayerSubtitleMode::Jobs ||
+        player.mainJob <= FFXIStats::kJob_None || player.mainJob >= FFXIStats::kJob_Count) return {};
+    std::string result = FFXIStats::JobName(static_cast<FFXIStats::Job>(player.mainJob));
+    result += " " + std::to_string(std::clamp(player.mainLevel, 1, 99));
+    if (player.subJob > FFXIStats::kJob_None && player.subJob < FFXIStats::kJob_Count)
+    {
+        result += " / ";
+        result += FFXIStats::JobName(static_cast<FFXIStats::Job>(player.subJob));
+        result += " " + std::to_string(std::clamp(player.subLevel, 1, 99));
+    }
+    return result;
 }
 
 GameUiTitleMenuMetrics GameUiConfig_GetTitleMenuMetrics(const GameUiTitleConfig &config,

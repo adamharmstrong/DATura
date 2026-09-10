@@ -2,6 +2,11 @@
 #include "noesis_rapi.h"
 #include "model_ff11.h"
 #include "model_ff11_decrypt.h"
+#include "model_ff11_water.h"
+#include "ffxi_file_io.h"
+#include <filesystem>
+#include <set>
+#include <unordered_map>
 
 #pragma warning(disable: 4996)
 #pragma warning(disable: 4267)
@@ -13,6 +18,7 @@
 #include "model_ff11_animation_handlers.h"
 #include "model_ff11_geometry_handler.h"
 #include "model_ff11_map_handlers.h"
+#include "model_ff11_weather.h"
 
 bool Model_FF11_CheckDAT(BYTE *fileBuffer, int bufferLen, noeRAPI_t *rapi)
 {
@@ -95,6 +101,30 @@ static RichMat43 Model_FF11_BuildEnvironmentTransform(const ff11GeneratorRecord_
 	return transform;
 }
 
+static int Model_FF11_FindWaterResource(const ff11GeneratorRecord_t &generator,
+	const CFFXIMapGeoHandler::TMapGeoList &mapGeoList)
+{
+	int selected = -1;
+	size_t bestRank = 0;
+	bool ambiguous = false;
+	for (size_t index = 0; index < mapGeoList.size(); ++index)
+	{
+		const auto &resource = mapGeoList[index];
+		if (_stricmp(generator.linkedResource, resource.mResourceName) != 0)
+			continue;
+		const size_t rank = FF11Water::ResourceScopeRank(generator.directoryPath, resource.mDirectoryPath);
+		if (rank > bestRank)
+		{
+			selected = (int)index;
+			bestRank = rank;
+			ambiguous = false;
+		}
+		else if (rank && rank == bestRank)
+			ambiguous = true;
+	}
+	return ambiguous ? -1 : selected;
+}
+
 static void Model_FF11_CopyObjectName(char *dst, const int dstSize, const char *src)
 {
 	const int copyLen = (dstSize - 1 < CFFXIMapHandler::skObjectNameLength) ? dstSize - 1 : CFFXIMapHandler::skObjectNameLength;
@@ -154,6 +184,8 @@ static void Model_FF11_AddEnvironmentDebug(const CFFXIMapGeoHandler::SMapGeoData
 static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, CFFXIDefaultHandlerSet &datHandlers, bool promptForExternalSkel)
 {
 	noesisMatData_t *pMd = NULL;
+	auto weatherSprites = Model_FF11_LoadWeatherSprites(pRapi, datHandlers);
+	std::map<std::string, std::shared_ptr<ZoneWater::Surface>> waterSurfaces;
 
 	CFFXITextureHandler *pTextureHandler = datHandlers.TextureHandler();
 	if (pTextureHandler->Textures().Num() > 0)
@@ -258,7 +290,10 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 			{
 				const CFFXIMapHandler::SInterpretedMapObject &mapObject = *it;
 				Model_FF11_AddMapObjectDebug(mapObject);
+				const size_t collisionStart = gFF11LastCollisionTriangles.size();
 				pMapGeoHandler->RenderMapObjectGeoForMapObject(pRapi, mapObject);
+				gFF11LastMapObjects.back().visualCollisionStart = collisionStart;
+				gFF11LastMapObjects.back().visualCollisionCount = gFF11LastCollisionTriangles.size() - collisionStart;
 			}
 
 			if (gpFF11Opts && gpFF11Opts->collectCollision && gpFF11Opts->collectCollisionUnreferenced)
@@ -271,7 +306,7 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 					for (CFFXIMapHandler::TMapObjectList::const_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
 					{
 						const CFFXIMapHandler::SInterpretedMapObject &mapObject = *it;
-						if (memcmp(mapGeoData.mpMapGeoHdr->mObjectName, mapObject.mObjectName, CFFXIMapHandler::skObjectNameLength) == 0)
+						if (ZoneLod::SameFamily(mapGeoData.mpMapGeoHdr->mObjectName, mapObject.mObjectName))
 						{
 							isReferenced = true;
 							break;
@@ -283,19 +318,49 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 				}
 			}
 
+			// MZB tables do not place the river and sea sheets. Their persistent
+			// generators name MMB resources in their own scope or a parent effe
+			// scope. Keep them as world geometry and leave weather shell selection
+			// and ordinary room/LOD placement behavior unchanged.
+			std::vector<bool> generatedWater(mapGeoCount, false);
+			if (gpFF11Opts && gpFF11Opts->renderWater)
+			{
+				for (const auto &generator : gFF11LastGeneratorRecords)
+				{
+					if (!FF11Water::IsSupportedGenerator(generator)) continue;
+					const int resourceIndex = Model_FF11_FindWaterResource(generator, mapGeoList);
+					if (resourceIndex < 0) continue;
+					const auto &resource = mapGeoList[resourceIndex];
+					const RichMat43 transform = FF11Water::PlacementTransform(generator);
+					if (!pMapGeoHandler->RenderMapObjectGeo(pRapi, resourceIndex, transform,
+						FF11Water::BackwardWinding(generator), NULL, true, &generator, 7, true))
+						continue;
+					generatedWater[resourceIndex] = true;
+					waterSurfaces[FF11Water::ObjectIdentity(generator, resource.mResourceName,
+						resource.mpMapGeoHdr->mObjectName)] = FF11Water::BuildSurface(generator);
+					Model_FF11_AddEnvironmentDebug(resource, transform, resourceIndex);
+					auto &debug = gFF11LastMapObjects.back();
+					strcpy_s(debug.displayName, FF11Water::ObjectIdentity(generator,
+						resource.mResourceName, resource.mpMapGeoHdr->mObjectName).c_str());
+					if (generator.hasRotation) memcpy(debug.rot, generator.rotation, sizeof(debug.rot));
+					if (generator.hasScale) memcpy(debug.scale, generator.scale, sizeof(debug.scale));
+				}
+			}
+
 			if (gpFF11Opts && (gpFF11Opts->renderUnreferenced || gpFF11Opts->renderEnvironment))
 			{
 				RichMat43 unreferencedTransform;
 				//run through and manually render allowed geometry that wasn't referenced by a map object
 				for (int mapGeoIndex = 0; mapGeoIndex < mapGeoCount; ++mapGeoIndex)
 				{
+					if (generatedWater[mapGeoIndex]) continue;
 					//not particularly concerned about speed here, it's not a default option
 					const CFFXIMapGeoHandler::SMapGeoData &mapGeoData = mapGeoList[mapGeoIndex];
 					bool isReferenced = false;
 					for (CFFXIMapHandler::TMapObjectList::const_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
 					{
 						const CFFXIMapHandler::SInterpretedMapObject &mapObject = *it;
-						if (memcmp(mapGeoData.mpMapGeoHdr->mObjectName, mapObject.mObjectName, CFFXIMapHandler::skObjectNameLength) == 0)
+						if (ZoneLod::SameFamily(mapGeoData.mpMapGeoHdr->mObjectName, mapObject.mObjectName))
 						{
 							isReferenced = true;
 							break;
@@ -373,6 +438,14 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 			pMdl = pRapi->rpgConstructModelAndSort();
 		}
 		pRapi->rpgDestroyContext(pCtx);
+		if (pMdl)
+		{
+			for (auto &submesh : pMdl->submeshes)
+			{
+				const auto water = waterSurfaces.find(submesh.objectName);
+				if (water != waterSurfaces.end()) submesh.water = water->second;
+			}
+		}
 	}
 
 	//if a model wasn't constructed, create a container for any anims and/or textures we loaded
@@ -391,6 +464,7 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 		}
 	}
 
+	if (pMdl) pMdl->weatherSprites = std::move(weatherSprites);
 	return pMdl;
 }
 
@@ -456,6 +530,41 @@ std::vector<ff11ZoneVisibilityTable_t> gFF11LastZoneVisibilityTables;
 std::vector<ff11MapGeoDrawBatchDebug_t> gFF11LastMapGeoDrawBatches;
 std::vector<ff11CollisionTriangle_t> gFF11LastCollisionTriangles;
 std::vector<ff11CollisionMeshDebug_t> gFF11LastCollisionMeshes;
+
+namespace
+{
+// Zone visibility tables are immutable after a zone finishes loading. Looking
+// up a table by offset occurs for every visible NPC and every rendered frame;
+// indexing them once avoids repeatedly walking the complete table list.
+const ff11ZoneVisibilityTable_t *FindZoneVisibilityTable(const unsigned int offset)
+{
+    static const ff11ZoneVisibilityTable_t *cachedData = nullptr;
+    static size_t cachedCount = 0;
+    static unsigned int cachedFirstOffset = 0;
+    static unsigned int cachedLastOffset = 0;
+    static std::unordered_map<unsigned int, const ff11ZoneVisibilityTable_t *> tablesByOffset;
+
+    const auto *data = gFF11LastZoneVisibilityTables.data();
+    const size_t count = gFF11LastZoneVisibilityTables.size();
+    const unsigned int firstOffset = count ? gFF11LastZoneVisibilityTables.front().offset : 0;
+    const unsigned int lastOffset = count ? gFF11LastZoneVisibilityTables.back().offset : 0;
+    if (data != cachedData || count != cachedCount || firstOffset != cachedFirstOffset ||
+        lastOffset != cachedLastOffset)
+    {
+        tablesByOffset.clear();
+        tablesByOffset.reserve(count);
+        for (const ff11ZoneVisibilityTable_t &table : gFF11LastZoneVisibilityTables)
+            tablesByOffset.emplace(table.offset, &table);
+        cachedData = data;
+        cachedCount = count;
+        cachedFirstOffset = firstOffset;
+        cachedLastOffset = lastOffset;
+    }
+
+    const auto found = tablesByOffset.find(offset);
+    return found == tablesByOffset.end() ? nullptr : found->second;
+}
+}
 
 int Model_FF11_GetLastCollisionTriangleCount()
 {
@@ -560,17 +669,15 @@ bool Model_FF11_GetZoneVisibleMapObjects(const float viewerPoint[3],
 			continue;
 		const unsigned int tableOffset =
 			gFF11LastZoneVisibilityRecords[viewerRecord].cullingTableOffset;
-		for (const ff11ZoneVisibilityTable_t &table : gFF11LastZoneVisibilityTables)
+		const ff11ZoneVisibilityTable_t *table = FindZoneVisibilityTable(tableOffset);
+		if (!table)
+			continue;
+		foundViewerTable = true;
+		for (unsigned int mapObjectIndex : table->visibleRecordIndices)
 		{
-			if (table.offset != tableOffset)
-				continue;
-			foundViewerTable = true;
-			for (unsigned int mapObjectIndex : table.visibleRecordIndices)
-			{
-				if (std::find(mapObjectIndices.begin(), mapObjectIndices.end(), mapObjectIndex) ==
-					mapObjectIndices.end())
-					mapObjectIndices.push_back(mapObjectIndex);
-			}
+			if (std::find(mapObjectIndices.begin(), mapObjectIndices.end(), mapObjectIndex) ==
+				mapObjectIndices.end())
+				mapObjectIndices.push_back(mapObjectIndex);
 		}
 	}
 	return foundViewerTable;
@@ -581,9 +688,28 @@ bool Model_FF11_IsZonePointVisible(const float viewerPoint[3], const float subje
 	if (!viewerPoint || !subjectPoint || !Model_FF11_HasZoneVisibilityData())
 		return true;
 
+	// Every NPC in a frame shares the same viewer point. Cache the leaf lookup
+	// for that point so NPC visibility does not rescan every zone leaf per NPC.
+	static const ff11ZoneVisibilityLeaf_t *cachedLeafData = nullptr;
+	static size_t cachedLeafCount = 0;
+	static float cachedViewerPoint[3] = {};
+	static std::vector<unsigned int> cachedViewerRecords;
 	std::vector<unsigned int> viewerRecords;
+	const bool sameViewer = cachedLeafData == gFF11LastZoneVisibilityLeaves.data() &&
+		cachedLeafCount == gFF11LastZoneVisibilityLeaves.size() &&
+		cachedViewerPoint[0] == viewerPoint[0] && cachedViewerPoint[1] == viewerPoint[1] &&
+		cachedViewerPoint[2] == viewerPoint[2];
+	if (sameViewer)
+		viewerRecords = cachedViewerRecords;
+	else
+	{
+		Model_FF11_FindZoneVisibilityRecords(viewerPoint, viewerRecords);
+		cachedLeafData = gFF11LastZoneVisibilityLeaves.data();
+		cachedLeafCount = gFF11LastZoneVisibilityLeaves.size();
+		memcpy(cachedViewerPoint, viewerPoint, sizeof(cachedViewerPoint));
+		cachedViewerRecords = viewerRecords;
+	}
 	std::vector<unsigned int> subjectRecords;
-	Model_FF11_FindZoneVisibilityRecords(viewerPoint, viewerRecords);
 	Model_FF11_FindZoneVisibilityRecords(subjectPoint, subjectRecords);
 	if (viewerRecords.empty() || subjectRecords.empty())
 		return true;
@@ -597,17 +723,15 @@ bool Model_FF11_IsZonePointVisible(const float viewerPoint[3], const float subje
 			gFF11LastZoneVisibilityRecords[viewerRecord].cullingTableOffset;
 		if (!tableOffset)
 			continue;
-		for (const ff11ZoneVisibilityTable_t &table : gFF11LastZoneVisibilityTables)
+		const ff11ZoneVisibilityTable_t *table = FindZoneVisibilityTable(tableOffset);
+		if (!table)
+			continue;
+		foundViewerTable = true;
+		for (unsigned int subjectRecord : subjectRecords)
 		{
-			if (table.offset != tableOffset)
-				continue;
-			foundViewerTable = true;
-			for (unsigned int subjectRecord : subjectRecords)
-			{
-				if (std::find(table.visibleRecordIndices.begin(), table.visibleRecordIndices.end(),
-					subjectRecord) != table.visibleRecordIndices.end())
-					return true;
-			}
+			if (std::find(table->visibleRecordIndices.begin(), table->visibleRecordIndices.end(),
+				subjectRecord) != table->visibleRecordIndices.end())
+				return true;
 		}
 	}
 
@@ -664,6 +788,7 @@ static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug
 	ff11GeneratorRecord_t generator = {};
 	strcpy_s(generator.name, chunkDebug.name);
 	strcpy_s(generator.directoryPath, chunkDebug.directoryPath);
+	generator.sourceDataOffset = (unsigned int)chunkDebug.dataOffset;
 	auto readU16 = [&](const int offset) -> unsigned short
 	{
 		unsigned short value = 0;
@@ -743,6 +868,9 @@ static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug
 				generator.standardParticleFlags = readU32(cursor + 4);
 				memcpy(generator.linkedResource, pChunkData + cursor + 12, 4);
 				generator.linkedResource[4] = 0;
+				if (FF11Water::EffectRootLength(generator.directoryPath))
+					for (int last = 3; last >= 0 && generator.linkedResource[last] == ' '; --last)
+						generator.linkedResource[last] = 0;
 				generator.hasSpawnPosition = true;
 				for (int axis = 0; axis < 3; ++axis)
 					generator.spawnPosition[axis] = readF32(cursor + 20 + axis * 4);
@@ -755,6 +883,37 @@ static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug
 				generator.hasScale = true;
 				for (int axis = 0; axis < 3; ++axis)
 					generator.scale[axis] = readF32(cursor + 4 + axis * 4);
+			}
+			else if (streamIndex == 1 && (opcode == 0x06 || opcode == 0x07) && entrySize >= 12)
+			{
+				generator.hasPositionVariance = true;
+				generator.spawnRadius = readF32(cursor + 4) + readF32(cursor + 8);
+				for (int axis = 0; axis < 3; ++axis)
+					generator.spawnAxisScale[axis] = opcode == 0x07 && entrySize >= 24 ? readF32(cursor + 12 + axis * 4) : 1.0f;
+			}
+			else if (streamIndex == 1 && opcode == 0x03 && entrySize >= 16)
+			{
+				generator.hasVelocityVariance = true;
+				for (int axis = 0; axis < 3; ++axis)
+					generator.velocityVariance[axis] = readF32(cursor + 4 + axis * 4);
+			}
+			else if (streamIndex == 1 && opcode == 0x2d && entrySize >= 12)
+			{
+				memcpy(generator.lifetimeAlphaKeyframe, pChunkData + cursor + 8, 4);
+			}
+			else if (streamIndex == 2 && opcode == 0x0d)
+			{
+				generator.animateSprite = true;
+			}
+			else if (streamIndex == 2 && opcode == 0x2e && entrySize >= 12)
+			{
+				generator.hasParticleDistanceFade = true;
+				generator.particleFadeNear = readF32(cursor + 4);
+				generator.particleFadeFar = readF32(cursor + 8);
+			}
+			else if (streamIndex == 2 && opcode == 0x1b)
+			{
+				generator.updateLifetimeAlpha = true;
 			}
 			else if (streamIndex == 1 && opcode == 0x09 && entrySize >= 16)
 			{
@@ -789,8 +948,19 @@ static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug
 				char *keyframeName = opcode == 0x60 ? generator.redKeyframe :
 					opcode == 0x61 ? generator.greenKeyframe :
 					opcode == 0x62 ? generator.blueKeyframe : generator.alphaKeyframe;
-				memcpy(keyframeName, pChunkData + cursor + 4, 4);
+				// Extended color-curve setup carries a flags word before its
+				// resource id, in weather generators as well as world effects.
+				// Reading the flags as a name drops the cloud tint/night-star curves.
+				const int nameOffset = entrySize >= 12 ? 8 : 4;
+				memcpy(keyframeName, pChunkData + cursor + nameOffset, 4);
 				keyframeName[4] = 0;
+				if (nameOffset == 8)
+					for (int last = 3; last >= 0 && keyframeName[last] == ' '; --last)
+						keyframeName[last] = 0;
+			}
+			else if (streamIndex == 1 && opcode >= 0x27 && opcode <= 0x29 && entrySize >= 12)
+			{
+				generator.hasAnimatedScale = true;
 			}
 			else if (streamIndex == 2 && opcode == 0x27 && entrySize >= 8)
 			{
@@ -1199,6 +1369,9 @@ noesisModel_t *Model_FF11_LoadDATSet(BYTE *fileBuffer, int bufferLen, int &numMd
 				if (!stricmp(currentDatName, "__skeleton"))
 				{
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Skeleton);
+					// Character skeleton DATs also contain the lower-body motion
+					// tracks paired with the upper-body tracks in animation banks.
+					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Animation);
 				}
 				else if (!stricmp(currentDatName, "__animation"))
 				{

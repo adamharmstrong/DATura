@@ -14,20 +14,23 @@ enum class DragMode
 enum class Action
 {
     None,
-    Exit,
     Back,
     Confirm,
     OpenDat,
     ToggleGameMode,
     UnstickPlayer,
     CycleWeather,
+    ToggleCameraDebugOverlay,
 };
 
 struct MovementSnapshot
 {
+    bool fastRunning = false;
+    bool running = false;
     float right = 0.0f;
     float forward = 0.0f;
     float vertical = 0.0f;
+    float strafe = 0.0f;
     bool boost = false;
     bool slow = false;
 };
@@ -41,6 +44,12 @@ struct DragDelta
 
 struct State
 {
+    bool leftMouseHeld = false;
+    bool rightMouseHeld = false;
+    bool pendingWorldClick = false;
+    bool fastRunning = false;
+    bool altHeld = false;
+    bool running = false;
     HWND window = nullptr;
     DragMode dragMode = DragMode::None;
     POINT lastMouse = {};
@@ -56,6 +65,9 @@ struct State
     bool down = false;
     bool boost = false;
     bool slow = false;
+    bool cameraDebugToggle = false;
+    bool jumpHeld = false;
+    bool jumpRequested = false;
 };
 
 void Initialize(State& state, HWND window, bool hardwareCursorEnabled);
@@ -72,4 +84,7 @@ Action KeyDown(State& state, unsigned int keyCode);
 void KeyUp(State& state, unsigned int keyCode);
 MovementSnapshot Movement(const State& state);
 bool IsMovementActive(const State& state);
+bool ConsumeJump(State& state);
+bool MouseForwardActive(const State& state);
+bool PlayerMouseButton(State& state, bool leftButton, bool down, int x, int y);
 }

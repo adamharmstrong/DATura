@@ -157,16 +157,16 @@ The earlier rule “one subheader flag simultaneously selects a 48-byte list or 
 
 ### 4.3 Vertex layouts and wind sway
 
-The 36-byte form contains one position. The additional 12 bytes in the 48-byte form are a second `float3` position:
+The 36-byte form contains one position. The additional 12 bytes in the 48-byte form are a `float3` displacement:
 
 ```text
-position2
+displacement
 ```
 
-The zone shader interpolates:
+The zone shader applies the displacement:
 
 ```text
-position_final = lerp(position, position2, globalWindFactor)
+position_final = position + globalWindFactor * displacement
 ```
 
 This is used for foliage and vegetation sway. The strong correlation between 48-byte batches and vegetation such as `_con_hana_*` supports the reimplementation trace.

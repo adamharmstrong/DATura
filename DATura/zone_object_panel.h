@@ -6,6 +6,10 @@
 #include <commctrl.h>
 #include <windows.h>
 
+#include <map>
+#include <string>
+#include <vector>
+
 namespace ZoneObjectPanel
 {
 constexpr int kToolButtonCount = 5;
@@ -96,6 +100,19 @@ struct Event
 
 using EventHandler = void (*)(void* context, const Event& event);
 
+struct RefreshData
+{
+    const char* zoneLabel = "";
+    const std::map<std::string, ZoneObjectTransform::DebugTransform>* overrides = nullptr;
+    const std::vector<std::string>* hiddenObjectNames = nullptr;
+    int collisionTriangleCount = 0;
+    int modelMeshCount = 0;
+    int modelMaterialCount = 0;
+    int modelTextureCount = 0;
+    int modelBoneCount = 0;
+    bool editingEnabled = false;
+};
+
 struct State
 {
     State() = default;
@@ -157,11 +174,22 @@ void Initialize(State& state, HWND owner, EventHandler eventHandler,
                 void* eventContext = nullptr);
 HWND Window(const State& state) noexcept;
 HWND TreeWindow(const State& state, Tree tree) noexcept;
+int SelectedMapObjectIndex(const State& state) noexcept;
+void SetTreeSelectedMapObjectIndex(State& state, int mapObjectIndex) noexcept;
+void ToggleCombinedTree(State& state) noexcept;
 void Show(State& state, const char* zoneLabel, bool collisionVisible,
           bool editingEnabled, bool activate = true);
 void Hide(const State& state);
 void SetEditingEnabled(State& state, bool enabled);
 void SetHighlightActive(const State& state, bool active);
+void SetCollisionVisible(const State& state, bool visible);
+void SetZoneLabel(const State& state, const char* zoneLabel);
+void PopulateTransformFields(
+    State& state, int mapObjectIndex,
+    const std::map<std::string, ZoneObjectTransform::DebugTransform>& overrides);
+void BeginRefresh(State& state, const char* zoneLabel);
+void Refresh(State& state, const RefreshData& data);
+void RebuildTree(State& state, const char* zoneLabel);
 void ResetControls(State& state);
 void Destroy(State& state);
 }

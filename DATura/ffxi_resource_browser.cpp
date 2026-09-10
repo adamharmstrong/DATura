@@ -345,7 +345,8 @@ void ShowDatFile(const HWND owner, const char* ffxiRoot)
 
     FFXIResource::ParseResult parsed;
     const bool recognized = FFXIResource::ParseFile(path, parsed);
-    const std::wstring widePath = WideFromAnsi(path);
+    const std::wstring widePath = L"Logical: " + WideFromAnsi(parsed.logicalPath.c_str()) +
+        L" | Source: " + WideFromAnsi(parsed.sourcePath.c_str());
     const std::wstring title = recognized ? L"DATura Resource Browser - " + parsed.format :
                                             L"DATura Resource Browser - Unrecognized";
     std::wstring status = recognized ? std::to_wstring(parsed.rows.size()) + L" records." : parsed.warning;

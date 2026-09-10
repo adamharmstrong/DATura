@@ -1,0 +1,1284 @@
+{
+  "appearance_id": 51,
+  "logical_id": 1351,
+  "path": "ROM/3/25.DAT",
+  "sha256": "107a0ac5c7fe7e16868346f68c59bc142f9a2abed9a83b2cdf006ebf6a0ff1c3",
+  "chunk_counts": {
+    "0x1": 1,
+    "0x5": 13,
+    "0x7": 2,
+    "0x19": 6,
+    "0x1f": 5,
+    "0x20": 7,
+    "0x21": 2,
+    "0x29": 1,
+    "0x2a": 1,
+    "0x2b": 1,
+    "0x3d": 2,
+    "0x0": 1
+  },
+  "meshes": [
+    {
+      "name": "wa",
+      "offset": "0x1580",
+      "triangles": 48,
+      "vertex_offset": 30,
+      "material": "bind    tayu    ",
+      "bounds": [
+        [
+          -1.0800000429153442,
+          1.0800000429153442
+        ],
+        [
+          0.0,
+          0.0
+        ],
+        [
+          -1.0800000429153442,
+          1.0800000429153442
+        ]
+      ]
+    },
+    {
+      "name": "sil",
+      "offset": "0x29f0",
+      "triangles": 192,
+      "vertex_offset": 30,
+      "material": "bind    nami    ",
+      "bounds": [
+        [
+          -0.6000000238418579,
+          0.6000000238418579
+        ],
+        [
+          -1.2599999904632568,
+          0.0
+        ],
+        [
+          -0.6000000238418579,
+          0.6000000238418579
+        ]
+      ]
+    },
+    {
+      "name": "naka",
+      "offset": "0x7b20",
+      "triangles": 24,
+      "vertex_offset": 30,
+      "material": "bind    tayu    ",
+      "bounds": [
+        [
+          -0.19200000166893005,
+          0.19200000166893005
+        ],
+        [
+          -1.940000057220459,
+          -0.47999998927116394
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "name": "bind",
+      "offset": "0x8570",
+      "triangles": 30,
+      "vertex_offset": 30,
+      "material": "bind    kori    ",
+      "bounds": [
+        [
+          -0.22340300679206848,
+          0.22340300679206848
+        ],
+        [
+          -2.185331106185913,
+          -0.025330999866127968
+        ],
+        [
+          -0.23327100276947021,
+          0.192548006772995
+        ]
+      ]
+    },
+    {
+      "name": "pou1",
+      "offset": "0x9250",
+      "triangles": 2,
+      "vertex_offset": 30,
+      "material": "bind    pou     ",
+      "bounds": [
+        [
+          -1.0,
+          1.0
+        ],
+        [
+          -1.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "name": "snd0",
+      "offset": "0x20",
+      "interval_field": 100,
+      "commands": [
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c000001000000000000003930313300000000000000000000000000000000003d0000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x4c",
+          "offset": "0xc0",
+          "bytes": "4c0400000000a0410000000000000000"
+        }
+      ],
+      "resource": "9013",
+      "flags": "0x1",
+      "resource_type": "0x3d",
+      "lifetime_field": 0
+    },
+    {
+      "name": "pou1",
+      "offset": "0x130",
+      "interval_field": 59,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c00000100000000000000706f75310000000000000000b11ec5bf000000001c0b3c00000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000ffffffbe"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "09040000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xd8",
+          "bytes": "0f040000cccccc3ecccccc3e0000803f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x12",
+          "offset": "0xe8",
+          "bytes": "12640000efd6233cefd6233c00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xf8",
+          "bytes": "160200003c508c00"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2d",
+          "offset": "0x100",
+          "bytes": "2d040000000000007030636100000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0xe",
+          "offset": "0x120",
+          "bytes": "0e010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x8",
+          "offset": "0x124",
+          "bytes": "08610000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x1b",
+          "offset": "0x128",
+          "bytes": "1b010000"
+        }
+      ],
+      "resource": "pou1",
+      "flags": "0x1",
+      "resource_type": "0xb",
+      "lifetime_field": 60
+    },
+    {
+      "name": "sil1",
+      "offset": "0x280",
+      "interval_field": 119,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c0000000000000000000073696c2000000000000000000000000000000000000b7800000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000cccc4cbd"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "09040000000000001e86cd3e00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xd8",
+          "bytes": "0f0400006466a63f3333333f6466a63f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xe8",
+          "bytes": "160200006e80805a"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x27",
+          "offset": "0x100",
+          "bytes": "27020000501203ba"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x28",
+          "offset": "0x108",
+          "bytes": "280200002c90a03b"
+        },
+        {
+          "stream": 3,
+          "opcode": "0x5",
+          "offset": "0x120",
+          "bytes": "05010000"
+        }
+      ],
+      "resource": "sil ",
+      "flags": "0x0",
+      "resource_type": "0xb",
+      "lifetime_field": 120
+    },
+    {
+      "name": "tam0",
+      "offset": "0x3c0",
+      "interval_field": 59,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c0000010000000000000074616d610000000000000000faff7fbf000000001c0ec800280000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2",
+          "offset": "0xc0",
+          "bytes": "0264000000000000959b44bb00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x3",
+          "offset": "0xd0",
+          "bytes": "036400000000000016b7d13800000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1f",
+          "offset": "0xe0",
+          "bytes": "1f0c0000693d0a3f00000000facc4c3e0000803ffacc4c3e0000000000000000000080b23233333f0000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x8",
+          "offset": "0x110",
+          "bytes": "086200006712833a"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0x118",
+          "bytes": "09040000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0x128",
+          "bytes": "0f0400004e12833b4e12833be9d6a33b"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x11",
+          "offset": "0x138",
+          "bytes": "110200003d60e53b"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1e",
+          "offset": "0x140",
+          "bytes": "1e02000044000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0x148",
+          "bytes": "1602000080808000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2d",
+          "offset": "0x150",
+          "bytes": "2d040000000000007430636101000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1d",
+          "offset": "0x160",
+          "bytes": "1d02000000000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0xe",
+          "offset": "0x170",
+          "bytes": "0e010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x2",
+          "offset": "0x174",
+          "bytes": "02610000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x26",
+          "offset": "0x178",
+          "bytes": "26640000000000001ff90e3d00000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0xd",
+          "offset": "0x188",
+          "bytes": "0d010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x1b",
+          "offset": "0x18c",
+          "bytes": "1b010000"
+        }
+      ],
+      "resource": "tama",
+      "flags": "0x1",
+      "resource_type": "0xe",
+      "lifetime_field": 200
+    },
+    {
+      "name": "nak1",
+      "offset": "0x580",
+      "interval_field": 119,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c000000400100000000006e616b610000000000000000cdccccbd00000000000b7800000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000cccc4cbd"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "0904000000000000fa8b274000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xd8",
+          "bytes": "0f0400000000803f0000803f0000803f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xe8",
+          "bytes": "160200005080503c"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x27",
+          "offset": "0x100",
+          "bytes": "270200006e12833a"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x28",
+          "offset": "0x108",
+          "bytes": "280200006c12033b"
+        },
+        {
+          "stream": 3,
+          "opcode": "0x5",
+          "offset": "0x120",
+          "bytes": "05010000"
+        }
+      ],
+      "resource": "naka",
+      "flags": "0x14000",
+      "resource_type": "0xb",
+      "lifetime_field": 120
+    },
+    {
+      "name": "nak0",
+      "offset": "0x6c0",
+      "interval_field": 119,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c000000400100000000006e616b610000000000000000cdccccbd00000000000b7800000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000cccc4cbd"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "09040000000000008e09063f00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xd8",
+          "bytes": "0f0400000000803f0000803f0000803f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xe8",
+          "bytes": "160200005080503c"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x27",
+          "offset": "0x100",
+          "bytes": "270200006e12033b"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x28",
+          "offset": "0x108",
+          "bytes": "280200006a12833a"
+        },
+        {
+          "stream": 3,
+          "opcode": "0x5",
+          "offset": "0x120",
+          "bytes": "05010000"
+        }
+      ],
+      "resource": "naka",
+      "flags": "0x14000",
+      "resource_type": "0xb",
+      "lifetime_field": 120
+    },
+    {
+      "name": "bnd0",
+      "offset": "0x800",
+      "interval_field": 119,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c0000000001010000000062696e640000000000000000cdccccbd00000000100b7800000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc0",
+          "bytes": "09040000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xb",
+          "offset": "0xd0",
+          "bytes": "0b0400000000000002ad80bc00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xe0",
+          "bytes": "0f0400000000803f0000803f0000803f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1e",
+          "offset": "0xf0",
+          "bytes": "1e02000044000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xf8",
+          "bytes": "16020000bebebe64"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x55",
+          "offset": "0x100",
+          "bytes": "550a000023f90e3d57810abf7b601c3f6e616d6900000000000020410000f041aaaa8c8003000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x5",
+          "offset": "0x130",
+          "bytes": "05010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x27",
+          "offset": "0x134",
+          "bytes": "270200006e12833b"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x28",
+          "offset": "0x13c",
+          "bytes": "280200006c12033b"
+        },
+        {
+          "stream": 3,
+          "opcode": "0x5",
+          "offset": "0x150",
+          "bytes": "05010000"
+        }
+      ],
+      "resource": "bind",
+      "flags": "0x1010000",
+      "resource_type": "0xb",
+      "lifetime_field": 120
+    },
+    {
+      "name": "sil0",
+      "offset": "0x970",
+      "interval_field": 119,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c0000000000000000000073696c2000000000000000000000000000000000000b7800000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000cccc4cbd"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "09040000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xd8",
+          "bytes": "0f0400000000803f3033b33f0000803f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xe8",
+          "bytes": "1602000063545864"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x27",
+          "offset": "0x100",
+          "bytes": "270200006e12033b"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x28",
+          "offset": "0x108",
+          "bytes": "2802000075029a3b"
+        },
+        {
+          "stream": 3,
+          "opcode": "0x5",
+          "offset": "0x120",
+          "bytes": "05010000"
+        }
+      ],
+      "resource": "sil ",
+      "flags": "0x0",
+      "resource_type": "0xb",
+      "lifetime_field": 120
+    },
+    {
+      "name": "wa00",
+      "offset": "0xab0",
+      "interval_field": 119,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c000000000000000000007761202000000000000000000000000000000000100b7800000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000cccc4cbd"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "09040000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xb",
+          "offset": "0xd8",
+          "bytes": "0b04000000000000cec1643b00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xe8",
+          "bytes": "0f0400000000803f0000803f0000803f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xf8",
+          "bytes": "160200000f1e1e80"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x5",
+          "offset": "0x110",
+          "bytes": "05010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x27",
+          "offset": "0x114",
+          "bytes": "27020000761203bb"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x28",
+          "offset": "0x11c",
+          "bytes": "280200000e60653b"
+        },
+        {
+          "stream": 3,
+          "opcode": "0x5",
+          "offset": "0x130",
+          "bytes": "05010000"
+        }
+      ],
+      "resource": "wa  ",
+      "flags": "0x0",
+      "resource_type": "0xb",
+      "lifetime_field": 120
+    },
+    {
+      "name": "wa01",
+      "offset": "0xc00",
+      "interval_field": 119,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c000000000000000000007761202000000000000000000000000000000000100b7800000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000cccc4cbd"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "0904000000000000d454683f00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xb",
+          "offset": "0xd8",
+          "bytes": "0b04000000000000cec1643b00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xe8",
+          "bytes": "0f0400003333333f3333333f3333333f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xf8",
+          "bytes": "1602000050505080"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x5",
+          "offset": "0x110",
+          "bytes": "05010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x27",
+          "offset": "0x114",
+          "bytes": "27020000761203bb"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x28",
+          "offset": "0x11c",
+          "bytes": "280200001190a03b"
+        },
+        {
+          "stream": 3,
+          "opcode": "0x5",
+          "offset": "0x130",
+          "bytes": "05010000"
+        }
+      ],
+      "resource": "wa  ",
+      "flags": "0x0",
+      "resource_type": "0xb",
+      "lifetime_field": 120
+    },
+    {
+      "name": "tub0",
+      "offset": "0xd50",
+      "interval_field": 3,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c00000100000000000000747562750000000000000000999919bf000000005c0e3c000a0000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2",
+          "offset": "0xc0",
+          "bytes": "0264020000000000ac7493bc00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x3",
+          "offset": "0xd0",
+          "bytes": "03640200000000006e1283bb00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1f",
+          "offset": "0xe0",
+          "bytes": "1f0c00009799193ea847e13e0000803f626606400000803f0000000000000000000080b2cbcc4c3f0000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x8",
+          "offset": "0x110",
+          "bytes": "086202006712833a"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0x118",
+          "bytes": "30020000cdccccbd"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x3d",
+          "offset": "0x120",
+          "bytes": "3de10100"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x40",
+          "offset": "0x124",
+          "bytes": "40e3010062d623bc00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0x130",
+          "bytes": "09040000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0x140",
+          "bytes": "0f04000082cd4c3d82cd4c3d0000803f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0x150",
+          "bytes": "1602000080808000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x27",
+          "offset": "0x158",
+          "bytes": "27840100000000007430737800000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x28",
+          "offset": "0x168",
+          "bytes": "28240100000000007430737800000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2a",
+          "offset": "0x178",
+          "bytes": "2ac40000000000007430637201000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2b",
+          "offset": "0x188",
+          "bytes": "2b640000000000007430636701000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2d",
+          "offset": "0x198",
+          "bytes": "2d040000000000007430636101000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1d",
+          "offset": "0x1a8",
+          "bytes": "1d02000007000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0xe",
+          "offset": "0x1c0",
+          "bytes": "0e010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x2",
+          "offset": "0x1c4",
+          "bytes": "02610200"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x2b",
+          "offset": "0x1c8",
+          "bytes": "2be40100cf1e40bfc5ac95bf21f98e3c"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x2c",
+          "offset": "0x1d8",
+          "bytes": "2c630200623b7f3f00000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0xd",
+          "offset": "0x1e4",
+          "bytes": "0d010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x15",
+          "offset": "0x1e8",
+          "bytes": "15810100"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x16",
+          "offset": "0x1ec",
+          "bytes": "16210100"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x18",
+          "offset": "0x1f0",
+          "bytes": "18c10000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x19",
+          "offset": "0x1f4",
+          "bytes": "19610000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x1b",
+          "offset": "0x1f8",
+          "bytes": "1b010000"
+        }
+      ],
+      "resource": "tubu",
+      "flags": "0x1",
+      "resource_type": "0xe",
+      "lifetime_field": 60
+    },
+    {
+      "name": "pou0",
+      "offset": "0xf70",
+      "interval_field": 99,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c00000100000000000000706f753100000000000000000000000000000000280b5a00000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000fdff7fbf"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "09040000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xd8",
+          "bytes": "0f0400009999193f9999193f0000803f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x12",
+          "offset": "0xe8",
+          "bytes": "12c40000a49b443ca49b443c00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xf8",
+          "bytes": "160200006478b400"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2b",
+          "offset": "0x100",
+          "bytes": "2b640000000000007430637200000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2d",
+          "offset": "0x110",
+          "bytes": "2d040000000000007030636100000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0xe",
+          "offset": "0x130",
+          "bytes": "0e010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x8",
+          "offset": "0x134",
+          "bytes": "08c10000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x9",
+          "offset": "0x138",
+          "bytes": "09c4000016b751b916b751b900000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x19",
+          "offset": "0x148",
+          "bytes": "19610000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x1b",
+          "offset": "0x14c",
+          "bytes": "1b010000"
+        }
+      ],
+      "resource": "pou1",
+      "flags": "0x1",
+      "resource_type": "0xb",
+      "lifetime_field": 90
+    },
+    {
+      "name": "sil2",
+      "offset": "0x10f0",
+      "interval_field": 79,
+      "commands": [
+        {
+          "stream": 0,
+          "opcode": "0x11",
+          "offset": "0x80",
+          "bytes": "11020000fd030000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x1",
+          "offset": "0x90",
+          "bytes": "010c0000000000000000000073696c20000000000000000000000000000000001c0b3c00000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x30",
+          "offset": "0xc0",
+          "bytes": "30020000cccc4cbd"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x9",
+          "offset": "0xc8",
+          "bytes": "09040000000000000000000000000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0xf",
+          "offset": "0xd8",
+          "bytes": "0f0400009899993ffbffff3e9899993f"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x12",
+          "offset": "0xe8",
+          "bytes": "126400000000000063e5503d00000000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x16",
+          "offset": "0xf8",
+          "bytes": "160200006e808000"
+        },
+        {
+          "stream": 1,
+          "opcode": "0x2d",
+          "offset": "0x100",
+          "bytes": "2d040000000000007331636100000000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0xe",
+          "offset": "0x120",
+          "bytes": "0e010000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x8",
+          "offset": "0x124",
+          "bytes": "08610000"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x9",
+          "offset": "0x128",
+          "bytes": "0964000050499db980b105ba50499db9"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x27",
+          "offset": "0x138",
+          "bytes": "27020000a39bc43b"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x28",
+          "offset": "0x140",
+          "bytes": "280200006c021a3c"
+        },
+        {
+          "stream": 2,
+          "opcode": "0x1b",
+          "offset": "0x148",
+          "bytes": "1b010000"
+        }
+      ],
+      "resource": "sil ",
+      "flags": "0x0",
+      "resource_type": "0xb",
+      "lifetime_field": 60
+    }
+  ],
+  "schedules": [
+    {
+      "name": "bind",
+      "offset": "0x1260",
+      "printable_references": [
+        {
+          "offset": "0x50",
+          "name": "6023"
+        },
+        {
+          "offset": "0x70",
+          "name": "pou1"
+        },
+        {
+          "offset": "0x80",
+          "name": "tub0"
+        },
+        {
+          "offset": "0x90",
+          "name": "pou0"
+        },
+        {
+          "offset": "0xa0",
+          "name": "sil2"
+        }
+      ]
+    },
+    {
+      "name": "aper",
+      "offset": "0x1330",
+      "printable_references": [
+        {
+          "offset": "0x50",
+          "name": "snd0"
+        },
+        {
+          "offset": "0x60",
+          "name": "wa01"
+        },
+        {
+          "offset": "0x70",
+          "name": "wa00"
+        },
+        {
+          "offset": "0x80",
+          "name": "sil0"
+        },
+        {
+          "offset": "0x90",
+          "name": "bnd0"
+        },
+        {
+          "offset": "0xa0",
+          "name": "nak0"
+        },
+        {
+          "offset": "0xb0",
+          "name": "nak1"
+        },
+        {
+          "offset": "0xc0",
+          "name": "tam0"
+        },
+        {
+          "offset": "0xd0",
+          "name": "sil1"
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,12 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClCompile Include="zone_door_interaction.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="ffxi_bitmap_font.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="ffxi_nameplate_font.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="ffxi_player_icons.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="zone_door_interaction.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="zone_transition.h"><Filter>Header Files</Filter></ClInclude>
     <Filter Include="Source Files">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
@@ -120,9 +126,6 @@
     <ClCompile Include="zone_object_panel_splitter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="zone_object_panel_loading.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="zone_object_panel_arrangement.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -151,6 +154,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="d3d_model_render_state.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="model_renderer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="d3d_ui_renderer.cpp">
@@ -288,6 +294,7 @@
     <ClCompile Include="interaction_controller.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="npc_dat_set_builder.cpp" />
     <ClCompile Include="npc_placement.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -307,6 +314,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="scene_model_loader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_room_loader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="scene_request_resolver.cpp">
@@ -372,6 +382,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="d3d_model_render_state.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="model_renderer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="d3d_ui_renderer.h">
@@ -449,6 +462,7 @@
     <ClInclude Include="zone_environment_fog.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="zone_vegetation_animation.h" />
     <ClInclude Include="zone_environment_animation.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -504,9 +518,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="zone_object_panel_splitter.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="zone_object_panel_loading.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="zone_object_panel_arrangement.h">
@@ -641,6 +652,8 @@
     <ClInclude Include="interaction_controller.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="npc_interaction.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="npc_chat_window.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="npc_placement.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -660,6 +673,24 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="scene_model_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_room_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_room_catalog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_lod.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="model_ff11_weather.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="model_ff11_water.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_water_data.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="scene_request_resolver.h">
@@ -693,8 +724,31 @@
     <None Include="..\THIRD_PARTY_NOTICES.md" />
     <None Include="DATura.game-ui.config" />
     <None Include="npc_placements.csv" />
+    <None Include="npc_roles.csv" />
     <None Include="Vulture_DAT_Extractor.cs">
       <Filter>Source Files</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="ffxi_coordinate_frame.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="zone_coverage.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="zone_scene_diagnostics.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="zone_diagnostics_dialog.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="zone_coverage.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="zone_scene_diagnostics.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="zone_diagnostics_dialog.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="dat_replacement_dialog.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="dat_replacement_dialog.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="ffxi_dat_resolver.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="npc_starter_quests.csv" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="home_point_effect.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="home_point_effect.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="home_point_data.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="home_point_audio.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="effect_model_layout.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
 </Project>

@@ -190,11 +190,13 @@ void DrawOverlay(const Context& context)
     if (width <= 0 || height <= 0)
         return;
 
-    HDC hdc = GetDC(context.window);
+    const bool ownsDc = context.overlayDc == nullptr;
+    HDC hdc = ownsDc ? GetDC(context.window) : context.overlayDc;
     if (!hdc)
         return;
-    const int savedDc = D3D9Device::BeginGdiViewportMapping(
-        hdc, context.window, width, height);
+    const int savedDc = ownsDc ?
+        D3D9Device::BeginGdiViewportMapping(hdc, context.window, width, height) :
+        SaveDC(hdc);
     const GameUiTitleConfig& ui = context.config;
 
     const bool haveRealLogo =
@@ -375,6 +377,7 @@ void DrawOverlay(const Context& context)
 
     if (savedDc)
         RestoreDC(hdc, savedDc);
-    ReleaseDC(context.window, hdc);
+    if (ownsDc)
+        ReleaseDC(context.window, hdc);
 }
 }

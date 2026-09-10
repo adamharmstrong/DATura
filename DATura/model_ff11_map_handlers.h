@@ -4,6 +4,7 @@
 #include "model_ff11_internal.h"
 #include "model_ff11_geometry_handler.h"
 #include "model_ff11_texture_handler.h"
+#include "model_ff11_water.h"
 
 #pragma pack(push, 1)
 
@@ -642,10 +643,12 @@ public:
 		return true;
 	}
 
-	void RenderMapObjectGeo(noeRAPI_t *pRapi, const int index, const RichMat43 &transform, const bool backwardWinding,
+	bool RenderMapObjectGeo(noeRAPI_t *pRapi, const int index, const RichMat43 &transform, const bool backwardWinding,
 							const CFFXIMapHandler::SInterpretedMapObject *pMapObject, const bool emitRender = true,
-							const ff11GeneratorRecord_t *pEnvironmentGenerator = NULL)
+							const ff11GeneratorRecord_t *pEnvironmentGenerator = NULL, unsigned char lodMask = 7,
+							const bool waterOnly = false)
 	{
+		bool emittedGeometry = false;
 		SMapGeoData &geoData = mMapGeoList[index];
 		const SMapGeoHeader *pMapGeoHdr = geoData.mpMapGeoHdr;
 		const unsigned char *pDrawData = (const unsigned char *)pMapGeoHdr;
@@ -665,7 +668,10 @@ public:
 			char objectName[CFFXIMapHandler::skObjectNameLength + 1];
 			memcpy(objectName, pMapGeoHdr->mObjectName, CFFXIMapHandler::skObjectNameLength);
 			objectName[CFFXIMapHandler::skObjectNameLength] = 0;
-			if (geoData.mDirectoryPath[0] && pEnvironmentGenerator)
+			if (waterOnly && pEnvironmentGenerator)
+				strcpy_s(nameString, FF11Water::ObjectIdentity(*pEnvironmentGenerator,
+					geoData.mResourceName, pMapGeoHdr->mObjectName).c_str());
+			else if (geoData.mDirectoryPath[0] && pEnvironmentGenerator)
 				sprintf_s(nameString, "env: %s/@%s/%s/%s", geoData.mDirectoryPath,
 					geoData.mResourceName, pEnvironmentGenerator->name, objectName);
 			else if (geoData.mDirectoryPath[0])
@@ -676,6 +682,17 @@ public:
 		}
 		if (emitRender)
 		{
+			ZoneLod::Data lod;
+			if (pMapObject)
+			{
+				lod.enabled = true;
+				lod.levelMask = lodMask;
+				for (int axis = 0; axis < 3; ++axis) lod.origin[axis] = pMapObject->mTrans[axis];
+				lod.highDistance = pMapObject->mVec[1]; // MZB placement +0x38
+				lod.midDistance = pMapObject->mVec[2];  // +0x3C
+				lod.drawDistance = pMapObject->mVec[3]; // +0x40; zero means unlimited
+			}
+			pRapi->rpgSetZoneLod(lod);
 			pRapi->rpgSetName(nameString);
 			pRapi->rpgSetTransform(const_cast<modelMatrix_t *>(&transform.m));
 		}
@@ -744,7 +761,10 @@ public:
 					// flags 0/96, including five nested (non-flattened) groups.
 					const bool legacy36ByteVertices = batchesFollowSuperHeader ||
 						pSuperHeader->mFlag == 0 || pSuperHeader->mFlag == 96;
-					const int vertStride = (legacy36ByteVertices || pSubHeader->mFlag != 0) ? 36 : 48;
+					// MMB payload +4: topology (bit 0) and vertex blend (bit 1) are independent.
+					const bool vertexBlend = !legacy36ByteVertices && (pDrawData[4] & 0x02) != 0;
+					const bool triangleStrip = legacy36ByteVertices ? pSubHeader->mFlag != 0 : (pDrawData[4] & 0x01) != 0;
+					const int vertStride = vertexBlend ? 48 : 36;
 					if (!MapGeoRangeFits(drawOfs, vertCount, vertStride, geoData.mDataSize) ||
 						!MapGeoRangeFits(drawOfs + vertStride * (int)vertCount, 2,
 									 sizeof(unsigned short), geoData.mDataSize))
@@ -768,6 +788,12 @@ public:
 						break;
 					}
 
+					// A generator resource can mix effect batches. Admit only confirmed
+					// water surfaces, after consuming the complete batch safely; do not
+					// accidentally add spray, color overlays, or helper collision meshes.
+					if (waterOnly && !FF11Water::IsSurfaceBatch(pMapGeoHdr->mObjectName, pMatName))
+						continue;
+
 					ff11MapGeoDrawBatchDebug_t batchDebug = {};
 					memcpy(batchDebug.objectName, pMapGeoHdr->mObjectName, CFFXIMapHandler::skObjectNameLength);
 					batchDebug.objectName[CFFXIMapHandler::skObjectNameLength] = 0;
@@ -785,7 +811,7 @@ public:
 					batchDebug.vertexCount = vertCount;
 					batchDebug.indexCount = indexCount;
 					batchDebug.vertexStride = vertStride;
-					batchDebug.indexMode = (pSubHeader->mFlag == 0) ? 0 : 1;
+					batchDebug.indexMode = triangleStrip ? 1 : 0;
 					batchDebug.objectFlags[0] = objectFlags0;
 					batchDebug.objectFlags[1] = objectFlags1;
 					batchDebug.blendFlags = blendFlags;
@@ -829,10 +855,13 @@ public:
 						 FF11_MapGeoNameUsesHardAlpha(pMapGeoHdr->mObjectName));
 					const bool shouldBlend = !hardAlpha && batchDebug.galkaReeveWouldAlphaBlend;
 					const bool backFaceCull = (blendFlags & skMapGeoFlag_DisableBackFaceCull) == 0;
-					batchDebug.daturaHardAlpha = hardAlpha;
-					batchDebug.daturaSoftBlend = shouldBlend;
-					strcpy_s(batchDebug.daturaRenderMode, shouldBlend ? "soft blend" : (hardAlpha ? "hard alpha" : "no blend"));
-					if (hardAlpha)
+					batchDebug.daturaHardAlpha = !waterOnly && hardAlpha;
+					batchDebug.daturaSoftBlend = waterOnly || shouldBlend;
+					strcpy_s(batchDebug.daturaRenderMode, waterOnly ? "water blend" :
+						(shouldBlend ? "soft blend" : (hardAlpha ? "hard alpha" : "no blend")));
+					if (waterOnly)
+						strcpy_s(batchDebug.daturaRenderReason, "Generator-owned world water: authored color/UV, alpha blend, depth writes disabled");
+					else if (hardAlpha)
 						strcpy_s(batchDebug.daturaRenderReason, "FFXI zone cutout mesh: DXT alpha mask with the retail threshold");
 					else if (shouldBlend)
 						strcpy_s(batchDebug.daturaRenderReason, "FFXI zone alpha layer: depth-biased blend with depth writes disabled");
@@ -864,7 +893,7 @@ public:
 					// Preserve each 0x8000 draw record as its own transparent layer.
 					// Merging same-material records breaks ordering for Cermet Crag
 					// overlays and other intersecting zone details.
-					if (emitRender && shouldBlend)
+					if (emitRender && (shouldBlend || waterOnly))
 						pRapi->rpgForceNextSubmesh();
 
 					int posOfs, nrmOfs, clrOfs, uvOfs;
@@ -892,7 +921,7 @@ public:
 
 					const unsigned int debugSeedBase = 0;
 
-					if (pSubHeader->mFlag == 0)
+					if (!triangleStrip)
 					{
 						//tri list
 						const int *pTriWindIdx = (backwardWinding) ? CFFXIGeoHandler::skTriCCWIdx : CFFXIGeoHandler::skTriCWIdx;
@@ -918,7 +947,7 @@ public:
 													   pIndexData[index + pTriWindIdx[2]],
 													   transform))
 								continue;
-							CollectCollisionTriangle(pVertData, vertStride, posOfs,
+							if (!waterOnly) CollectCollisionTriangle(pVertData, vertStride, posOfs,
 								pIndexData[index + pTriWindIdx[0]],
 								pIndexData[index + pTriWindIdx[1]],
 								pIndexData[index + pTriWindIdx[2]],
@@ -926,6 +955,7 @@ public:
 
 							if (emitRender)
 							{
+								emittedGeometry = true;
 								for (int triIndex = 0; triIndex < 3; ++triIndex)
 								{
 									const int rawIdx = pIndexData[index + pTriWindIdx[triIndex]];
@@ -972,12 +1002,13 @@ public:
 													   triIdx[0], triIdx[1], triIdx[2],
 													   transform))
 								continue;
-							CollectCollisionTriangle(pVertData, vertStride, posOfs,
+							if (!waterOnly) CollectCollisionTriangle(pVertData, vertStride, posOfs,
 								triIdx[pTriWindIdx[0]], triIdx[pTriWindIdx[1]], triIdx[pTriWindIdx[2]],
 								transform, pMapGeoHdr->mObjectName, pMapObject);
 
 							if (emitRender)
 							{
+								emittedGeometry = true;
 								for (int triIndex = 0; triIndex < 3; ++triIndex)
 								{
 									const int vertIndex = triIdx[pTriWindIdx[triIndex]];
@@ -996,40 +1027,53 @@ public:
 			pRapi->LogOutput("WARNING: Ignoring malformed MapGeo draw data at offset %i.\n", drawOfs);
 
 		if (emitRender)
+		{
 			pRapi->rpgSetTransform(NULL);
+			pRapi->rpgSetZoneLod({});
+		}
+		return emittedGeometry;
 	}
 
 	void RenderMapObjectGeoForMapObject(noeRAPI_t *pRapi, const CFFXIMapHandler::SInterpretedMapObject &mapObject)
 	{
+		const int suffix = ZoneLod::SuffixOffset(mapObject.mObjectName);
+		if (suffix >= 0)
+		{
+			int available[3];
+			const char levels[] = { 'h', 'm', 'l' };
+			for (int level = 0; level < 3; ++level)
+			{
+				char name[16];
+				memcpy(name, mapObject.mObjectName, sizeof(name));
+				name[suffix] = levels[level];
+				available[level] = mMapGeoHash.FindOrAddResource(name, -1);
+			}
+			int selected[3];
+			for (int level = 0; level < 3; ++level)
+				selected[level] = ZoneLod::ResolveLevel(level, available);
+			for (int level = 0; level < 3; ++level)
+			{
+				if (selected[level] < 0) continue;
+				bool alreadyRendered = false;
+				for (int earlier = 0; earlier < level; ++earlier)
+					alreadyRendered |= selected[earlier] == selected[level];
+				if (alreadyRendered) continue;
+				unsigned char mask = 0;
+				for (int request = 0; request < 3; ++request)
+					if (selected[request] == selected[level]) mask |= 1 << request;
+				const size_t collisionStart = gFF11LastCollisionTriangles.size();
+				RenderMapObjectGeo(pRapi, selected[level], mapObject.mTransform,
+					mapObject.mBackwardWinding, &mapObject, true, NULL, mask);
+				// Keep only the most detailed available visual collision surface.
+				if (level > 0) gFF11LastCollisionTriangles.resize(collisionStart);
+			}
+			return;
+		}
 		const int index = mMapGeoHash.FindOrAddResource(mapObject.mObjectName, -1);
-		if (index < 0)
-		{
-			char fallbackName[CFFXIMapHandler::skObjectNameLength];
-			int fallbackIndex = -1;
-			if (BuildHighDetailFallbackName(fallbackName, mapObject.mObjectName))
-				fallbackIndex = mMapGeoHash.FindOrAddResource(fallbackName, -1);
-
-			if (fallbackIndex < 0)
-			{
-				pRapi->LogOutput("WARNING: Could not find object in resource hash, skipping.\n");
-			}
-			else
-			{
-				char objectName[CFFXIMapHandler::skObjectNameLength + 1];
-				char fallbackDisplayName[CFFXIMapHandler::skObjectNameLength + 1];
-				memcpy(objectName, mapObject.mObjectName, CFFXIMapHandler::skObjectNameLength);
-				memcpy(fallbackDisplayName, fallbackName, CFFXIMapHandler::skObjectNameLength);
-				objectName[CFFXIMapHandler::skObjectNameLength] = 0;
-				fallbackDisplayName[CFFXIMapHandler::skObjectNameLength] = 0;
-				pRapi->LogOutput("WARNING: Using map geo fallback %s for missing object %s.\n",
-					fallbackDisplayName, objectName);
-				RenderMapObjectGeo(pRapi, fallbackIndex, mapObject.mTransform, mapObject.mBackwardWinding, &mapObject);
-			}
-		}
-		else
-		{
+		if (index >= 0)
 			RenderMapObjectGeo(pRapi, index, mapObject.mTransform, mapObject.mBackwardWinding, &mapObject);
-		}
+		else
+			pRapi->LogOutput("WARNING: Could not find object in resource hash, skipping.\n");
 	}
 
 	const TMapGeoList &GetMapGeoList() const { return mMapGeoList; }
@@ -1085,22 +1129,6 @@ protected:
 		return MapGeoRangeFits(indexDataOfs, indexCount, sizeof(unsigned short), dataSize);
 	}
 
-	static bool BuildHighDetailFallbackName(char *dst, const char *src)
-	{
-		memcpy(dst, src, CFFXIMapHandler::skObjectNameLength);
-		for (int i = CFFXIMapHandler::skObjectNameLength - 1; i > 0; --i)
-		{
-			if (dst[i] == 0 || dst[i] == ' ')
-				continue;
-			if (dst[i] == 'm' && dst[i - 1] == '_')
-			{
-				dst[i] = 'h';
-				return true;
-			}
-			break;
-		}
-		return false;
-	}
 
 	static RichVec3 TransformMapPoint(const float *p, const RichMat43 &transform)
 	{
@@ -1177,6 +1205,7 @@ protected:
 	void PlotMapVertex(noeRAPI_t *pRapi, const unsigned char *pVert, const int posOfs, const int nrmOfs, const int clrOfs, const int uvOfs,
 						const int colorShift, const int alphaShift, const unsigned int debugSeedBase)
 	{
+		pRapi->rpgVertWind3f(nrmOfs == 24 ? (const float *)(pVert + 12) : nullptr);
 		pRapi->rpgVertNormal3f((float *)(pVert + nrmOfs));
 
 		if (!debugSeedBase)

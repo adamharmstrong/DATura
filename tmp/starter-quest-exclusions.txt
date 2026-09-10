@@ -1,0 +1,7 @@
+230|Balasiel|A Squire's Test|excluded|https://ffxiclopedia.fandom.com/wiki/A_Squire%27s_Test|Requires level 7; not available at level 1.
+232|Eddy|A Discerning Eye (San d'Oria)|excluded|https://ffxiclopedia.fandom.com/wiki/A_Discerning_Eye_(San_d%27Oria)|Airship departure area requires airship access.
+236|Grin|A Discerning Eye (Bastok)|excluded|https://ffxiclopedia.fandom.com/wiki/A_Discerning_Eye_(Bastok)|Airship departure area requires airship access.
+240|Pygmalion|A Discerning Eye (Windurst)|excluded|https://ffxiclopedia.fandom.com/wiki/A_Discerning_Eye_(Windurst)|Airship departure area requires airship access.
+232|Gulemont|The Dismayed Customer|excluded|https://ffxiclopedia.fandom.com/wiki/The_Dismayed_Customer|Requires A Taste for Meat; not a fresh-character offer.
+238|Maysoon|Hoist the Jelly, Roger|excluded|https://www.bg-wiki.com/ffxi/Hoist_the_Jelly%2C_Roger|Requires Cook's Pride active.
+230|Atelloune|Atelloune's Lament|pending|https://www.bg-wiki.com/ffxi/Atelloune%27s_Lament|Pages list Seeing Spots as previous quest but do not clarify whether mandatory; withheld pending verification.
