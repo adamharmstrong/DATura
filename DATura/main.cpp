@@ -1,6 +1,6 @@
 /*========================================================================================
  FFXI Model Viewer
- Win32 application skeleton + Direct3D 9 initialization
+ Win32 application skeleton + backend renderer initialization
 ========================================================================================*/
 
 #include "stdafx.h"
@@ -28,6 +28,7 @@
 #include "title_scene_assets.h"
 #include "ffxi_nation_selection.h"
 #include "ffxi_nation_selection_renderer.h"
+#include "renderer_backend.h"
 #include "d3d9_device.h"
 #include "d3d_ui_renderer.h"
 #include "d3d_math.h"
@@ -109,6 +110,8 @@
 #include <cstdio>
 #include <cctype>
 #include <cfloat>
+#include <limits>
+#include <array>
 #include <vector>
 #include <string>
 #include <map>
@@ -136,11 +139,11 @@ using ZoneEnvironmentIdentity::ContainsLowerToken;
 #pragma comment(lib, "comctl32.lib")
 
 //========================================================================================
-// Window / D3D9 state
+// Window / graphics backend state
 //========================================================================================
 
 static HWND g_hWnd = NULL;
-static D3D9Device::Runtime g_graphicsRuntime;
+static RendererBackend::Runtime g_graphicsRuntime;
 
 static const int  kDefaultWidth     = 1280;
 static const int  kDefaultHeight    = 720;
@@ -167,10 +170,43 @@ struct NpcRenderInstance
     FFXINpcPlacement::Placement placement;
     size_t assetIndex = 0;
     double homePointActivatedAt = -1000.0;
+    float renderedHeadingRadians = 0.0f;
+    bool renderedHeadingInitialized = false;
+};
+
+struct NpcEventRuntime
+{
+    const FFXIEventTable::Event* event = nullptr;
+    std::array<std::uint32_t, 80> local = {};
+    std::array<std::uint32_t, 96> zone = {};
+    std::array<std::uint16_t, 8> jumps = {};
+    std::size_t pc = 0;
+    std::size_t jumpIndex = 0;
+    std::uint32_t pendingMessage = 0xffffffffu;
+    std::uint32_t pendingChoiceMessage = 0xffffffffu;
+    std::uint32_t defaultChoice = 0;
+    bool messageOpen = false;
+    bool waitingChoice = false;
+    bool finished = false;
+};
+
+struct NpcConversationState
+{
+    std::uint32_t entityId = 0;
+    std::string name;
+    std::vector<std::string> frames;
+    std::size_t index = 0;
+    std::vector<FFXIEventTable::EntityScripts> scripts;
+    std::vector<FFXIEventMessages::Entry> messages;
+    NpcEventRuntime runtime;
+    std::string choicePrompt;
+    std::vector<std::string> choiceOptions;
+    int choiceSelected = 0;
 };
 
 static std::vector<NpcRenderAsset> g_npcRenderAssets;
 static std::vector<NpcRenderInstance> g_npcRenderInstances;
+static NpcConversationState g_npcConversation;
 static double g_homePointSeconds = 0.0;
 
 static std::vector<NpcNameplateRenderer::DrawItem> g_npcNameplates;
@@ -301,6 +337,15 @@ static ZoneCollision::SpatialIndex& g_zoneCollisionGrid = g_zoneCollisionMesh.In
 static float (&g_zoneCollisionMin)[3] = g_zoneCollisionMesh.MinBounds();
 static float (&g_zoneCollisionMax)[3] = g_zoneCollisionMesh.MaxBounds();
 static bool& g_haveZoneCollisionBounds = g_zoneCollisionMesh.HasBounds();
+
+struct MetalworksElevatorCollisionBinding
+{
+    int platform = -1;
+    int triangle = -1;
+    ZoneCollisionTriangle closed = {};
+};
+
+static std::vector<MetalworksElevatorCollisionBinding> g_metalworksElevatorCollision;
 
 static float ClampPlayDrawDistance(const float distance)
 {
@@ -468,6 +513,7 @@ static void LoadSelectedNationScene();
 static void ConfirmExitFromTitleScreen();
 static void HandleConfigDialogEvent(void* context, const ConfigDialog::Event& event);
 static bool ConfigDialogIsGameMode(void* context);
+static std::string NpcDialogueText(const FFXINpcPlacement::Placement& placement);
 
 //========================================================================================
 // FFXI path management
@@ -698,19 +744,19 @@ static bool ConfigDialogIsGameMode(void*)
 }
 
 //========================================================================================
-// D3D9 helpers
+// Graphics backend helpers
 //========================================================================================
 
 static IDirect3DDevice9* GraphicsDevice()
 {
-    return g_graphicsRuntime.Device();
+    return g_graphicsRuntime.D3D9Device();
 }
 
-static D3D9Device::DisplayConfiguration CurrentDisplayConfiguration()
+static RendererBackend::DisplayConfiguration CurrentDisplayConfiguration()
 {
     const ApplicationSettings::ResolutionOption& resolution =
         ApplicationSettings::ResolutionOptionAt(g_applicationSettings.resolutionIndex);
-    D3D9Device::DisplayConfiguration display;
+    RendererBackend::DisplayConfiguration display;
     display.borderless = g_applicationSettings.windowMode == ApplicationSettings::Borderless;
     display.fullscreen = g_applicationSettings.windowMode == ApplicationSettings::Fullscreen;
     display.width = resolution.width;
@@ -725,14 +771,22 @@ static bool InitD3D()
 {
     g_graphicsRuntime.SetDefaultPoolCallbacks(
         ReleaseDefaultPoolResources, RecreateDefaultPoolResources);
-    const D3D9Device::InitializeResult result =
-        g_graphicsRuntime.Initialize(g_hWnd, CurrentDisplayConfiguration());
-    if (result == D3D9Device::InitializeResult::Direct3DUnavailable)
+    const RendererBackend::InitializeResult result = g_graphicsRuntime.Initialize(
+        g_hWnd,
+        ApplicationSettings::ClampRenderingBackend(g_applicationSettings.renderingBackend),
+        CurrentDisplayConfiguration());
+    if (result == RendererBackend::InitializeResult::UnsupportedBackend)
+    {
+        MessageBoxA(g_hWnd, "The selected rendering backend is not available yet.",
+                    "Rendering Backend", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (result == RendererBackend::InitializeResult::Direct3DUnavailable)
     {
         MessageBoxA(g_hWnd, "Direct3DCreate9 failed.", "D3D Error", MB_OK | MB_ICONERROR);
         return false;
     }
-    if (result != D3D9Device::InitializeResult::Success)
+    if (result != RendererBackend::InitializeResult::Success)
     {
         MessageBoxA(g_hWnd, "Failed to create a Direct3D 9 device.\n"
                             "Make sure your drivers support D3D9.",
@@ -766,6 +820,15 @@ static void ApplyDisplaySettings()
         ApplicationSettings::ClampResolutionIndex(g_applicationSettings.resolutionIndex);
     g_applicationSettings.windowMode =
         ApplicationSettings::ClampWindowMode(g_applicationSettings.windowMode);
+    g_applicationSettings.renderingBackend =
+        ApplicationSettings::ClampRenderingBackend(g_applicationSettings.renderingBackend);
+
+    if (!ApplicationSettings::RenderingBackendIsAvailable(
+            g_applicationSettings.renderingBackend))
+    {
+        g_applicationSettings.renderingBackend = ApplicationSettings::RenderingBackendDirectX9;
+        ConfigDialog::Sync(g_configDialog);
+    }
 
     g_graphicsRuntime.ApplyDisplayConfiguration(CurrentDisplayConfiguration());
 
@@ -1060,11 +1123,265 @@ static void ClearZoneCollision()
 {
     g_zoneCollisionMesh.Clear();
     PlayerController::ClearCollisionState(g_player);
+    g_metalworksElevatorCollision.clear();
 }
 
-static void BuildZoneCollisionFromDAT()
+static void BindMetalworksElevatorObjects()
+{
+    for (auto& platform : g_metalworksElevator.platforms)
+    {
+        platform.objectName.clear();
+        platform.baseY = platform.startsAtTop ? ZoneElevator::kTopY : ZoneElevator::kBottomY;
+        float bestScore = FLT_MAX;
+        int bestIndex = -1;
+
+        for (size_t objectIndex = 0; objectIndex < gFF11LastMapObjects.size(); ++objectIndex)
+        {
+            const auto& object = gFF11LastMapObjects[objectIndex];
+            if (object.visualCollisionCount == 0)
+                continue;
+
+            bool haveBounds = false;
+            float minPos[3] = { FLT_MAX, FLT_MAX, FLT_MAX };
+            float maxPos[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+            const size_t end = object.visualCollisionStart + object.visualCollisionCount;
+            for (size_t triIndex = object.visualCollisionStart;
+                 triIndex < end && triIndex < gFF11LastCollisionTriangles.size(); ++triIndex)
+            {
+                const float* points = &gFF11LastCollisionTriangles[triIndex].p[0][0];
+                for (int vertex = 0; vertex < 3; ++vertex)
+                {
+                    const float* point = points + vertex * 3;
+                    for (int axis = 0; axis < 3; ++axis)
+                    {
+                        minPos[axis] = std::min(minPos[axis], point[axis]);
+                        maxPos[axis] = std::max(maxPos[axis], point[axis]);
+                    }
+                    haveBounds = true;
+                }
+            }
+            if (!haveBounds)
+                continue;
+
+            const float centerX = (minPos[0] + maxPos[0]) * 0.5f;
+            const float centerY = (minPos[1] + maxPos[1]) * 0.5f;
+            const float centerZ = (minPos[2] + maxPos[2]) * 0.5f;
+            const float widthX = maxPos[0] - minPos[0];
+            const float widthZ = maxPos[2] - minPos[2];
+            const float dx = std::fabs(centerX - ZoneElevator::kPlatformX);
+            const float dz = std::fabs(centerZ - platform.z);
+            const float dy = std::fabs(centerY - platform.baseY);
+            if (dx > 6.5f || dz > 6.5f || dy > 5.0f ||
+                widthX > 12.0f || widthZ > 12.0f)
+            {
+                continue;
+            }
+
+            const float score = dx * 2.0f + dz * 2.0f + dy + widthX * 0.05f + widthZ * 0.05f;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestIndex = static_cast<int>(objectIndex);
+            }
+        }
+
+        if (bestIndex >= 0)
+        {
+            platform.objectName = Model_FF11_GetLastMapObjectDisplayName(bestIndex);
+            float trans[3] = {};
+            float scale[3] = { 1.0f, 1.0f, 1.0f };
+            float rot[3] = {};
+            if (Model_FF11_GetLastMapObjectTransform(bestIndex, trans, scale, rot))
+                platform.baseY = trans[1];
+        }
+    }
+}
+
+static int MetalworksElevatorPlatformForSourceTriangle(const int sourceIndex)
+{
+    for (int platformIndex = 0; platformIndex < 2; ++platformIndex)
+    {
+        const auto& platform = g_metalworksElevator.platforms[platformIndex];
+        if (platform.objectName.empty())
+            continue;
+        for (size_t objectIndex = 0; objectIndex < gFF11LastMapObjects.size(); ++objectIndex)
+        {
+            const auto& object = gFF11LastMapObjects[objectIndex];
+            if (platform.objectName != object.displayName)
+                continue;
+            const size_t source = static_cast<size_t>(sourceIndex);
+            if (source >= object.visualCollisionStart &&
+                source - object.visualCollisionStart < object.visualCollisionCount)
+            {
+                return platformIndex;
+            }
+        }
+    }
+    return -1;
+}
+
+static void ApplyMetalworksElevatorRuntimeCollision()
+{
+    for (const auto& binding : g_metalworksElevatorCollision)
+    {
+        if (binding.platform < 0 || binding.platform >= 2 ||
+            binding.triangle < 0 || binding.triangle >= static_cast<int>(g_zoneCollisionTris.size()))
+        {
+            continue;
+        }
+
+        ZoneCollisionTriangle moved = binding.closed;
+        const auto& platform = g_metalworksElevator.platforms[binding.platform];
+        const float dy = platform.lastY - platform.baseY;
+        for (int vertex = 0; vertex < 3; ++vertex)
+            moved.p[vertex][1] += dy;
+        moved.minY += dy;
+        moved.maxY += dy;
+        g_zoneCollisionTris[static_cast<size_t>(binding.triangle)] = moved;
+    }
+}
+
+static ZoneCollisionTriangle BuildMetalworksElevatorPlatformTriangle(
+    const ZoneElevator::Platform& platform, const int a, const int b, const int c)
+{
+    const float x0 = ZoneElevator::kPlatformX - ZoneElevator::kPlatformHalfWidth;
+    const float x1 = ZoneElevator::kPlatformX + ZoneElevator::kPlatformHalfWidth;
+    const float z0 = platform.z - ZoneElevator::kPlatformHalfDepth;
+    const float z1 = platform.z + ZoneElevator::kPlatformHalfDepth;
+    const float native[4][3] =
+    {
+        { x0, platform.baseY, z0 },
+        { x1, platform.baseY, z0 },
+        { x1, platform.baseY, z1 },
+        { x0, platform.baseY, z1 },
+    };
+    float points[9] = {};
+    const int indices[3] = { a, b, c };
+    for (int vertex = 0; vertex < 3; ++vertex)
+    {
+        const float* source = native[indices[vertex]];
+        points[vertex * 3 + 0] = source[0];
+        points[vertex * 3 + 1] = source[1];
+        points[vertex * 3 + 2] = source[2];
+    }
+    ZoneCollisionTriangle triangle = {};
+    ZoneCollision::BuildTriangle(points, !g_applicationSettings.mirrorWorldZones, triangle);
+    return triangle;
+}
+
+static bool HasMetalworksElevatorCollisionForPlatform(const int platformIndex)
+{
+    for (const auto& binding : g_metalworksElevatorCollision)
+        if (binding.platform == platformIndex)
+            return true;
+    return false;
+}
+
+static void AddSyntheticMetalworksElevatorCollision()
+{
+    for (int platformIndex = 0; platformIndex < 2; ++platformIndex)
+    {
+        if (HasMetalworksElevatorCollisionForPlatform(platformIndex))
+            continue;
+
+        const auto& platform = g_metalworksElevator.platforms[platformIndex];
+        const ZoneCollisionTriangle triangles[2] =
+        {
+            BuildMetalworksElevatorPlatformTriangle(platform, 0, 1, 2),
+            BuildMetalworksElevatorPlatformTriangle(platform, 0, 2, 3),
+        };
+        for (const ZoneCollisionTriangle& triangle : triangles)
+        {
+            const int runtimeIndex = static_cast<int>(g_zoneCollisionTris.size());
+            g_metalworksElevatorCollision.push_back({ platformIndex, runtimeIndex, triangle });
+            g_zoneCollisionMesh.AddTriangle(triangle, PlayerController::kCollisionRadius);
+        }
+    }
+}
+
+static void ApplyMetalworksElevatorRuntimeObjects()
+{
+    for (const auto& platform : g_metalworksElevator.platforms)
+    {
+        if (platform.objectName.empty())
+            continue;
+        for (size_t objectIndex = 0; objectIndex < gFF11LastMapObjects.size(); ++objectIndex)
+        {
+            const auto& object = gFF11LastMapObjects[objectIndex];
+            if (platform.objectName != object.displayName)
+                continue;
+
+            DebugTransform transform = {};
+            memcpy(transform.trans, object.trans, sizeof(transform.trans));
+            memcpy(transform.rot, object.rot, sizeof(transform.rot));
+            memcpy(transform.scale, object.scale, sizeof(transform.scale));
+            transform.trans[1] = object.trans[1] + (platform.lastY - platform.baseY);
+            g_zoneRuntimeOverrides[platform.objectName] = transform;
+            break;
+        }
+    }
+}
+
+static void DrawMetalworksElevatorPlatforms()
+{
+    if (g_transitionZoneId != ZoneElevator::kMetalworksZone || !GraphicsDevice())
+        return;
+
+    struct PlatformVertex
+    {
+        float x, y, z;
+        DWORD color;
+    };
+
+    PlatformVertex vertices[12] = {};
+    int vertexCount = 0;
+    const bool mirrorX = !g_applicationSettings.mirrorWorldZones;
+    for (const auto& platform : g_metalworksElevator.platforms)
+    {
+        const float x0 = ZoneElevator::kPlatformX - ZoneElevator::kPlatformHalfWidth;
+        const float x1 = ZoneElevator::kPlatformX + ZoneElevator::kPlatformHalfWidth;
+        const float z0 = platform.z - ZoneElevator::kPlatformHalfDepth;
+        const float z1 = platform.z + ZoneElevator::kPlatformHalfDepth;
+        const std::array<float, 3> nativeCorners[4] =
+        {
+            { x0, platform.lastY - 0.015f, z0 },
+            { x1, platform.lastY - 0.015f, z0 },
+            { x1, platform.lastY - 0.015f, z1 },
+            { x0, platform.lastY - 0.015f, z1 },
+        };
+        const int indices[6] = { 0, 1, 2, 0, 2, 3 };
+        for (int i = 0; i < 6; ++i)
+        {
+            const auto scene = FFXICoordinateFrame::NativeDatToScene(
+                nativeCorners[indices[i]], mirrorX);
+            vertices[vertexCount++] = { scene[0], scene[1], scene[2],
+                D3DCOLOR_ARGB(255, 120, 122, 116) };
+        }
+    }
+
+    const D3DMATRIX identity = D3DMath::BuildIdentity();
+    GraphicsDevice()->SetTransform(D3DTS_WORLD, &identity);
+    GraphicsDevice()->SetTexture(0, nullptr);
+    GraphicsDevice()->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE);
+    GraphicsDevice()->SetRenderState(D3DRS_LIGHTING, FALSE);
+    GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    GraphicsDevice()->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+    GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+    GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+    GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+    GraphicsDevice()->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 4, vertices, sizeof(PlatformVertex));
+    GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+    GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+}
+
+static void BuildZoneCollisionFromDAT(const int zoneId)
 {
     ClearZoneCollision();
+    if (zoneId == ZoneElevator::kMetalworksZone)
+        BindMetalworksElevatorObjects();
+
     const int collisionTriCount = Model_FF11_GetLastCollisionTriangleCount();
     g_zoneCollisionMesh.Reserve(collisionTriCount);
 
@@ -1079,7 +1396,19 @@ static void BuildZoneCollisionFromDAT()
             continue;
 
         const float doorPadding = g_doors.BindCollision(i, (int)g_zoneCollisionTris.size(), tri);
+        const int elevatorPlatform = zoneId == ZoneElevator::kMetalworksZone
+            ? MetalworksElevatorPlatformForSourceTriangle(i) : -1;
+        if (elevatorPlatform >= 0)
+        {
+            g_metalworksElevatorCollision.push_back(
+                { elevatorPlatform, static_cast<int>(g_zoneCollisionTris.size()), tri });
+        }
         g_zoneCollisionMesh.AddTriangle(tri, PlayerController::kCollisionRadius + doorPadding);
+    }
+    if (zoneId == ZoneElevator::kMetalworksZone)
+    {
+        AddSyntheticMetalworksElevatorCollision();
+        ApplyMetalworksElevatorRuntimeCollision();
     }
 }
 
@@ -1485,6 +1814,24 @@ static void GetRenderCameraPosition(float &x, float &y, float &z)
     OrbitCamera::GetPosition(g_orbitCamera, x, y, z);
 }
 
+static bool FindZoneShadowReceiverY(const float x, const float y, const float z, float* const outY)
+{
+    if (!outY || g_zoneCollisionTris.empty())
+        return false;
+
+    float floorY = 0.0f;
+    float floorNormal[3] = {};
+    if (!ZoneCollision::FindFloorAt(g_zoneCollisionTris, g_zoneCollisionGrid,
+                                    0.75f, x, z, y - 80.0f, y + 80.0f,
+                                    &floorY, floorNormal))
+    {
+        return false;
+    }
+
+    *outY = floorY;
+    return true;
+}
+
 static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false,
                         ModelRenderer::GeometryPass pass = ModelRenderer::GeometryPass::All,
                         bool drawDynamicActorShadow = true)
@@ -1504,6 +1851,7 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
         g_applicationSettings.lightingQuality == ApplicationSettings::LightingDynamicShadows;
     rendererContext.enableMipMapping = g_applicationSettings.enableMipMapping;
     rendererContext.indoorZone = g_zoneEnvironment.valid && g_zoneEnvironment.indoor;
+    rendererContext.findZoneShadowReceiverY = FindZoneShadowReceiverY;
     ZoneModelRenderMetadata::Prepare(pModel, GraphicsDevice());
     GraphicsDevice()->SetFVF(FFXI_VERTEX_FVF);
     D3DMATRIX baseWorld = {};
@@ -1525,6 +1873,8 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
     GetRenderCameraPosition(rendererContext.cameraPosition[0],
         rendererContext.cameraPosition[1], rendererContext.cameraPosition[2]);
     ModelRenderer::DrawGeometry(rendererContext, pModel, baseWorld);
+    if (allowObjectOverrides && pass == ModelRenderer::GeometryPass::Opaque)
+        ModelRenderer::DrawZoneObjectPlanarShadows(rendererContext, pModel, baseWorld);
 }
 
 //========================================================================================
@@ -1708,10 +2058,10 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     // Checked exposes that mirrored orientation as requested by the UI option.
     if (!g_applicationSettings.mirrorWorldZones)
         ZoneModelTransform::MirrorOnX(g_zoneAsset.Model(), GraphicsDevice());
+    const int zoneId = FFXIPath::FindZoneIDByModelPath(g_ffxiPath, path);
     g_doors.Initialize(g_zoneAsset.Model(), !g_applicationSettings.mirrorWorldZones);
     g_doors.SetPhysics(g_applicationSettings.doorInteractionMode == ApplicationSettings::DoorPhysics);
-    BuildZoneCollisionFromDAT();
-    const int zoneId = FFXIPath::FindZoneIDByModelPath(g_ffxiPath, path);
+    BuildZoneCollisionFromDAT(zoneId);
     g_transitionZoneId = userContentLoad ? zoneId : -1;
     if (userContentLoad)
     {
@@ -2240,10 +2590,100 @@ static FFXIModelLifetime::OwnedModel LoadNpcHumanoidModel(
     return resource;
 }
 
+static void DumpHelmutAttachmentDiagnostics(const FFXINpcPlacement::Placement &placement,
+                                            const NpcRenderAsset &asset)
+{
+    static std::uint32_t dumpedEntityId = 0;
+    if (dumpedEntityId == placement.entityId || placement.entityId != 17748002 || !asset.resource.Model())
+        return;
+    dumpedEntityId = placement.entityId;
+
+    char logPath[MAX_PATH] = {};
+    if (GetModuleFileNameA(nullptr, logPath, MAX_PATH))
+    {
+        char *slash = std::strrchr(logPath, '\\');
+        if (!slash)
+            slash = std::strrchr(logPath, '/');
+        if (slash)
+            slash[1] = 0;
+        else
+            logPath[0] = 0;
+        strcat_s(logPath, sizeof(logPath), "npc_attachment_diagnostics.log");
+    }
+    FILE *logFile = nullptr;
+    if (logPath[0])
+        fopen_s(&logFile, logPath, "ab");
+
+    const auto writeDiagnostic = [&](const char *text)
+    {
+        OutputDebugStringA(text);
+        if (logFile)
+            std::fputs(text, logFile);
+    };
+
+    noesisModel_t *model = asset.resource.Model();
+    char header[256] = {};
+    std::snprintf(header, sizeof(header),
+                  "[DATura NPC attach] entity=%u name=%s submeshes=%zu\n",
+                  placement.entityId, placement.name.c_str(), model->submeshes.size());
+    writeDiagnostic(header);
+
+    for (size_t meshIndex = 0; meshIndex < model->submeshes.size(); ++meshIndex)
+    {
+        const noesisModel_t::Submesh &submesh = model->submeshes[meshIndex];
+        const std::vector<FFXIVertex> &vertices =
+            !submesh.cpuBindVerts.empty() ? submesh.cpuBindVerts : submesh.cpuVerts;
+
+        float minPos[3] = {
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max()
+        };
+        float maxPos[3] = {
+            std::numeric_limits<float>::lowest(),
+            std::numeric_limits<float>::lowest(),
+            std::numeric_limits<float>::lowest()
+        };
+        for (const FFXIVertex &vertex : vertices)
+        {
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                minPos[axis] = std::min(minPos[axis], vertex.pos[axis]);
+                maxPos[axis] = std::max(maxPos[axis], vertex.pos[axis]);
+            }
+        }
+        if (vertices.empty())
+            memset(minPos, 0, sizeof(minPos)), memset(maxPos, 0, sizeof(maxPos));
+
+        const float center[3] = {
+            (minPos[0] + maxPos[0]) * 0.5f,
+            (minPos[1] + maxPos[1]) * 0.5f,
+            (minPos[2] + maxPos[2]) * 0.5f
+        };
+
+        char line[1024] = {};
+        std::snprintf(line, sizeof(line),
+                      "[DATura NPC attach] mesh=%zu object=\"%s\" material=\"%s\" "
+                      "verts=%zu bindVerts=%zu skinVerts=%zu "
+                      "min=(%.3f, %.3f, %.3f) max=(%.3f, %.3f, %.3f) "
+                      "center=(%.3f, %.3f, %.3f)\n",
+                      meshIndex, submesh.objectName.c_str(), submesh.materialName.c_str(),
+                      submesh.cpuVerts.size(), submesh.cpuBindVerts.size(),
+                      submesh.cpuSkinVerts.size(),
+                      minPos[0], minPos[1], minPos[2],
+                      maxPos[0], maxPos[1], maxPos[2],
+                      center[0], center[1], center[2]);
+        writeDiagnostic(line);
+    }
+    if (logFile)
+        std::fclose(logFile);
+}
+
 static void UnloadNpcModels()
 {
     g_homePointSeconds = 0.0;
     g_npcInteraction = {};
+    g_npcConversation = {};
     g_doors.selected = -1;
     NpcChatWindow::Reset();
     g_npcNameplates.clear();
@@ -2311,24 +2751,99 @@ static void LoadNpcModelsForCurrentZone()
             // elevation; nearby steps/bridges can otherwise pull it off its base.
             if (!g_npcRenderAssets[assetIndex].homePoint)
                 SnapPlacementToZoneFloor(scenePlacement.transform);
-            g_npcRenderInstances.push_back({ std::move(scenePlacement), assetIndex });
+            DumpHelmutAttachmentDiagnostics(placement, g_npcRenderAssets[assetIndex]);
+            const float initialHeading = scenePlacement.transform.headingRadians;
+            g_npcRenderInstances.push_back(
+                { std::move(scenePlacement), assetIndex, 0.0, initialHeading, true });
         }
+    }
+}
+
+static float NormalizeRadians(float angle)
+{
+    constexpr float twoPi = 6.2831853071795864769f;
+    while (angle > 3.14159265358979323846f) angle -= twoPi;
+    while (angle < -3.14159265358979323846f) angle += twoPi;
+    return angle;
+}
+
+static float MoveAngleToward(float current, float target, float maxStep)
+{
+    const float delta = NormalizeRadians(target - current);
+    if (std::fabs(delta) <= maxStep)
+        return target;
+    return NormalizeRadians(current + (delta < 0.0f ? -maxStep : maxStep));
+}
+
+static float NpcFacingTargetHeading(const NpcRenderInstance& npc)
+{
+    const auto& transform = npc.placement.transform;
+    if (g_npcConversation.entityId == npc.placement.entityId)
+    {
+        const float dx = g_player.position[0] - transform.x;
+        const float dz = g_player.position[2] - transform.z;
+        if (dx * dx + dz * dz > 0.0001f)
+            return std::atan2f(-dz, dx);
+    }
+    return transform.headingRadians;
+}
+
+static void UpdateNpcFacing(float dt)
+{
+    if (!std::isfinite(dt) || dt <= 0.0f)
+        return;
+    constexpr float kNpcTurnRadiansPerSecond = 2.75f;
+    const float maxStep = kNpcTurnRadiansPerSecond * dt;
+    for (NpcRenderInstance& npc : g_npcRenderInstances)
+    {
+        if (!npc.renderedHeadingInitialized)
+        {
+            npc.renderedHeadingRadians = npc.placement.transform.headingRadians;
+            npc.renderedHeadingInitialized = true;
+        }
+        npc.renderedHeadingRadians = MoveAngleToward(
+            npc.renderedHeadingRadians, NpcFacingTargetHeading(npc), maxStep);
     }
 }
 
 static void UpdateNpcAnimations(float dt)
 {
     if (std::isfinite(dt) && dt > 0) g_homePointSeconds += dt;
+    UpdateNpcFacing(dt);
     if (!GraphicsDevice())
         return;
-    for (NpcRenderAsset &asset : g_npcRenderAssets)
+    for (size_t assetIndex = 0; assetIndex < g_npcRenderAssets.size(); ++assetIndex)
     {
+        NpcRenderAsset &asset = g_npcRenderAssets[assetIndex];
         if (!asset.resource || !asset.visibleLastFrame)
             continue;
+
+        noesisModel_t *model = asset.resource.Model();
+        const bool isSpeaking = g_npcConversation.entityId != 0 &&
+            std::any_of(g_npcRenderInstances.begin(), g_npcRenderInstances.end(),
+                [assetIndex](const NpcRenderInstance &instance)
+                {
+                    return instance.assetIndex == assetIndex &&
+                           instance.placement.visible &&
+                           instance.placement.entityId == g_npcConversation.entityId;
+                });
+        noesisAnim_t *previousClip = model ? model->pAnim : nullptr;
+        const bool haveAnimation = isSpeaking
+            ? NpcRenderGeometry::SelectTalkAnimation(model)
+            : NpcRenderGeometry::SelectIdleAnimation(model);
+        if (!haveAnimation)
+        {
+            if (model)
+                model->RestoreBindPose(GraphicsDevice());
+            asset.animationTime = 0.0f;
+            continue;
+        }
+        if (model && model->pAnim != previousClip)
+            asset.animationTime = 0.0f;
         asset.animationTime += dt;
-        asset.resource.Model()->UpdateAnimation(asset.animationTime, GraphicsDevice());
+        model->UpdateAnimation(asset.animationTime, GraphicsDevice());
         asset.nameplateLocalY =
-            NpcRenderGeometry::ComputeNameplateLocalY(asset.resource.Model());
+            NpcRenderGeometry::ComputeNameplateLocalY(model);
     }
 }
 
@@ -2478,6 +2993,442 @@ static bool IsObjectLikeNpcTarget(const FFXINpcPlacement::Placement& placement)
         TextStartsWithNoCase(name, "Waypoint");
 }
 
+enum class NpcEventStep
+{
+    Done,
+    Message,
+    Choice,
+    Blocked,
+};
+
+static std::uint16_t NpcEventRead16(const FFXIEventTable::Event& event, std::size_t at)
+{
+    if (at + 2 > event.code.size()) return 0;
+    return static_cast<std::uint16_t>(event.code[at] | (event.code[at + 1] << 8));
+}
+
+static std::uint32_t NpcEventResolveOperand(const FFXIEventTable::Event& event, std::uint16_t operand)
+{
+    return (operand & 0x8000u) != 0 && (operand & 0x7fffu) < event.references.size()
+        ? event.references[operand & 0x7fffu]
+        : operand;
+}
+
+static std::int32_t NpcEventGetWork(NpcEventRuntime& runtime, std::size_t operandOffset, std::int32_t shift = 0)
+{
+    if (!runtime.event) return 0;
+    const std::uint32_t operand = static_cast<std::uint32_t>(
+        static_cast<std::int32_t>(NpcEventRead16(*runtime.event, runtime.pc + operandOffset)) + shift);
+    if ((operand & 0x8000u) != 0)
+        return static_cast<std::int32_t>(NpcEventResolveOperand(*runtime.event, static_cast<std::uint16_t>(operand)));
+    if (operand >= 4096u)
+    {
+        const std::size_t index = operand - 4096u;
+        return index < runtime.zone.size() ? static_cast<std::int32_t>(runtime.zone[index]) : 0;
+    }
+    return operand < runtime.local.size() ? static_cast<std::int32_t>(runtime.local[operand]) : 0;
+}
+
+static void NpcEventSetWork(NpcEventRuntime& runtime, std::size_t operandOffset, std::uint32_t value, std::int32_t shift = 0)
+{
+    if (!runtime.event) return;
+    const std::uint32_t operand = static_cast<std::uint32_t>(
+        static_cast<std::int32_t>(NpcEventRead16(*runtime.event, runtime.pc + operandOffset)) + shift);
+    if (operand >= 4096u)
+    {
+        const std::size_t index = operand - 4096u;
+        if (index < runtime.zone.size()) runtime.zone[index] = value;
+    }
+    else if (operand < runtime.local.size())
+        runtime.local[operand] = value;
+}
+
+static std::size_t NpcEventFixedSize(std::uint8_t op)
+{
+    switch (op)
+    {
+    case 0x00: case 0x21: case 0x23: case 0x25: case 0x58: case 0x7f:
+        return 1;
+    case 0x43:
+        return 2;
+    case 0x01: case 0x1a: case 0x1c: case 0x1d: case 0x48: case 0x63:
+        return 3;
+    case 0x03: case 0x05: case 0x06: case 0x0b: case 0x0c:
+    case 0x34: case 0x35: case 0x6f: case 0x76: case 0x80: case 0x99:
+        return 5;
+    case 0x07: case 0x08: case 0x09: case 0x0a: case 0x0d: case 0x0e:
+    case 0x0f: case 0x10: case 0x11: case 0x14: case 0x15: case 0x19:
+    case 0x24: case 0x27: case 0x28: case 0x29: case 0x2a: case 0x2b:
+    case 0x3e: case 0x49: case 0x6e:
+        return 7;
+    case 0x02: case 0x40: case 0x41: case 0x4e: case 0x6c:
+        return 9;
+    case 0x2c: case 0xb0:
+        return 12;
+    case 0x45:
+        return 17;
+    case 0x46:
+        return 2;
+    case 0x53: case 0x54: case 0x55: case 0x5b: case 0x66:
+        return 9;
+    case 0x5d:
+        return 5;
+    case 0x70:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static void NpcEventBinaryOp(NpcEventRuntime& runtime, std::uint8_t op)
+{
+    const std::uint32_t a = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
+    const std::uint32_t b = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 3));
+    std::uint32_t value = 0;
+    switch (op)
+    {
+    case 0x07: value = a + b; break;
+    case 0x08: value = a - b; break;
+    case 0x09: value = a | (1u << (b & 31)); break;
+    case 0x0a: value = a & ~(1u << (b & 31)); break;
+    case 0x0d: value = a & b; break;
+    case 0x0e: value = a | b; break;
+    case 0x0f: value = a ^ b; break;
+    case 0x10: value = a << (b & 31); break;
+    case 0x11: value = a >> (b & 31); break;
+    case 0x14: value = a * b; break;
+    case 0x15: value = (a && b) ? a / b : 0; break;
+    }
+    NpcEventSetWork(runtime, 1, value);
+    runtime.pc += 5;
+}
+
+static void NpcEventIf(NpcEventRuntime& runtime)
+{
+    if (!runtime.event) return;
+    const std::uint8_t kind = runtime.pc + 5 < runtime.event->code.size()
+        ? runtime.event->code[runtime.pc + 5] & 0x0f : 0;
+    const std::int32_t a = NpcEventGetWork(runtime, 1);
+    const std::int32_t b = NpcEventGetWork(runtime, 3);
+    const std::size_t target = NpcEventRead16(*runtime.event, runtime.pc + 6);
+    bool take = true;
+    switch (kind)
+    {
+    case 0: take = a != b; break;
+    case 1: case 7: take = a == b; break;
+    case 2: take = a <= b; break;
+    case 3: take = a >= b; break;
+    case 4: take = a < b; break;
+    case 5: take = a > b; break;
+    case 6: case 9: take = ((std::uint32_t)b & (std::uint32_t)a) == 0; break;
+    case 8: take = ((std::uint32_t)a | (std::uint32_t)b) == 0; break;
+    case 10: take = (~(std::uint32_t)a & (std::uint32_t)b) == 0; break;
+    }
+    runtime.pc = take ? target : runtime.pc + 8;
+}
+
+static NpcEventStep StepNpcEvent(NpcEventRuntime& runtime)
+{
+    if (!runtime.event || runtime.finished)
+        return NpcEventStep::Done;
+    for (int budget = 0; budget < 100000; ++budget)
+    {
+        if (runtime.pc >= runtime.event->code.size())
+        {
+            runtime.finished = true;
+            return NpcEventStep::Done;
+        }
+        const std::uint8_t op = runtime.event->code[runtime.pc];
+        switch (op)
+        {
+        case 0x00: case 0x21:
+            runtime.finished = true;
+            return NpcEventStep::Done;
+        case 0x01:
+            runtime.pc = NpcEventRead16(*runtime.event, runtime.pc + 1);
+            break;
+        case 0x02:
+            NpcEventIf(runtime);
+            break;
+        case 0x03:
+            NpcEventSetWork(runtime, 1, static_cast<std::uint32_t>(NpcEventGetWork(runtime, 3)));
+            runtime.pc += 5;
+            break;
+        case 0x05:
+            NpcEventSetWork(runtime, 1, 1); runtime.pc += 3; break;
+        case 0x06:
+            NpcEventSetWork(runtime, 1, 0); runtime.pc += 3; break;
+        case 0x0b:
+            NpcEventSetWork(runtime, 1, static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1) + 1)); runtime.pc += 3; break;
+        case 0x0c:
+            NpcEventSetWork(runtime, 1, static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1) - 1)); runtime.pc += 3; break;
+        case 0x07: case 0x08: case 0x09: case 0x0a: case 0x0d: case 0x0e:
+        case 0x0f: case 0x10: case 0x11: case 0x14: case 0x15:
+            NpcEventBinaryOp(runtime, op);
+            break;
+        case 0x19:
+        {
+            const std::uint32_t a = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
+            const std::uint32_t b = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 3));
+            NpcEventSetWork(runtime, 1, b);
+            NpcEventSetWork(runtime, 3, a);
+            runtime.pc += 5;
+            break;
+        }
+        case 0x1a:
+            if (runtime.jumpIndex >= runtime.jumps.size()) { runtime.finished = true; return NpcEventStep::Done; }
+            runtime.jumps[runtime.jumpIndex++] = static_cast<std::uint16_t>(runtime.pc + 3);
+            runtime.pc = NpcEventRead16(*runtime.event, runtime.pc + 1);
+            break;
+        case 0x1b:
+            if (runtime.jumpIndex == 0) { runtime.finished = true; return NpcEventStep::Done; }
+            runtime.pc = runtime.jumps[--runtime.jumpIndex];
+            break;
+        case 0x1d: case 0x48:
+            runtime.pendingMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
+            runtime.messageOpen = true;
+            runtime.pc += 3;
+            break;
+        case 0x2b: case 0x49:
+            runtime.pendingMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 5));
+            runtime.messageOpen = true;
+            runtime.pc += 7;
+            break;
+        case 0xb0:
+            if (runtime.pc + 12 > runtime.event->code.size() || runtime.event->code[runtime.pc + 1] != 0)
+                return NpcEventStep::Blocked;
+            runtime.pendingMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 10));
+            runtime.messageOpen = true;
+            runtime.pc += 12;
+            break;
+        case 0x23:
+            if (runtime.messageOpen)
+                return NpcEventStep::Message;
+            runtime.pc += 1;
+            break;
+        case 0x24:
+            runtime.pendingChoiceMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
+            runtime.defaultChoice = static_cast<std::uint32_t>(std::max<std::int32_t>(0, NpcEventGetWork(runtime, 3)));
+            runtime.waitingChoice = true;
+            runtime.pc += 7;
+            break;
+        case 0x25: case 0x7f:
+            if (runtime.waitingChoice)
+                return NpcEventStep::Choice;
+            runtime.pc += 1;
+            break;
+        case 0x3e:
+        {
+            const std::int32_t bit = NpcEventGetWork(runtime, 3);
+            const std::int32_t word = NpcEventGetWork(runtime, 1, bit >> 5);
+            runtime.pc = ((word & (1 << (bit & 31))) == 0)
+                ? NpcEventRead16(*runtime.event, runtime.pc + 5)
+                : runtime.pc + 7;
+            break;
+        }
+        default:
+        {
+            const std::size_t size = NpcEventFixedSize(op);
+            if (size == 0)
+                return NpcEventStep::Blocked;
+            runtime.pc += size;
+            break;
+        }
+        }
+    }
+    return NpcEventStep::Blocked;
+}
+
+static void DismissNpcEventMessage(NpcEventRuntime& runtime)
+{
+    runtime.messageOpen = false;
+    runtime.pendingMessage = 0xffffffffu;
+}
+
+static void SelectNpcEventChoice(NpcEventRuntime& runtime, std::uint32_t selected)
+{
+    runtime.zone[0] = selected;
+    runtime.waitingChoice = false;
+    runtime.pendingChoiceMessage = 0xffffffffu;
+}
+
+static std::vector<std::string> SplitNpcDialogueFrames(const std::string& dialogue)
+{
+    std::vector<std::string> frames;
+    std::size_t start = 0;
+    while (start <= dialogue.size())
+    {
+        std::size_t end = dialogue.find('\n', start);
+        std::string frame = dialogue.substr(start,
+            end == std::string::npos ? std::string::npos : end - start);
+        if (!frame.empty() && frame.back() == '\r')
+            frame.pop_back();
+        if (!frame.empty())
+            frames.push_back(std::move(frame));
+        if (end == std::string::npos)
+            break;
+        start = end + 1;
+    }
+    if (frames.empty())
+        frames.push_back(dialogue);
+    return frames;
+}
+
+static bool ShowNpcConversationFrame(HWND owner)
+{
+    if (!g_npcConversation.entityId)
+        return false;
+    if (g_npcConversation.index < g_npcConversation.frames.size())
+    {
+        NpcChatWindow::Show(owner, g_npcConversation.name,
+            g_npcConversation.frames[g_npcConversation.index]);
+        return true;
+    }
+    return true;
+}
+
+static void EndNpcConversation()
+{
+    NpcChatWindow::HideChoices();
+    g_npcConversation = {};
+}
+
+static bool LoadRetailNpcConversation(const FFXINpcPlacement::Placement& placement)
+{
+    auto trace = [](const std::string& text)
+    {
+        OutputDebugStringA(("[DATura NPC dialogue] " + text + "\n").c_str());
+    };
+    const FFXILoreZoneDatEntry* zone = FFXILoreZoneDat_FindByZoneID(FFXINpcPlacement::ZoneId());
+    if (!zone || !g_ffxiPath || !g_ffxiPath[0])
+        return false;
+    char eventPath[MAX_PATH] = {};
+    char messagePath[MAX_PATH] = {};
+    FFXIPath::BuildFullPath(g_ffxiPath, zone->eventDat, eventPath, sizeof(eventPath));
+    FFXIPath::BuildFullPath(g_ffxiPath, zone->dialogDat, messagePath, sizeof(messagePath));
+    if (!FFXIEventTable::Load(eventPath, g_npcConversation.scripts) ||
+        !FFXIEventMessages::Load(messagePath, g_npcConversation.messages))
+        return false;
+
+    for (const auto& scripts : g_npcConversation.scripts)
+    {
+        if (scripts.entityId != placement.entityId) continue;
+        for (const auto& event : scripts.events)
+        {
+            NpcEventRuntime runtime;
+            runtime.event = &event;
+            g_npcConversation.runtime = runtime;
+            const NpcEventStep firstStep = StepNpcEvent(g_npcConversation.runtime);
+            if (firstStep == NpcEventStep::Message || firstStep == NpcEventStep::Choice)
+                return true;
+        }
+        trace("matched entity had no runnable retail dialogue");
+        return false;
+    }
+    return false;
+}
+
+static bool PresentNpcEventStep(HWND owner)
+{
+    for (;;)
+    {
+        const NpcEventStep step = StepNpcEvent(g_npcConversation.runtime);
+        if (step == NpcEventStep::Message)
+        {
+            const std::uint32_t id = g_npcConversation.runtime.pendingMessage;
+            if (id < g_npcConversation.messages.size() &&
+                !g_npcConversation.messages[(size_t)id].text.empty())
+            {
+                NpcChatWindow::HideChoices();
+                NpcChatWindow::Show(owner, g_npcConversation.name,
+                    g_npcConversation.messages[(size_t)id].text);
+                return true;
+            }
+            DismissNpcEventMessage(g_npcConversation.runtime);
+            continue;
+        }
+        if (step == NpcEventStep::Choice)
+        {
+            const std::uint32_t id = g_npcConversation.runtime.pendingChoiceMessage;
+            std::string prompt;
+            std::vector<std::string> options;
+            if (id < g_npcConversation.messages.size() &&
+                FFXIEventMessages::SplitChoiceText(g_npcConversation.messages[(size_t)id], prompt, options))
+            {
+                g_npcConversation.choicePrompt = prompt;
+                g_npcConversation.choiceOptions = options;
+                g_npcConversation.choiceSelected = std::clamp(
+                    static_cast<int>(g_npcConversation.runtime.defaultChoice), 0,
+                    (std::max)(0, (int)options.size() - 1));
+                NpcChatWindow::ShowChoices(owner, prompt, options, g_npcConversation.choiceSelected);
+                return true;
+            }
+            SelectNpcEventChoice(g_npcConversation.runtime, 0);
+            continue;
+        }
+        return false;
+    }
+}
+
+static void StartNpcConversation(HWND owner, const FFXINpcPlacement::Placement& placement)
+{
+    g_npcConversation = {};
+    g_npcConversation.entityId = placement.entityId;
+    g_npcConversation.name = placement.name;
+    if (LoadRetailNpcConversation(placement))
+    {
+        PresentNpcEventStep(owner);
+        return;
+    }
+    g_npcConversation.frames = SplitNpcDialogueFrames(NpcDialogueText(placement));
+    g_npcConversation.index = 0;
+    ShowNpcConversationFrame(owner);
+}
+
+static bool AdvanceNpcConversation(HWND owner)
+{
+    if (!g_npcConversation.entityId)
+        return false;
+    if (!g_npcConversation.choiceOptions.empty())
+    {
+        SelectNpcEventChoice(g_npcConversation.runtime,
+            static_cast<std::uint32_t>(g_npcConversation.choiceSelected));
+        g_npcConversation.choicePrompt.clear();
+        g_npcConversation.choiceOptions.clear();
+        NpcChatWindow::HideChoices();
+        if (!PresentNpcEventStep(owner))
+            EndNpcConversation();
+        return true;
+    }
+    if (g_npcConversation.runtime.event)
+    {
+        DismissNpcEventMessage(g_npcConversation.runtime);
+        if (!PresentNpcEventStep(owner))
+            EndNpcConversation();
+        return true;
+    }
+    if (g_npcConversation.index + 1 < g_npcConversation.frames.size())
+    {
+        ++g_npcConversation.index;
+        ShowNpcConversationFrame(owner);
+    }
+    else
+    {
+        EndNpcConversation();
+    }
+    return true;
+}
+
+static bool MoveNpcConversationChoice(HWND owner, int delta)
+{
+    if (!g_npcConversation.entityId || g_npcConversation.choiceOptions.empty())
+        return false;
+    const int count = (int)g_npcConversation.choiceOptions.size();
+    g_npcConversation.choiceSelected = (g_npcConversation.choiceSelected + delta + count) % count;
+    NpcChatWindow::SetChoiceSelection(owner, g_npcConversation.choiceSelected);
+    return true;
+}
+
 static std::string RetailNpcDialogueText(const FFXINpcPlacement::Placement& placement)
 {
     auto trace = [](const std::string& text)
@@ -2517,14 +3468,21 @@ static std::string RetailNpcDialogueText(const FFXINpcPlacement::Placement& plac
         for (const auto& event : scripts.events)
         {
             const auto ids = FFXIEventTable::MessageIds(event);
+            std::string dialogue;
             for (const std::uint16_t id : ids)
             {
                 trace("event=" + std::to_string(event.id) + " message=" + std::to_string(id));
                 if (id < messages.size() && !messages[id].text.empty())
                 {
-                    trace("resolved message");
-                    return messages[id].text;
+                    if (!dialogue.empty())
+                        dialogue += "\n";
+                    dialogue += messages[id].text;
                 }
+            }
+            if (!dialogue.empty())
+            {
+                trace("resolved event dialogue lines=" + std::to_string(ids.size()));
+                return dialogue;
             }
         }
         trace("matched entity had no resolvable message");
@@ -3558,6 +4516,8 @@ static void Render()
     g_zoneRuntimeOverrides = g_zoneObjectOverrides;
     for (const auto& entry : g_doors.transforms)
         g_zoneRuntimeOverrides.insert(entry);
+    if (g_transitionZoneId == ZoneElevator::kMetalworksZone)
+        ApplyMetalworksElevatorRuntimeObjects();
     if (SUCCEEDED(GraphicsDevice()->BeginScene()))
     {
         // ---- Camera setup ----
@@ -3691,6 +4651,7 @@ static void Render()
 			GraphicsDevice()->SetTransform(D3DTS_PROJECTION, &proj);
 			GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
             RenderModel(zoneModel, true, ModelRenderer::GeometryPass::Opaque);
+            DrawMetalworksElevatorPlatforms();
         }
 
         if (creationModel)
@@ -3778,6 +4739,7 @@ static void Render()
             if (!asset.resource && !asset.homePoint)
                 continue;
             FFXINpcPlacement::Transform transform = npc.placement.transform;
+            transform.headingRadians = npc.renderedHeadingRadians;
             // Catalog headings and character DATs both face +X at zero. The
             // player's camera-relative quarter-turn does not apply to NPCs.
             D3DMATRIX npcWorld = FFXINpcPlacement::BuildWorldTransform(transform);
@@ -3823,12 +4785,7 @@ static void Render()
             if (asset.homePoint)
                 visibleHomePoints.push_back(&npc);
             else
-            {
-                // A planar shadow redraws every opaque submesh. Keep the playable
-                // character shadow, but avoid multiplying that full extra pass by
-                // every NPC in a populated zone.
-                RenderModel(asset.resource.Model(), false, ModelRenderer::GeometryPass::All, false);
-            }
+                RenderModel(asset.resource.Model());
 
             if (!npc.placement.name.empty() &&
                 !FFXIPath::StringEqualsNoCase(npc.placement.name.c_str(), "blank"))
@@ -4255,6 +5212,8 @@ static void HandleInputAction(const InputController::Action action, HWND window)
         }
         break;
     case InputController::Action::Confirm:
+        if (IsGameMode() && AdvanceNpcConversation(window))
+            return;
         if (g_characterSelectActive && !g_savedCharacterPreviews.empty())
         {
             UnloadPlayerModel();
@@ -4430,7 +5389,10 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 return 0;
             }
             g_doors.selected = -1;
-            if (g_npcInteraction.Click((float)point.x, (float)point.y))
+            const bool npcTalk = g_npcInteraction.Click((float)point.x, (float)point.y);
+            if (!npcTalk)
+                EndNpcConversation();
+            if (npcTalk)
             {
                 for (auto& npc : g_npcRenderInstances)
                 {
@@ -4455,7 +5417,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 }
                 FFXINpcPlacement::Placement placement;
                 if (FFXINpcPlacement::Find(g_npcInteraction.selected, placement))
-                    NpcChatWindow::Show(hWnd, placement.name, NpcDialogueText(placement));
+                    StartNpcConversation(hWnd, placement);
             }
             return 0;
         }
@@ -4663,15 +5625,29 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         { ExecuteDeveloperCommand(); return 0; }
         if (g_developerConsoleOpen)
             return 0;
+        if (IsGameMode() && (wParam == VK_UP || wParam == VK_DOWN) &&
+            MoveNpcConversationChoice(hWnd, wParam == VK_UP ? -1 : 1))
+        {
+            return 0;
+        }
+        if (IsGameMode() && wParam == VK_ESCAPE && !g_npcConversation.choiceOptions.empty())
+        {
+            EndNpcConversation();
+            return 0;
+        }
         // FFXI consumes Escape from the chat log first.  Each press removes
         // one visible line; only a later press, after the log is hidden, may
         // open the main menu.
         if (wParam == VK_ESCAPE && IsGameMode() && NpcChatWindow::HandleEscape(lParam))
+        {
+            EndNpcConversation();
             return 0;
+        }
         if (wParam == VK_ESCAPE && IsGameMode() &&
             (g_doors.selected >= 0 || g_npcInteraction.selected))
         {
             g_npcInteraction.selected = 0;
+            EndNpcConversation();
             g_doors.selected = -1;
             return 0;
         }
@@ -4763,16 +5739,23 @@ static void RunApplicationFrame(void*, const float deltaSeconds)
 
     if (deltaSeconds > 0.0f)
     {
+        g_doorPhysicsUpdated = false;
+        g_doors.Update(deltaSeconds, g_zoneCollisionMesh);
         if (g_transitionZoneId == ZoneElevator::kMetalworksZone &&
             ZoneElevator::Update(g_metalworksElevator, deltaSeconds,
-                                 g_player.position, g_player.onGround))
+                                 g_player.position, g_player.onGround,
+                                 !g_applicationSettings.mirrorWorldZones))
         {
+            ApplyMetalworksElevatorRuntimeCollision();
             g_player.verticalVelocity = 0.0f;
             g_player.jumping = false;
             PlayerController::SetLastSafePoint(g_player);
+            UpdatePlayerCameraTarget();
         }
-        g_doorPhysicsUpdated = false;
-        g_doors.Update(deltaSeconds, g_zoneCollisionMesh);
+        else if (g_transitionZoneId == ZoneElevator::kMetalworksZone)
+        {
+            ApplyMetalworksElevatorRuntimeCollision();
+        }
         UpdateCameraMovement(deltaSeconds);
         if (g_doors.physics && !g_doorPhysicsUpdated)
             g_doors.UpdatePhysics(deltaSeconds, g_zoneCollisionMesh,

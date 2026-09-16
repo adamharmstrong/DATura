@@ -89,20 +89,57 @@ bool Load(const char* path, std::vector<EntityScripts>& out)
 std::vector<std::uint16_t> MessageIds(const Event& event)
 {
     std::vector<std::uint16_t> ids;
-    // Event VM message operations are one-byte opcodes. The following two
-    // bytes contain either the message index or an immediate-table reference.
-    // Event offsets are byte offsets, so an event may begin on an odd byte
-    // boundary. Scan both alignments rather than assuming word alignment.
-    for (std::size_t p = 0; p + 3 < event.code.size(); ++p)
+    const auto read16 = [&](std::size_t p) -> std::uint16_t
     {
-        const std::uint8_t opcode = event.code[p];
-        if (opcode != 0x1d && opcode != 0x2b && opcode != 0x48) continue;
-        const std::uint16_t operand = static_cast<std::uint16_t>(event.code[p + 1] | (event.code[p + 2] << 8));
-        const std::uint32_t id = (operand & 0x8000u) != 0 &&
-            (operand & 0x7fffu) < event.references.size()
+        if (p + 2 > event.code.size()) return 0;
+        return static_cast<std::uint16_t>(event.code[p] | (event.code[p + 1] << 8));
+    };
+    const auto resolve = [&](std::uint16_t operand) -> std::uint32_t
+    {
+        return (operand & 0x8000u) != 0 && (operand & 0x7fffu) < event.references.size()
             ? event.references[operand & 0x7fffu]
             : operand;
-        if (std::find(ids.begin(), ids.end(), id) == ids.end()) ids.push_back(id);
+    };
+    const auto append = [&](std::uint32_t id)
+    {
+        if (id > 0xffffu) return;
+        if (std::find(ids.begin(), ids.end(), id) == ids.end())
+            ids.push_back(static_cast<std::uint16_t>(id));
+    };
+
+    // Event VM message operations are one-byte opcodes. Retail has several
+    // message forms: direct speaker, actor speaker, unnamed, unnamed actor,
+    // and actor-pair. The message operand sits at a different offset for the
+    // actor forms; treating every message as opcode+u16 misses most NPC lines.
+    for (std::size_t p = 0; p < event.code.size(); ++p)
+    {
+        std::size_t operandOffset = 0;
+        std::size_t width = 0;
+        const std::uint8_t opcode = event.code[p];
+        switch (opcode)
+        {
+        case 0x1d: // MESSAGE
+        case 0x48: // MESSAGE_UNNAMED
+            operandOffset = 1;
+            width = 3;
+            break;
+        case 0x2b: // MESSAGE_ACTOR
+        case 0x49: // MESSAGE_UNNAMED_ACTOR
+            operandOffset = 5;
+            width = 7;
+            break;
+        case 0xb0: // MESSAGE_ACTOR_PAIR
+            if (p + 12 > event.code.size() || event.code[p + 1] != 0)
+                continue;
+            operandOffset = 10;
+            width = 12;
+            break;
+        default:
+            continue;
+        }
+        if (p + width > event.code.size())
+            continue;
+        append(resolve(read16(p + operandOffset)));
     }
     return ids;
 }

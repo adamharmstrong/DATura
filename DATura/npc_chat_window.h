@@ -4,6 +4,7 @@
 #include <commctrl.h>
 #include <d3d9.h>
 #include <string>
+#include <vector>
 #include <algorithm>
 
 // A viewport-anchored log; the read-only Rich Edit retains selection and copying.
@@ -11,7 +12,11 @@ namespace NpcChatWindow
 {
 inline HWND window = nullptr;
 inline HWND transcript = nullptr;
+inline HWND choiceWindow = nullptr;
 inline std::wstring history;
+inline std::wstring choicePrompt;
+inline std::vector<std::wstring> choiceOptions;
+inline int choiceSelected = 0;
 inline HFONT font = nullptr;
 inline constexpr COLORREF background = RGB(12, 18, 50);
 inline int timeoutSeconds = 15;
@@ -23,6 +28,8 @@ inline int compactedLines = 0;
 inline int lineHeight = 19;
 inline std::wstring lastEntry;
 inline void Layout(HWND owner);
+inline void LayoutTranscript();
+inline void LayoutChoices(HWND owner);
 
 inline void PaintStripes(HDC dc, RECT rect)
 {
@@ -43,6 +50,12 @@ inline void Hide()
     hideAt = 0;
     if (GetFocus() == transcript) SetFocus(GetParent(window));
     ShowWindow(window, SW_HIDE);
+}
+
+inline void HideChoices()
+{
+    if (choiceWindow)
+        ShowWindow(choiceWindow, SW_HIDE);
 }
 
 inline void RestartTimeout()
@@ -91,12 +104,31 @@ inline void PaintFrame(HWND hwnd, HDC dc)
 {
     RECT rect{}; GetClientRect(hwnd, &rect);
     PaintStripes(dc, rect);
-    const COLORREF edges[] = { RGB(35, 39, 60), RGB(174, 181, 202), RGB(80, 89, 120) };
-    for (COLORREF color : edges)
+    const int rectWidth = (int)(rect.right - rect.left);
+    const int fade = (std::min)(96, (std::max)(1, rectWidth / 5));
+    const COLORREF edgeRows[] = { RGB(78, 86, 118), RGB(190, 197, 220), RGB(55, 62, 92) };
+    for (int row = 0; row < 3 && row < rect.bottom; ++row)
     {
-        HBRUSH edge = CreateSolidBrush(color);
-        FrameRect(dc, &rect, edge); DeleteObject(edge);
-        InflateRect(&rect, -1, -1);
+        const COLORREF edge = edgeRows[row];
+        const int edgeR = GetRValue(edge), edgeG = GetGValue(edge), edgeB = GetBValue(edge);
+        const int bgR = GetRValue(background), bgG = GetGValue(background), bgB = GetBValue(background);
+        for (int x = rect.left; x < rect.right; ++x)
+        {
+            const int leftDistance = x - rect.left;
+            const int rightDistance = rect.right - 1 - x;
+            int strength = 255;
+            if (leftDistance < fade)
+                strength = (std::min)(strength, leftDistance * 255 / fade);
+            if (rightDistance < fade)
+                strength = (std::min)(strength, rightDistance * 255 / fade);
+            strength = (std::max)(0, (std::min)(255, strength));
+            const COLORREF color = RGB(
+                (bgR * (255 - strength) + edgeR * strength) / 255,
+                (bgG * (255 - strength) + edgeG * strength) / 255,
+                (bgB * (255 - strength) + edgeB * strength) / 255);
+            SetPixel(dc, x, rect.top + row, color);
+            SetPixel(dc, x, rect.bottom - 1 - row, color);
+        }
     }
 }
 
@@ -117,8 +149,17 @@ inline void Draw(IDirect3DDevice9* device)
         const int saved = SaveDC(dc);
         SetViewportOrgEx(dc, rect.left, rect.top, nullptr);
         PaintFrame(window, dc);
-        SetViewportOrgEx(dc, rect.left + 8, rect.top + 8, nullptr);
+        RECT child{}; GetWindowRect(transcript, &child);
+        MapWindowPoints(HWND_DESKTOP, GetParent(window), reinterpret_cast<POINT*>(&child), 2);
+        SetViewportOrgEx(dc, child.left, child.top, nullptr);
         SendMessageW(transcript, WM_PRINT, (WPARAM)dc, PRF_CLIENT | PRF_NONCLIENT | PRF_ERASEBKGND);
+        if (choiceWindow && IsWindowVisible(choiceWindow))
+        {
+            RECT choice{}; GetWindowRect(choiceWindow, &choice);
+            MapWindowPoints(HWND_DESKTOP, GetParent(window), reinterpret_cast<POINT*>(&choice), 2);
+            SetViewportOrgEx(dc, choice.left, choice.top, nullptr);
+            SendMessageW(choiceWindow, WM_PRINT, (WPARAM)dc, PRF_CLIENT | PRF_NONCLIENT | PRF_ERASEBKGND);
+        }
         RestoreDC(dc, saved);
         surface->ReleaseDC(dc);
     }
@@ -136,6 +177,103 @@ inline void Layout(HWND owner)
     const int height = (std::max)(lineHeight + 16, baseHeight - compactedLines * lineHeight);
     SetWindowPos(window, HWND_TOP, 8, (std::max)(0L, bounds.bottom - height - 8),
         width, (std::min)(height, (int)bounds.bottom), SWP_NOACTIVATE);
+    LayoutTranscript();
+    LayoutChoices(owner);
+}
+
+inline void LayoutTranscript()
+{
+    if (!window || !transcript) return;
+    RECT rect{}; GetClientRect(window, &rect);
+    const int availableWidth = (std::max)(0, (int)rect.right - 16);
+    const int availableHeight = (std::max)(0, (int)rect.bottom - 16);
+    int lineCount = (int)SendMessageW(transcript, EM_GETLINECOUNT, 0, 0);
+    if (lineCount < 1) lineCount = 1;
+    const int contentHeight = lineCount * lineHeight + 4;
+    const int childHeight = (std::min)(availableHeight, (std::max)(lineHeight + 4, contentHeight));
+    const int childY = rect.bottom - 8 - childHeight;
+    MoveWindow(transcript, 8, (std::max)(8, childY), availableWidth, childHeight, TRUE);
+}
+
+inline void PaintChoices(HWND hwnd, HDC dc)
+{
+    RECT rect{}; GetClientRect(hwnd, &rect);
+    PaintStripes(dc, rect);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(235, 235, 245));
+    HFONT oldFont = font ? (HFONT)SelectObject(dc, font) : nullptr;
+    int y = 8;
+    if (!choicePrompt.empty())
+    {
+        RECT promptRect{10, y, rect.right - 10, y + lineHeight * 2};
+        DrawTextW(dc, choicePrompt.c_str(), -1, &promptRect, DT_LEFT | DT_TOP | DT_WORDBREAK);
+        y = promptRect.bottom + 4;
+    }
+    for (int i = 0; i < (int)choiceOptions.size(); ++i)
+    {
+        RECT row{10, y, rect.right - 10, y + lineHeight};
+        std::wstring text = (i == choiceSelected ? L"\x25ba " : L"  ") + choiceOptions[(size_t)i];
+        DrawTextW(dc, text.c_str(), -1, &row, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        y += lineHeight;
+    }
+    if (oldFont) SelectObject(dc, oldFont);
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(190, 197, 220));
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    MoveToEx(dc, 0, 0, nullptr); LineTo(dc, rect.right, 0);
+    MoveToEx(dc, 0, rect.bottom - 1, nullptr); LineTo(dc, rect.right, rect.bottom - 1);
+    SelectObject(dc, oldPen); DeleteObject(pen);
+}
+
+inline LRESULT CALLBACK ChoiceProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM l)
+{
+    switch (message)
+    {
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT:
+    {
+        PAINTSTRUCT paint{}; HDC dc = BeginPaint(hwnd, &paint);
+        PaintChoices(hwnd, dc);
+        EndPaint(hwnd, &paint);
+        return 0;
+    }
+    case WM_PRINT:
+        PaintChoices(hwnd, (HDC)w);
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, w, l);
+}
+
+inline void EnsureChoiceWindow(HWND owner)
+{
+    if (choiceWindow) return;
+    WNDCLASSW cls = {};
+    cls.lpfnWndProc = ChoiceProcedure;
+    cls.hInstance = GetModuleHandleW(nullptr);
+    cls.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    cls.lpszClassName = L"DATuraNpcChoice";
+    RegisterClassW(&cls);
+    choiceWindow = CreateWindowExW(0, cls.lpszClassName, L"Dialogue choices",
+        WS_CHILD, 0, 0, 0, 0, owner, nullptr, cls.hInstance, nullptr);
+}
+
+inline void LayoutChoices(HWND owner)
+{
+    if (!choiceWindow || choiceOptions.empty()) return;
+    RECT bounds{}; GetClientRect(owner, &bounds);
+    RECT chat{};
+    if (window)
+    {
+        GetWindowRect(window, &chat);
+        MapWindowPoints(HWND_DESKTOP, owner, reinterpret_cast<POINT*>(&chat), 2);
+    }
+    const int width = (std::max)(220, (std::max)(0, (int)bounds.right - 16) * widthPercent / 100);
+    const int promptLines = choicePrompt.empty() ? 0 : 2;
+    const int height = 16 + (promptLines + (int)choiceOptions.size()) * lineHeight;
+    const int y = window && IsWindowVisible(window)
+        ? (std::max)(8, (int)chat.top - height - 6)
+        : (std::max)(8, (int)bounds.bottom - height - 8);
+    SetWindowPos(choiceWindow, HWND_TOP, 8, y, width, height, SWP_NOACTIVATE);
 }
 
 inline LRESULT CALLBACK TranscriptProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM l,
@@ -209,7 +347,7 @@ inline LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l)
         return 0;
     }
     case WM_SIZE:
-        MoveWindow(transcript, 8, 8, (std::max)(0, (int)LOWORD(l) - 16), (std::max)(0, (int)HIWORD(l) - 16), TRUE);
+        LayoutTranscript();
         return 0;
     case WM_ERASEBKGND:
         return 1;
@@ -242,8 +380,34 @@ inline void Reset()
 {
     history.clear();
     lastEntry.clear();
+    choicePrompt.clear();
+    choiceOptions.clear();
+    choiceSelected = 0;
     compactedLines = 0;
     if (window) { SetWindowTextW(transcript, L""); Hide(); }
+    HideChoices();
+}
+
+inline void ShowChoices(HWND owner, const std::string& prompt, const std::vector<std::string>& options, int selected)
+{
+    EnsureChoiceWindow(owner);
+    if (!choiceWindow) return;
+    choicePrompt = Utf8(prompt);
+    choiceOptions.clear();
+    for (const std::string& option : options)
+        choiceOptions.push_back(Utf8(option));
+    choiceSelected = std::clamp(selected, 0, (std::max)(0, (int)choiceOptions.size() - 1));
+    LayoutChoices(owner);
+    ShowWindow(choiceWindow, SW_SHOWNOACTIVATE);
+    InvalidateRect(choiceWindow, nullptr, TRUE);
+}
+
+inline void SetChoiceSelection(HWND owner, int selected)
+{
+    if (choiceOptions.empty()) return;
+    choiceSelected = std::clamp(selected, 0, (int)choiceOptions.size() - 1);
+    LayoutChoices(owner);
+    if (choiceWindow) InvalidateRect(choiceWindow, nullptr, TRUE);
 }
 
 inline void Show(HWND owner, const std::string& name, const std::string& dialogue)
@@ -279,6 +443,7 @@ inline void Show(HWND owner, const std::string& name, const std::string& dialogu
     compactedLines = 0;
     Layout(owner);
     SetWindowTextW(transcript, history.c_str());
+    LayoutTranscript();
     SendMessageW(transcript, EM_SETSEL, history.size(), history.size());
     SendMessageW(transcript, EM_SCROLLCARET, 0, 0);
     ShowWindow(window, SW_SHOWNOACTIVATE);

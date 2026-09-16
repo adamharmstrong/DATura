@@ -145,6 +145,7 @@
     <ClCompile Include="audio_player.cpp" />
     <ClCompile Include="bgw_player.cpp" />
     <ClCompile Include="d3d9_device.cpp" />
+    <ClCompile Include="renderer_backend.cpp" />
       <ClCompile Include="d3d_math.cpp" />
     <ClCompile Include="zone_door_interaction.cpp" />
       <ClCompile Include="d3d_model_buffers.cpp" />
@@ -269,6 +270,7 @@
     <ClInclude Include="effect_model_layout.h" />
     <ClInclude Include="bgw_player.h" />
     <ClInclude Include="d3d9_device.h" />
+    <ClInclude Include="renderer_backend.h" />
       <ClInclude Include="d3d_math.h" />
     <ClInclude Include="zone_door_interaction.h" />
     <ClInclude Include="zone_transition.h" />

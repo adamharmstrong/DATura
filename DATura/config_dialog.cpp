@@ -3,6 +3,7 @@
 #include "ffxi_player_icons.h"
 #include "ffxi_stat_system.h"
 #include <commctrl.h>
+#include <cstring>
 
 #include "win32_panel_controls.h"
 #include "win32_tool_window.h"
@@ -52,8 +53,19 @@ enum ControlId
     IDC_CONFIG_CHAT_TIMEOUT = 8337,
     IDC_CONFIG_CHAT_WIDTH = 8338,
     IDC_CONFIG_CHAT_HEIGHT = 8339,
-    IDC_CONFIG_RENDERING_BACKEND = 8340
+    IDC_CONFIG_RENDERING_BACKEND = 8340,
+    IDC_CONFIG_LINKSHELL_COLOR_R = 8341,
+    IDC_CONFIG_LINKSHELL_COLOR_G = 8342,
+    IDC_CONFIG_LINKSHELL_COLOR_B = 8343,
+    IDC_CONFIG_TAB_MENU = 8344,
+    IDC_CONFIG_TAB_CHAT = 8345,
+    IDC_CONFIG_TAB_NAMEPLATES = 8346
 };
+
+constexpr LONG_PTR kNoConfigTab = 0;
+constexpr LONG_PTR kMenuTab = 1;
+constexpr LONG_PTR kChatTab = 2;
+constexpr LONG_PTR kNameplatesTab = 3;
 
 ConfigDialog::State* GetState(const HWND window)
 {
@@ -68,13 +80,75 @@ void Notify(ConfigDialog::State& state, const ConfigDialog::Command command, con
     ConfigDialog::Sync(state);
 }
 
+BOOL CALLBACK ShowConfigTabChild(HWND child, LPARAM activeTab)
+{
+    const LONG_PTR tab = GetWindowLongPtrA(child, GWLP_USERDATA);
+    if (tab >= kMenuTab && tab <= kNameplatesTab)
+        ShowWindow(child, tab == activeTab ? SW_SHOW : SW_HIDE);
+    return TRUE;
+}
+
+void ApplyActiveTab(ConfigDialog::State& state)
+{
+    if (!state.window)
+        return;
+    const LONG_PTR activeTab = static_cast<LONG_PTR>(std::clamp(state.activeTab, 0, 2) + 1);
+    EnumChildWindows(state.window, ShowConfigTabChild, activeTab);
+    InvalidateRect(state.window, nullptr, TRUE);
+}
+
+BOOL CALLBACK TagInterfaceTabChild(HWND child, LPARAM)
+{
+    const int id = GetDlgCtrlID(child);
+    if (id == IDC_CONFIG_CLOSE || id == IDC_CONFIG_TAB_MENU ||
+        id == IDC_CONFIG_TAB_CHAT || id == IDC_CONFIG_TAB_NAMEPLATES)
+        return TRUE;
+
+    HWND parent = GetParent(child);
+    RECT rect = {};
+    GetWindowRect(child, &rect);
+    MapWindowPoints(HWND_DESKTOP, parent, reinterpret_cast<POINT*>(&rect), 2);
+    if (rect.top < 548)
+        return TRUE;
+
+    LONG_PTR tab = kNameplatesTab;
+    if (id == IDC_CONFIG_COLOR_THEME)
+        tab = kMenuTab;
+    else if (id == IDC_CONFIG_CHAT_TIMEOUT || id == IDC_CONFIG_CHAT_WIDTH ||
+             id == IDC_CONFIG_CHAT_HEIGHT)
+        tab = kChatTab;
+    else if (id == IDC_CONFIG_PLAYER_ICON || id == IDC_CONFIG_JOB_MASTER ||
+             id == IDC_CONFIG_SUBTITLE || id == IDC_CONFIG_LINKSHELL_NAME ||
+             id == IDC_CONFIG_MAIN_JOB || id == IDC_CONFIG_SUB_JOB ||
+             id == IDC_CONFIG_MAIN_LEVEL || id == IDC_CONFIG_SUB_LEVEL ||
+             id == IDC_CONFIG_MAIN_LV_LABEL || id == IDC_CONFIG_SUB_LV_LABEL ||
+             id == IDC_CONFIG_JOB_SEPARATOR || id == IDC_CONFIG_SUBTITLE_LABEL ||
+             id == IDC_CONFIG_LINKSHELL_COLOR_R || id == IDC_CONFIG_LINKSHELL_COLOR_G ||
+             id == IDC_CONFIG_LINKSHELL_COLOR_B)
+        tab = kNameplatesTab;
+    else if (id == 0)
+    {
+        char text[64] = {};
+        GetWindowTextA(child, text, sizeof(text));
+        if (strcmp(text, "Color Theme") == 0)
+            tab = kMenuTab;
+        else if (strcmp(text, "Display duration") == 0 || strcmp(text, "Width (%)") == 0 ||
+                 strcmp(text, "Height (%)") == 0)
+            tab = kChatTab;
+        else
+            tab = kNameplatesTab;
+    }
+    SetWindowLongPtrA(child, GWLP_USERDATA, tab);
+    return TRUE;
+}
+
 void CreateControls(ConfigDialog::State& state)
 {
     const HWND window = state.window;
     const HFONT font = state.theme->resources.font;
     const HWND path = Win32PanelControls::AddPanelControl(
         window, "EDIT", "", ES_AUTOHSCROLL | ES_READONLY, IDC_CONFIG_PATH_TEXT,
-        28, 31, 564, 24, WS_EX_CLIENTEDGE);
+        28, 31, 704, 24, WS_EX_CLIENTEDGE);
 
     Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Set Path...", BS_OWNERDRAW, IDC_CONFIG_SET_PATH,
@@ -108,17 +182,16 @@ void CreateControls(ConfigDialog::State& state)
     }
 
     Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Rendering Backend", 0, 0, 328, 132, 120, 18);
+        window, "STATIC", "Rendering Backend", 0, 0, 428, 132, 140, 22);
     const HWND renderingBackend = Win32PanelControls::AddPanelControl(
         window, "COMBOBOX", "", CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED |
             CBS_HASSTRINGS | WS_VSCROLL, IDC_CONFIG_RENDERING_BACKEND,
-        454, 128, 138, 180);
-    for (const char* label : {"DirectX 8", "DirectX 9", "DirectX 11",
-                              "DirectX 12", "OpenGL", "Vulkan", "Metal (macOS)"})
+        574, 128, 158, 180);
+    for (int i = 0; i < ApplicationSettings::RenderingBackendOptionCount(); ++i)
     {
-        SendMessageA(renderingBackend, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
+        SendMessageA(renderingBackend, CB_ADDSTRING, 0,
+            reinterpret_cast<LPARAM>(ApplicationSettings::RenderingBackendName(i)));
     }
-    SendMessageA(renderingBackend, CB_SETCURSEL, 1, 0);
 
     Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Enable MIP Mapping", BS_AUTOCHECKBOX,
@@ -127,32 +200,32 @@ void CreateControls(ConfigDialog::State& state)
         window, "BUTTON", "Enable Bump Mapping", BS_AUTOCHECKBOX,
         IDC_CONFIG_BUMP_MAPPING, 24, 248, 220, 22);
     Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Lighting / Shadows", 0, 0, 24, 304, 146, 18);
-    const HWND lightingQuality = Win32PanelControls::AddPanelCombo(
-        window, IDC_CONFIG_LIGHTING_QUALITY, 174, 300, 134, 100);
-    SendMessageA(lightingQuality, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Off"));
-    SendMessageA(lightingQuality, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Simplified"));
-    SendMessageA(lightingQuality, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Dynamic Shadows"));
-    Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Vegetation Animation", 0, 0, 24, 278, 146, 18);
+        window, "STATIC", "Vegetation Animation", 0, 0, 24, 278, 146, 22);
     const HWND environmentAnimation = Win32PanelControls::AddPanelCombo(
-        window, IDC_CONFIG_ENV_ANIM, 174, 274, 134, 120);
+        window, IDC_CONFIG_ENV_ANIM, 188, 274, 178, 120);
     SendMessageA(environmentAnimation, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Off"));
     SendMessageA(environmentAnimation, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Simple"));
     SendMessageA(environmentAnimation, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Smooth"));
     Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Mirror world zones", BS_AUTOCHECKBOX,
-        IDC_CONFIG_MIRROR_WORLD, 328, 224, 220, 22);
+        window, "STATIC", "Lighting / Shadows", 0, 0, 24, 312, 146, 22);
+    const HWND lightingQuality = Win32PanelControls::AddPanelCombo(
+        window, IDC_CONFIG_LIGHTING_QUALITY, 188, 308, 178, 100);
+    SendMessageA(lightingQuality, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Off"));
+    SendMessageA(lightingQuality, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Simplified"));
+    SendMessageA(lightingQuality, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Dynamic Shadows"));
     Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Texture Storage", 0, 0, 328, 252, 120, 18);
+        window, "BUTTON", "Mirror world zones", BS_AUTOCHECKBOX,
+        IDC_CONFIG_MIRROR_WORLD, 428, 224, 220, 22);
+    Win32PanelControls::AddPanelControl(
+        window, "STATIC", "Texture Storage", 0, 0, 428, 256, 120, 22);
     const HWND textureCompression = Win32PanelControls::AddPanelCombo(
-        window, IDC_CONFIG_TEXTURE_COMPRESSION, 454, 248, 138, 100);
+        window, IDC_CONFIG_TEXTURE_COMPRESSION, 574, 252, 158, 100);
     SendMessageA(textureCompression, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Compressed"));
     SendMessageA(textureCompression, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Uncompressed"));
     Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Draw Distance", 0, 0, 328, 278, 120, 18);
+        window, "STATIC", "Draw Distance", 0, 0, 428, 290, 120, 22);
     const HWND drawDistance = Win32PanelControls::AddPanelCombo(
-        window, IDC_CONFIG_DRAW_DISTANCE, 454, 274, 138, 160);
+        window, IDC_CONFIG_DRAW_DISTANCE, 574, 286, 158, 160);
     for (int i = 0; i < ApplicationSettings::DrawDistanceOptionCount(); ++i)
     {
         SendMessageA(drawDistance, CB_ADDSTRING, 0,
@@ -166,9 +239,9 @@ void CreateControls(ConfigDialog::State& state)
         window, "BUTTON", "Play sounds in background", BS_AUTOCHECKBOX,
         IDC_CONFIG_BACKGROUND_SOUNDS, 24, 396, 210, 22);
     Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Simultaneous SFX", 0, 0, 328, 372, 120, 18);
+        window, "STATIC", "Simultaneous SFX", 0, 0, 428, 372, 120, 18);
     const HWND maxSounds = Win32PanelControls::AddPanelCombo(
-        window, IDC_CONFIG_MAX_SOUNDS, 454, 368, 138, 160);
+        window, IDC_CONFIG_MAX_SOUNDS, 574, 368, 158, 160);
     for (int i = 0; i < ApplicationSettings::MaxSoundOptionCount(); ++i)
     {
         SendMessageA(maxSounds, CB_ADDSTRING, 0,
@@ -176,7 +249,7 @@ void CreateControls(ConfigDialog::State& state)
     }
     Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Enable Hardware Mouse Cursor", BS_AUTOCHECKBOX,
-        IDC_CONFIG_HARDWARE_CURSOR, 328, 396, 264, 22);
+        IDC_CONFIG_HARDWARE_CURSOR, 428, 396, 264, 22);
 
     Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Game Mode", BS_AUTOCHECKBOX,
@@ -186,26 +259,36 @@ void CreateControls(ConfigDialog::State& state)
         IDC_CONFIG_COLLISION, 24, 492, 190, 22);
     Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Zone Objects...", BS_OWNERDRAW,
-        IDC_CONFIG_ZONE_OBJECTS, 328, 464, 150, 28);
+        IDC_CONFIG_ZONE_OBJECTS, 428, 464, 150, 28);
 
     Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Door Interaction", 0, 0, 328, 499, 120, 18);
+        window, "STATIC", "Door Interaction", 0, 0, 428, 499, 120, 18);
     const HWND doorInteraction = Win32PanelControls::AddPanelCombo(
-        window, IDC_CONFIG_DOOR_INTERACTION, 454, 495, 138, 100);
+        window, IDC_CONFIG_DOOR_INTERACTION, 574, 495, 158, 100);
     SendMessageA(doorInteraction, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Classic"));
     SendMessageA(doorInteraction, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Physics"));
 
     Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Color Theme", 0, 0, 28, 562, 100, 18);
+        window, "BUTTON", "Menu", BS_OWNERDRAW,
+        IDC_CONFIG_TAB_MENU, 28, 558, 110, 26);
+    Win32PanelControls::AddPanelControl(
+        window, "BUTTON", "Chat Log", BS_OWNERDRAW,
+        IDC_CONFIG_TAB_CHAT, 146, 558, 110, 26);
+    Win32PanelControls::AddPanelControl(
+        window, "BUTTON", "Nameplates", BS_OWNERDRAW,
+        IDC_CONFIG_TAB_NAMEPLATES, 264, 558, 110, 26);
+
+    Win32PanelControls::AddPanelControl(
+        window, "STATIC", "Color Theme", 0, 0, 28, 606, 100, 22);
     const HWND colorTheme = Win32PanelControls::AddPanelCombo(
-        window, IDC_CONFIG_COLOR_THEME, 142, 557, 170, 96);
+        window, IDC_CONFIG_COLOR_THEME, 142, 601, 180, 96);
     SendMessageA(colorTheme, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Dark"));
     SendMessageA(colorTheme, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Light"));
 
     Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Player icon", 0, 0, 28, 594, 100, 18);
+        window, "STATIC", "Player icon", 0, 0, 28, 606, 100, 22);
     const HWND playerIcon = Win32PanelControls::AddPanelCombo(
-        window, IDC_CONFIG_PLAYER_ICON, 142, 589, 190, 280);
+        window, IDC_CONFIG_PLAYER_ICON, 142, 601, 260, 280);
     SendMessageA(playerIcon, CB_SETDROPPEDWIDTH, 450, 0);
     SendMessageA(playerIcon, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("None"));
     for (const auto& icon : FFXIPlayerIcons::Catalog)
@@ -213,49 +296,63 @@ void CreateControls(ConfigDialog::State& state)
     SendMessageA(playerIcon, CB_SETMINVISIBLE, 12, 0);
     Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Show Job Master stars", BS_AUTOCHECKBOX,
-        IDC_CONFIG_JOB_MASTER, 328, 557, 264, 22);
+        IDC_CONFIG_JOB_MASTER, 428, 601, 264, 22);
 
-    Win32PanelControls::AddPanelControl(window, "STATIC", "Subtitle", 0, 0, 344, 594, 65, 18);
-    const HWND subtitle = Win32PanelControls::AddPanelCombo(window, IDC_CONFIG_SUBTITLE, 414, 589, 178, 120);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Subtitle", 0, 0, 28, 640, 100, 22);
+    const HWND subtitle = Win32PanelControls::AddPanelCombo(window, IDC_CONFIG_SUBTITLE, 142, 635, 260, 120);
     for (const char* label : {"None", "Linkshell name", "Jobs + levels"})
         SendMessageA(subtitle, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     Win32PanelControls::AddPanelControl(window, "STATIC", "Linkshell", 0,
-        IDC_CONFIG_SUBTITLE_LABEL, 28, 626, 110, 18);
+        IDC_CONFIG_SUBTITLE_LABEL, 28, 674, 110, 22);
     const HWND linkshell = Win32PanelControls::AddPanelControl(window, "EDIT", "",
-        ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_LINKSHELL_NAME, 142, 621, 450, 24);
+        ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_LINKSHELL_NAME, 142, 669, 260, 24);
     SendMessageA(linkshell, EM_SETLIMITTEXT, 127, 0);
-    const HWND mainJob = Win32PanelControls::AddPanelCombo(window, IDC_CONFIG_MAIN_JOB, 142, 621, 78, 240);
-    const HWND subJob = Win32PanelControls::AddPanelCombo(window, IDC_CONFIG_SUB_JOB, 372, 621, 78, 240);
+    const HWND mainJob = Win32PanelControls::AddPanelCombo(window, IDC_CONFIG_MAIN_JOB, 142, 669, 88, 240);
+    const HWND subJob = Win32PanelControls::AddPanelCombo(window, IDC_CONFIG_SUB_JOB, 342, 669, 88, 240);
     for (int job = 0; job < FFXIStats::kJob_Count; ++job)
     {
         const LPARAM label = reinterpret_cast<LPARAM>(FFXIStats::JobName(static_cast<FFXIStats::Job>(job)));
         if (job) SendMessageA(mainJob, CB_ADDSTRING, 0, label);
         SendMessageA(subJob, CB_ADDSTRING, 0, label);
     }
-    Win32PanelControls::AddPanelControl(window, "STATIC", "Lv.", 0, IDC_CONFIG_MAIN_LV_LABEL, 226, 626, 25, 18);
-    Win32PanelControls::AddPanelControl(window, "STATIC", "Lv.", 0, IDC_CONFIG_SUB_LV_LABEL, 456, 626, 25, 18);
-    Win32PanelControls::AddPanelControl(window, "STATIC", "/", 0, IDC_CONFIG_JOB_SEPARATOR, 326, 626, 20, 18);
-    for (const auto& pair : {std::pair{IDC_CONFIG_MAIN_LEVEL, 252}, std::pair{IDC_CONFIG_SUB_LEVEL, 482}})
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Lv.", 0, IDC_CONFIG_MAIN_LV_LABEL, 238, 674, 25, 22);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Lv.", 0, IDC_CONFIG_SUB_LV_LABEL, 438, 674, 25, 22);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "/", 0, IDC_CONFIG_JOB_SEPARATOR, 322, 674, 20, 22);
+    for (const auto& pair : {std::pair{IDC_CONFIG_MAIN_LEVEL, 264}, std::pair{IDC_CONFIG_SUB_LEVEL, 464}})
     {
         const HWND level = Win32PanelControls::AddPanelControl(window, "EDIT", "1",
-            ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, pair.first, pair.second, 621, 50, 24);
+            ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, pair.first, pair.second, 669, 50, 24);
         SendMessageA(level, EM_SETLIMITTEXT, 2, 0);
+    }
+
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Linkshell icon color", 0, 0,
+        560, 640, 160, 22);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "R", 0, 0, 560, 674, 12, 22);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "G", 0, 0, 616, 674, 12, 22);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "B", 0, 0, 672, 674, 12, 22);
+    const int colorY = 669;
+    for (const auto& channel : {std::pair{IDC_CONFIG_LINKSHELL_COLOR_R, 576},
+                               std::pair{IDC_CONFIG_LINKSHELL_COLOR_G, 632},
+                               std::pair{IDC_CONFIG_LINKSHELL_COLOR_B, 688}})
+    {
+        const HWND color = Win32PanelControls::AddPanelControl(window, "EDIT", "0",
+            ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, channel.first, channel.second, colorY, 40, 24);
+        SendMessageA(color, EM_SETLIMITTEXT, 3, 0);
     }
 
     Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Close", BS_OWNERDRAW,
-        IDC_CONFIG_CLOSE, 480, 772, 112, 30);
+        IDC_CONFIG_CLOSE, 620, 732, 112, 30);
 
-    Win32PanelControls::AddPanelControl(window, "STATIC", "Display duration (sec)",
-        0, 0, 28, 688, 180, 18);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Display duration", 0, 0, 28, 606, 120, 22);
     const HWND timeout = Win32PanelControls::AddPanelControl(window, "EDIT", "15",
-        ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_CHAT_TIMEOUT, 210, 683, 60, 24);
+        ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_CHAT_TIMEOUT, 158, 601, 56, 24);
     SendMessageA(timeout, EM_SETLIMITTEXT, 3, 0);
 
-    Win32PanelControls::AddPanelControl(window, "STATIC", "Width (%)", 0, 0, 28, 724, 90, 18);
-    Win32PanelControls::AddPanelControl(window, "EDIT", "50", ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_CHAT_WIDTH, 128, 720, 60, 24);
-    Win32PanelControls::AddPanelControl(window, "STATIC", "Height (%)", 0, 0, 320, 724, 90, 18);
-    Win32PanelControls::AddPanelControl(window, "EDIT", "25", ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_CHAT_HEIGHT, 420, 720, 60, 24);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Width (%)", 0, 0, 250, 606, 68, 22);
+    Win32PanelControls::AddPanelControl(window, "EDIT", "50", ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_CHAT_WIDTH, 328, 601, 50, 24);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Height (%)", 0, 0, 414, 606, 70, 22);
+    Win32PanelControls::AddPanelControl(window, "EDIT", "25", ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_CHAT_HEIGHT, 494, 601, 50, 24);
 
     const HWND children[] =
     {
@@ -267,6 +364,9 @@ void CreateControls(ConfigDialog::State& state)
         GetDlgItem(window, IDC_CONFIG_DETECT_PATH),
         GetDlgItem(window, IDC_CONFIG_RESET_PATH),
         GetDlgItem(window, IDC_CONFIG_SHOW_PATH),
+        GetDlgItem(window, IDC_CONFIG_TAB_MENU),
+        GetDlgItem(window, IDC_CONFIG_TAB_CHAT),
+        GetDlgItem(window, IDC_CONFIG_TAB_NAMEPLATES),
         GetDlgItem(window, IDC_CONFIG_WINDOW_MODE),
         GetDlgItem(window, IDC_CONFIG_RESOLUTION),
         GetDlgItem(window, IDC_CONFIG_RENDERING_BACKEND),
@@ -294,6 +394,9 @@ void CreateControls(ConfigDialog::State& state)
         GetDlgItem(window, IDC_CONFIG_SUB_JOB),
         GetDlgItem(window, IDC_CONFIG_MAIN_LEVEL),
         GetDlgItem(window, IDC_CONFIG_SUB_LEVEL),
+        GetDlgItem(window, IDC_CONFIG_LINKSHELL_COLOR_R),
+        GetDlgItem(window, IDC_CONFIG_LINKSHELL_COLOR_G),
+        GetDlgItem(window, IDC_CONFIG_LINKSHELL_COLOR_B),
         GetDlgItem(window, IDC_CONFIG_CLOSE)
     };
     for (const HWND child : children)
@@ -301,6 +404,7 @@ void CreateControls(ConfigDialog::State& state)
         if (child)
             SendMessageA(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
     }
+    EnumChildWindows(window, TagInterfaceTabChild, 0);
 }
 
 LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
@@ -321,6 +425,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         state->window = window;
         CreateControls(*state);
         Win32Theme::ApplyWindowTheme(window, *state->theme);
+        ApplyActiveTab(*state);
         ConfigDialog::Sync(*state);
         return 0;
 
@@ -422,9 +527,29 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                     SendDlgItemMessageA(window, IDC_CONFIG_COLOR_THEME, CB_GETCURSEL, 0, 0)));
             }
             return 0;
+        case IDC_CONFIG_TAB_MENU:
+        case IDC_CONFIG_TAB_CHAT:
+        case IDC_CONFIG_TAB_NAMEPLATES:
+            state->activeTab = LOWORD(wParam) == IDC_CONFIG_TAB_CHAT ? 1 :
+                (LOWORD(wParam) == IDC_CONFIG_TAB_NAMEPLATES ? 2 : 0);
+            ApplyActiveTab(*state);
+            return 0;
         case IDC_CONFIG_RENDERING_BACKEND:
             if (HIWORD(wParam) == CBN_SELCHANGE)
-                SendDlgItemMessageA(window, IDC_CONFIG_RENDERING_BACKEND, CB_SETCURSEL, 1, 0);
+            {
+                state->settings->renderingBackend =
+                    ApplicationSettings::ClampRenderingBackend(static_cast<int>(
+                        SendDlgItemMessageA(window, IDC_CONFIG_RENDERING_BACKEND, CB_GETCURSEL, 0, 0)));
+                if (!ApplicationSettings::RenderingBackendIsAvailable(
+                        state->settings->renderingBackend))
+                {
+                    MessageBoxA(window,
+                        "That rendering backend is selectable for planning, but is not implemented yet.\n"
+                        "DATura will keep using DirectX 9 for rendering.",
+                        "Rendering Backend", MB_OK | MB_ICONINFORMATION);
+                }
+                Notify(*state, ConfigDialog::Command::DisplayChanged);
+            }
             return 0;
         case IDC_CONFIG_PLAYER_ICON:
             if (HIWORD(wParam) == CBN_SELCHANGE && state->gameUi)
@@ -485,12 +610,23 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         case IDC_CONFIG_LINKSHELL_NAME:
         case IDC_CONFIG_MAIN_LEVEL:
         case IDC_CONFIG_SUB_LEVEL:
+        case IDC_CONFIG_LINKSHELL_COLOR_R:
+        case IDC_CONFIG_LINKSHELL_COLOR_G:
+        case IDC_CONFIG_LINKSHELL_COLOR_B:
             if (HIWORD(wParam) == EN_KILLFOCUS && state->gameUi)
             {
                 auto& player = state->gameUi->playerNameplate;
                 const int id = LOWORD(wParam);
                 if (id == IDC_CONFIG_LINKSHELL_NAME)
                     GetDlgItemTextA(window, id, player.linkshellName, sizeof(player.linkshellName));
+                else if (id == IDC_CONFIG_LINKSHELL_COLOR_R || id == IDC_CONFIG_LINKSHELL_COLOR_G ||
+                         id == IDC_CONFIG_LINKSHELL_COLOR_B)
+                {
+                    const int r = std::clamp((int)GetDlgItemInt(window, IDC_CONFIG_LINKSHELL_COLOR_R, nullptr, FALSE), 0, 255);
+                    const int g = std::clamp((int)GetDlgItemInt(window, IDC_CONFIG_LINKSHELL_COLOR_G, nullptr, FALSE), 0, 255);
+                    const int b = std::clamp((int)GetDlgItemInt(window, IDC_CONFIG_LINKSHELL_COLOR_B, nullptr, FALSE), 0, 255);
+                    player.linkshellColor = RGB(r, g, b);
+                }
                 else
                 {
                     const int level = std::clamp(static_cast<int>(GetDlgItemInt(window, id, nullptr, FALSE)), 1, 99);
@@ -548,7 +684,8 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             if (draw && draw->CtlID == IDC_CONFIG_RENDERING_BACKEND)
             {
                 const bool selected = (draw->itemState & ODS_SELECTED) != 0;
-                const bool active = draw->itemID == 1;
+                const bool active = ApplicationSettings::RenderingBackendIsAvailable(
+                    static_cast<int>(draw->itemID));
                 const COLORREF background = selected ? RGB(55, 70, 84) : RGB(31, 38, 44);
                 const COLORREF text = active ? RGB(235, 235, 235) : RGB(125, 130, 135);
                 const HBRUSH brush = CreateSolidBrush(background);
@@ -565,7 +702,10 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 return TRUE;
             }
             Win32Theme::DrawButton(draw, state->theme->dark, state->theme->resources.font,
-                draw && draw->CtlID == IDC_CONFIG_CLOSE);
+                draw && (draw->CtlID == IDC_CONFIG_CLOSE ||
+                    (draw->CtlID == IDC_CONFIG_TAB_MENU && state->activeTab == 0) ||
+                    (draw->CtlID == IDC_CONFIG_TAB_CHAT && state->activeTab == 1) ||
+                    (draw->CtlID == IDC_CONFIG_TAB_NAMEPLATES && state->activeTab == 2)));
         }
         return TRUE;
 
@@ -579,19 +719,17 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             FillRect(deviceContext, &client, state->theme->resources.windowBrush);
             const RECT panels[] =
             {
-                { 14,   8, 606, 100 },
-                { 14, 106, 606, 194 },
-                { 14, 200, 606, 338 },
-                { 14, 346, 606, 434 },
-                { 14, 442, 606, 530 },
-                { 14, 536, 606, 590 },
-                { 14, 590, 606, 662 },
-                { 14, 670, 606, 758 }
+                { 14,   8, 746, 100 },
+                { 14, 106, 746, 194 },
+                { 14, 200, 746, 338 },
+                { 14, 346, 746, 434 },
+                { 14, 442, 746, 530 },
+                { 14, 536, 746, 724 },
             };
             const char* titles[] =
             {
                 "FFXI Installation", "Display", "Rendering",
-                "Audio / Input", "Mode / Debug", "Menu", "Player Nameplates", "Chat Log"
+                "Audio / Input", "Mode / Debug", "Interface"
             };
             for (int i = 0; i < static_cast<int>(sizeof(panels) / sizeof(panels[0])); ++i)
             {
@@ -672,6 +810,7 @@ void Show(State& state)
 {
     if (state.window && IsWindow(state.window))
     {
+        ApplyActiveTab(state);
         Sync(state);
         Win32ToolWindow::Show(state.window, true);
         return;
@@ -681,8 +820,8 @@ void Show(State& state)
 
     RECT ownerRect = {};
     GetWindowRect(state.owner, &ownerRect);
-    const int width = 640;
-    const int height = 824;
+    const int width = 780;
+    const int height = 806;
     Win32ToolWindow::Spec spec =
     {
         WindowProcedure, kWindowClassName, "DATura Config", width, height,
@@ -695,7 +834,11 @@ void Show(State& state)
     spec.createParameter = &state;
     state.window = Win32ToolWindow::Create(state.owner, spec);
     if (state.window)
+    {
+        ApplyActiveTab(state);
+        Sync(state);
         Win32ToolWindow::Show(state.window, true);
+    }
 }
 
 void Close(State& state)
@@ -737,6 +880,9 @@ void Sync(State& state)
         SetDlgItemInt(state.window, IDC_CONFIG_MAIN_LEVEL, player.mainLevel, FALSE);
         SetDlgItemInt(state.window, IDC_CONFIG_SUB_LEVEL, player.subLevel, FALSE);
         EnableWindow(GetDlgItem(state.window, IDC_CONFIG_SUB_LEVEL), player.subJob != FFXIStats::kJob_None);
+        SetDlgItemInt(state.window, IDC_CONFIG_LINKSHELL_COLOR_R, GetRValue(player.linkshellColor), FALSE);
+        SetDlgItemInt(state.window, IDC_CONFIG_LINKSHELL_COLOR_G, GetGValue(player.linkshellColor), FALSE);
+        SetDlgItemInt(state.window, IDC_CONFIG_LINKSHELL_COLOR_B, GetBValue(player.linkshellColor), FALSE);
     }
     SetDlgItemTextA(state.window, IDC_CONFIG_PATH_TEXT, state.ffxiPath ? state.ffxiPath : "");
     SendDlgItemMessageA(state.window, IDC_CONFIG_MIP_MAPPING, BM_SETCHECK,
@@ -753,6 +899,8 @@ void Sync(State& state)
         settings.windowMode, 0);
     SendDlgItemMessageA(state.window, IDC_CONFIG_RESOLUTION, CB_SETCURSEL,
         settings.resolutionIndex, 0);
+    SendDlgItemMessageA(state.window, IDC_CONFIG_RENDERING_BACKEND, CB_SETCURSEL,
+        ApplicationSettings::ClampRenderingBackend(settings.renderingBackend), 0);
     const bool gameMode = state.isGameModeCallback &&
         state.isGameModeCallback(state.callbackContext);
     SendDlgItemMessageA(state.window, IDC_CONFIG_EDIT_GAME, BM_SETCHECK,

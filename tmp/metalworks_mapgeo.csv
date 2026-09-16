@@ -1,0 +1,700 @@
+object_name,material,super_flag,sub_flag,blend_flags,flags2,vert_stride,vert_count,index_count,map_refs
+to-low05        ,model   e_yuka  ,64,441,0,0,36,142,229,1
+to-low05        ,model   e_b_wall,64,441,0,0,36,38,83,1
+to-low05        ,model   wall    ,64,441,0,0,36,183,311,1
+to-low05        ,model   e_stone ,64,441,0,0,36,141,323,1
+to-low05        ,model   sidestep,64,441,0,0,36,56,119,1
+to-low05        ,model   wall    ,64,441,32768,0,36,38,71,1
+to-low05        ,model   sidestep,64,441,32768,0,36,20,41,1
+daientotul      ,model   e_wall  ,64,480,0,0,36,26,49,1
+daientotul      ,model   e_si    ,64,480,0,0,36,325,635,1
+daientotul      ,model   kama    ,64,480,0,0,36,195,371,1
+daientotul      ,                ,64,480,0,0,36,6,6,1
+daientotul      ,model   e_si    ,64,480,32768,0,36,15,23,1
+daientotu-parts ,model   tetu_02 ,64,370,0,0,36,440,675,1
+daientotu-parts ,model   tetu_03 ,64,370,0,0,36,70,111,1
+daientotu-parts ,model   tetu_01 ,64,370,0,0,36,80,175,1
+daientotur      ,model   e_si    ,64,480,0,0,36,373,653,1
+daientotur      ,model   e_wall  ,64,480,0,0,36,16,20,1
+daientotur      ,model   kama    ,64,480,0,0,36,157,275,1
+daientotur      ,                ,64,480,0,0,36,9,14,1
+daientotur      ,model   e_si    ,64,480,32768,0,36,15,27,1
+daiza01         ,model   tetu_02 ,64,80,0,0,36,24,47,1
+daiza01         ,model   tetu_05 ,64,80,0,0,36,106,187,1
+daiza02         ,model   tetu_01 ,64,18,0,0,36,24,34,1
+daiza02         ,model   mono_01 ,64,18,0,0,36,4,4,1
+deadend02       ,                ,64,16,0,0,36,32,46,2
+ent_c           ,model   e_yuka  ,64,134,0,0,36,12,25,1
+ent_c           ,model   e_yuka  ,64,134,32768,0,36,66,111,1
+ent_c           ,model   e_stone ,64,134,32768,0,36,8,10,1
+ent_c           ,model   e_si    ,64,134,32768,0,36,107,165,1
+ent_n           ,model   e_stone ,64,240,0,0,36,37,89,1
+ent_n           ,model   e_yuka  ,64,240,0,0,36,12,14,1
+ent_n           ,model   e_stone ,64,240,32768,0,36,220,499,1
+ent_n           ,model   e_wall  ,64,240,32768,0,36,64,111,1
+ent_n           ,model   e_yuka  ,64,240,32768,0,36,12,19,1
+ent_s           ,model   e_stone ,64,240,0,0,36,37,64,1
+ent_s           ,model   e_yuka  ,64,240,0,0,36,12,25,1
+ent_s           ,model   e_stone ,64,240,32768,0,36,220,475,1
+ent_s           ,model   e_wall  ,64,240,32768,0,36,60,113,1
+ent_s           ,model   e_yuka  ,64,240,32768,0,36,12,25,1
+entotu          ,model   kama    ,64,174,0,0,36,65,94,3
+entotu          ,model   e_si    ,64,174,0,0,36,84,134,3
+entotu          ,model   e_si    ,64,174,32768,0,36,16,16,3
+entotu2         ,model   kama    ,64,112,0,0,36,86,130,2
+entotu2         ,model   e_si    ,64,112,0,0,36,47,66,2
+entotu3         ,model   kama    ,64,278,0,0,36,177,315,2
+entotu3         ,model   e_si    ,64,278,0,0,36,91,147,2
+entotu3         ,model   e_si    ,64,278,32768,0,36,84,159,2
+entotu4         ,model   e_wall  ,64,112,0,0,36,30,46,1
+entotu4         ,model   e_si    ,64,112,0,0,36,68,90,1
+entotu4         ,                ,64,112,0,0,36,32,46,1
+entotukazari    ,model   e_si    ,64,32,0,0,36,39,73,3
+entotuparts-l01 ,model   tetu_02 ,64,52,0,0,36,88,130,1
+entotuparts-l01 ,model   tetu_03 ,64,52,0,0,36,16,22,1
+entotuparts-l02 ,model   tetu_02 ,64,40,0,0,36,80,118,5
+entotuparts-l03 ,model   tetu_02 ,64,36,0,0,36,56,82,1
+entotuparts-l03 ,model   tetu_03 ,64,36,0,0,36,16,22,1
+entotuparts-r01 ,model   tetu_02 ,64,52,0,0,36,88,130,1
+entotuparts-r01 ,model   tetu_03 ,64,52,0,0,36,16,22,1
+entotuparts-r02 ,model   tetu_02 ,64,40,0,0,36,80,118,5
+entotuparts-r03 ,model   tetu_02 ,64,36,0,0,36,56,82,1
+entotuparts-r03 ,model   tetu_03 ,64,36,0,0,36,16,22,1
+ent-parts01     ,model   e_si    ,64,280,0,0,36,180,403,1
+ent-parts01     ,model   e_stone ,64,280,0,0,36,30,55,1
+ent-parts01     ,model   tetu_02 ,64,280,0,0,36,88,130,1
+ent-parts01     ,model   e_si    ,64,280,32768,0,36,35,59,1
+ent-parts02     ,model   e_si    ,64,270,0,0,36,201,455,1
+ent-parts02     ,model   e_stone ,64,270,0,0,36,30,55,1
+ent-parts02     ,model   tetu_02 ,64,270,0,0,36,68,100,1
+ent-parts02     ,model   e_si    ,64,270,32768,0,36,22,30,1
+factry-a        ,model   e_stone ,64,774,0,0,36,566,987,1
+factry-a        ,model   e_yuka2 ,64,774,0,0,36,57,95,1
+factry-a        ,model   e_si    ,64,774,0,0,36,320,599,1
+factry-a        ,model   ten     ,64,774,0,0,36,20,31,1
+factry-a        ,model   e_yuka  ,64,774,0,0,36,57,101,1
+factry-a        ,model   e_wall  ,64,774,0,0,36,26,38,1
+factry-a        ,model   yuka_ren,64,774,0,0,36,23,39,1
+factry-a        ,                ,64,774,0,0,36,19,28,1
+factry-a        ,model   doma    ,64,774,32768,0,36,25,51,1
+factry-b        ,model   kama    ,64,1574,0,0,36,161,305,1
+factry-b        ,model   e_si    ,64,1574,0,0,36,596,999,1
+factry-b        ,model   e_stone ,64,1574,0,0,36,699,1289,1
+factry-b        ,model   tetu_01 ,64,1574,0,0,36,40,71,1
+factry-b        ,model   tetu_02 ,64,1574,0,0,36,75,119,1
+factry-b        ,model   tetu_03 ,64,1574,0,0,36,6,11,1
+factry-b        ,model   yuka_ren,64,1574,0,0,36,72,131,1
+factry-b        ,model   e_wall  ,64,1574,0,0,36,249,483,1
+factry-b        ,model   ten     ,64,1574,0,0,36,10,19,1
+factry-b        ,model   doma    ,64,1574,0,0,36,93,193,1
+factry-b        ,model   e_yuka2 ,64,1574,0,0,36,4,4,1
+factry-b        ,                ,64,1574,0,0,36,6,11,1
+factry-b        ,model   ten     ,64,1574,32768,0,36,42,77,1
+factrymark-a    ,model   sign    ,64,22,0,0,36,28,47,1
+factrymark-a    ,model   dai_sig ,64,22,32768,0,36,4,4,1
+factrymark-b    ,model   sign    ,64,22,0,0,36,24,51,1
+factrymark-b    ,model   dai_sig ,64,22,32768,0,36,4,4,1
+firemark        ,model   sign    ,64,22,0,0,36,20,45,1
+firemark        ,                ,64,22,0,0,36,4,4,1
+firemark        ,model   dai_sig ,64,22,32768,0,36,4,4,1
+fireroom        ,model   e_stone ,64,697,0,0,36,395,743,1
+fireroom        ,model   e_wall  ,64,697,0,0,36,259,489,1
+fireroom        ,model   e_si    ,64,697,0,0,36,135,225,1
+fireroom        ,model   yuka_ren,64,697,0,0,36,147,257,1
+fireroom        ,                ,64,697,0,0,36,32,70,1
+foodmark        ,model   sign    ,64,22,0,0,36,28,47,1
+foodmark        ,model   dai_sig ,64,22,32768,0,36,4,4,1
+foodroom        ,model   e_stone ,64,665,0,0,36,184,377,1
+foodroom        ,model   e_wall  ,64,665,0,0,36,114,247,1
+foodroom        ,model   e_si    ,64,665,0,0,36,343,629,1
+foodroom        ,model   ten     ,64,665,0,0,36,37,56,1
+foodroom        ,model   e_yuka2 ,64,665,0,0,36,101,179,1
+foodroom        ,model   yuka_ren,64,665,0,0,36,19,30,1
+foodroom        ,model   kou_ko  ,64,665,0,0,36,54,89,1
+foodroom        ,model   ten     ,64,665,32768,0,36,66,91,1
+guilddoorl      ,model   kou_ko  ,64,12,0,0,36,21,34,2
+guilddoorr      ,model   kou_ko  ,64,12,0,0,36,22,34,2
+guildentl       ,model   e_si    ,64,1020,0,0,36,418,885,1
+guildentl       ,                ,64,1020,0,0,36,21,35,1
+guildentl       ,model   e_wall  ,64,1020,0,0,36,117,243,1
+guildentl       ,model   e_yuka2 ,64,1020,0,0,36,100,193,1
+guildentl       ,model   ten     ,64,1020,0,0,36,18,27,1
+guildentl       ,model   e_stone ,64,1020,0,0,36,312,653,1
+guildentl       ,model   doma    ,64,1020,0,0,36,38,85,1
+guildentl       ,model   tetu_02 ,64,1020,0,0,36,67,118,1
+guildentl       ,model   kama    ,64,1020,0,0,36,54,109,1
+guildentl       ,model   tetu_01 ,64,1020,0,0,36,8,10,1
+guildentl       ,model   doma    ,64,1020,32768,0,36,32,49,1
+guildentl       ,model   ten     ,64,1020,32768,0,36,46,95,1
+guildentl       ,model   e_si    ,64,1020,32768,0,36,10,12,1
+guildent-parts01,model   tetu_02 ,64,58,0,0,36,68,94,3
+guildent-parts01,model   tetu_01 ,64,58,0,0,36,16,22,3
+guildent-parts01,model   doma    ,64,58,32768,0,36,12,12,3
+guildent-parts02,model   tetu_02 ,64,8,0,0,36,16,22,14
+guildentr       ,model   e_si    ,64,1053,0,0,36,453,901,1
+guildentr       ,                ,64,1053,0,0,36,16,20,1
+guildentr       ,model   e_wall  ,64,1053,0,0,36,126,239,1
+guildentr       ,model   e_yuka2 ,64,1053,0,0,36,118,213,1
+guildentr       ,model   ten     ,64,1053,0,0,36,37,61,1
+guildentr       ,model   e_stone ,64,1053,0,0,36,318,643,1
+guildentr       ,model   doma    ,64,1053,0,0,36,39,85,1
+guildentr       ,model   tetu_02 ,64,1053,0,0,36,73,118,1
+guildentr       ,model   kama    ,64,1053,0,0,36,51,107,1
+guildentr       ,model   tetu_01 ,64,1053,0,0,36,8,10,1
+guildentr       ,model   doma    ,64,1053,32768,0,36,27,45,1
+guildentr       ,model   ten     ,64,1053,32768,0,36,42,83,1
+guildentr       ,model   e_si    ,64,1053,32768,0,36,22,33,1
+guildin         ,model   e_si    ,64,2105,0,0,36,1211,2303,1
+guildin         ,model   e_stone ,64,2105,0,0,36,732,1351,1
+guildin         ,model   kama    ,64,2105,0,0,36,137,245,1
+guildin         ,model   tetu_02 ,64,2105,0,0,36,339,583,1
+guildin         ,model   tetu_01 ,64,2105,0,0,36,125,273,1
+guildin         ,model   e_wall  ,64,2105,0,0,36,36,65,1
+guildin         ,model   e_yuka2 ,64,2105,0,0,36,42,73,1
+guildin         ,model   doma    ,64,2105,0,0,36,82,157,1
+guildin         ,                ,64,2105,0,0,36,10,15,1
+guildin         ,model   tetu_03 ,64,2105,0,0,36,12,25,1
+guildin         ,model   ten     ,64,2105,32768,0,36,28,45,1
+guildin         ,model   e_si    ,64,2105,32768,0,36,38,83,1
+guildmark       ,model   sign    ,64,60,0,0,36,8,21,1
+guildmark       ,model   tetu_01 ,64,60,0,0,36,20,53,1
+guildmark       ,model   tetu_02 ,64,60,0,0,36,44,62,1
+guildmark       ,model   sign    ,64,60,32768,0,36,8,21,1
+guildmark2      ,model   sign    ,64,60,0,0,36,8,21,4
+guildmark2      ,model   tetu_01 ,64,60,0,0,36,20,53,4
+guildmark2      ,model   tetu_02 ,64,60,0,0,36,44,62,4
+guildmark2      ,model   sign    ,64,60,32768,0,36,8,21,4
+hari01          ,model   e_stone ,64,48,0,0,36,59,123,2
+hari02          ,model   e_stone ,64,48,0,0,36,65,135,1
+hari03          ,model   e_stone ,64,42,0,0,36,61,127,4
+hari04          ,model   e_stone ,64,48,0,0,36,59,82,1
+houdaidoorl     ,model   doors   ,64,36,0,0,36,42,97,2
+houdaidoorr     ,model   doors   ,64,36,0,0,36,42,97,2
+houdai-room     ,model   e_pole  ,64,1578,0,0,36,709,1319,2
+houdai-room     ,model   e_yuka2 ,64,1578,0,0,36,70,145,2
+houdai-room     ,model   wall    ,64,1578,0,0,36,541,1153,2
+houdai-room     ,model   yuka2_yo,64,1578,0,0,36,93,195,2
+houdai-room     ,model   yuka2_yo,64,1578,32768,0,36,73,147,2
+houdai-room     ,model   sidestep,64,1578,32768,0,36,84,163,2
+jun-kokki       ,model   flag2   ,64,32,0,0,36,25,63,1
+jun-mark        ,model   gyo_sig ,64,38,0,0,36,22,61,1
+jun-mark        ,model   sidestep,64,38,0,0,36,10,25,1
+jun-mark2       ,model   gyo_sig ,64,28,0,0,36,6,6,1
+jun-mark2       ,model   e_pole  ,64,28,0,0,36,20,26,1
+jun-mark2       ,model   sidestep,64,28,0,0,36,12,19,1
+kaitenkun       ,model   tetu_02 ,64,384,0,0,36,374,807,2
+kaitenkun2      ,model   tetu_02 ,64,384,0,0,36,374,807,2
+kama_e          ,model   e_si    ,64,268,0,0,36,255,451,1
+kama_e          ,model   kama    ,64,268,0,0,36,64,137,1
+kama_e          ,model   e_si    ,64,268,32768,0,36,30,63,1
+kanbandodai     ,model   tetu_02 ,64,112,0,0,36,164,305,7
+kanbandodai     ,                ,64,112,0,0,36,8,10,7
+kikai01         ,model   tetu_02 ,64,825,0,0,36,646,991,1
+kikai01         ,model   tetu_05 ,64,825,0,0,36,198,351,1
+kikai01         ,model   e_stone ,64,825,0,0,36,48,99,1
+kikai01         ,model   tetu_01 ,64,825,0,0,36,306,451,1
+kikai01         ,model   tetu_03 ,64,825,0,0,36,57,101,1
+kikai01b1       ,model   tetu_01 ,64,667,0,0,36,339,519,1
+kikai01b1       ,model   tetu_05 ,64,667,0,0,36,230,465,1
+kikai01b1       ,model   tetu_02 ,64,667,0,0,36,291,459,1
+kikai01b1       ,model   e_stone ,64,667,0,0,36,55,111,1
+kikai01b1       ,model   tetu_03 ,64,667,0,0,36,56,99,1
+kikai02         ,model   tetu_02 ,64,1564,0,0,36,774,1273,1
+kikai02         ,model   tetu_03 ,64,1564,0,0,36,49,69,1
+kikai02         ,model   tetu_05 ,64,1564,0,0,36,245,473,1
+kikai02         ,model   tetu_01 ,64,1564,0,0,36,1084,1535,1
+kikai02         ,model   e_si    ,64,1564,0,0,36,67,163,1
+kikai02         ,model   kama    ,64,1564,0,0,36,88,126,1
+kikai02         ,model   tetu_05 ,64,1564,32768,0,36,8,10,1
+kikai02         ,model   kama    ,64,1564,32768,0,36,25,44,1
+kikai02         ,model   e_si    ,64,1564,32768,0,36,6,6,1
+kokki           ,model   flag    ,64,32,0,0,36,33,67,3
+kokki2          ,model   flag    ,64,32,0,0,36,25,63,1
+kouboudoorl     ,model   kou_ko  ,64,12,0,0,36,24,34,5
+kouboudoorr     ,model   kou_ko  ,64,12,0,0,36,24,34,5
+lanp            ,model   lanp    ,64,100,0,0,36,159,247,6
+lift01          ,model   tetu_02 ,64,216,0,0,36,378,677,2
+lift01b         ,model   tetu_02 ,64,216,0,0,36,378,677,2
+lift02          ,model   tetu_02 ,64,128,0,0,36,214,395,1
+lift02b         ,model   tetu_02 ,64,128,0,0,36,214,395,1
+lift03          ,model   tetu_02 ,64,128,0,0,36,212,391,1
+lift03b         ,model   tetu_02 ,64,128,0,0,36,212,391,1
+lift04          ,model   tetu_02 ,64,60,0,0,36,106,171,8
+lift04b         ,model   tetu_02 ,64,60,0,0,36,106,171,8
+lift05          ,model   tetu_02 ,64,152,0,0,36,262,445,1
+lift05b         ,model   tetu_02 ,64,152,0,0,36,262,445,1
+lift06          ,model   tetu_02 ,64,152,0,0,36,270,449,1
+lift06b         ,model   tetu_02 ,64,152,0,0,36,270,449,1
+lift07          ,model   tetu_02 ,64,28,0,0,36,34,67,7
+lift07b         ,model   tetu_02 ,64,28,0,0,36,34,67,7
+lift08          ,model   tetu_02 ,64,62,0,0,36,102,161,20
+lift08b         ,model   tetu_02 ,64,62,0,0,36,102,161,20
+lift09          ,model   tetu_02 ,64,136,0,0,36,222,405,6
+lift09          ,                ,64,136,0,0,36,8,10,6
+lift09b         ,model   tetu_02 ,64,136,0,0,36,222,405,6
+lift09b         ,                ,64,136,0,0,36,8,10,6
+lift10          ,model   tetu_02 ,64,248,0,0,36,440,757,6
+lift10b         ,model   tetu_02 ,64,248,0,0,36,440,757,6
+lift11          ,model   tetu_02 ,64,94,0,0,36,118,217,10
+lift11b         ,model   tetu_02 ,64,94,0,0,36,118,217,10
+lift12          ,model   tetu_02 ,64,224,0,0,36,372,693,2
+lift12          ,                ,64,224,0,0,36,16,22,2
+lift12b         ,model   tetu_02 ,64,224,0,0,36,372,693,2
+lift12b         ,                ,64,224,0,0,36,16,22,2
+lift13          ,model   tetu_02 ,64,216,0,0,36,384,629,2
+lift13b         ,model   tetu_02 ,64,216,0,0,36,384,629,2
+lift14          ,model   tetu_01 ,64,48,0,0,36,32,38,2
+lift14          ,model   tetu_02 ,64,48,0,0,36,26,61,2
+lift14b         ,model   tetu_01 ,64,48,0,0,36,32,38,2
+lift14b         ,model   tetu_02 ,64,48,0,0,36,26,61,2
+liftall         ,model   tetu_02 ,64,924,0,0,36,1135,1581,1
+liftall         ,model   tetu_01 ,64,924,0,0,36,16,22,1
+liftall         ,model   tetu_03 ,64,924,0,0,36,266,523,1
+liftall         ,model   kou_ko  ,64,924,0,0,36,16,26,1
+liftallb        ,model   tetu_02 ,64,924,0,0,36,1132,1569,1
+liftallb        ,model   tetu_01 ,64,924,0,0,36,16,22,1
+liftallb        ,model   tetu_03 ,64,924,0,0,36,266,523,1
+liftallb        ,model   kou_ko  ,64,924,0,0,36,16,26,1
+liftbase        ,model   tetu_02 ,64,296,0,0,36,448,767,1
+liftbase        ,model   e_stone ,64,296,0,0,36,9,19,1
+liftbaseb       ,model   tetu_02 ,64,296,0,0,36,447,767,1
+liftbaseb       ,model   e_stone ,64,296,0,0,36,9,19,1
+liftstep        ,model   tetu_02 ,64,668,0,0,36,1004,1623,1
+liftstep        ,model   tetu_03 ,64,668,0,0,36,108,193,1
+liftstep        ,model   kou_ko  ,64,668,0,0,36,29,57,1
+liftstep        ,model   tetu_01 ,64,668,0,0,36,40,58,1
+liftstep        ,model   e_si    ,64,668,0,0,36,13,18,1
+liftstep        ,model   tetu_02 ,64,668,32768,0,36,56,82,1
+liftstepb       ,model   tetu_02 ,64,668,0,0,36,1004,1623,1
+liftstepb       ,model   tetu_03 ,64,668,0,0,36,108,193,1
+liftstepb       ,model   kou_ko  ,64,668,0,0,36,29,57,1
+liftstepb       ,model   tetu_01 ,64,668,0,0,36,40,58,1
+liftstepb       ,model   e_si    ,64,668,0,0,36,13,18,1
+liftstepb       ,model   tetu_02 ,64,668,32768,0,36,56,82,1
+low-house       ,model   sidestep,64,824,0,0,36,24,34,4
+low-house       ,model   wall    ,64,824,0,0,36,407,825,4
+low-house       ,model   e_b_wall,64,824,0,0,36,98,207,4
+low-house       ,model   e_si    ,64,824,0,0,36,44,77,4
+low-house       ,model   roof    ,64,824,0,0,36,252,497,4
+low-house       ,model   e_stone ,64,824,0,0,36,72,179,4
+low-house       ,model   e_yuka  ,64,824,0,0,36,58,123,4
+low-house       ,model   wall    ,64,824,32768,0,36,36,81,4
+low-house       ,model   e_stone ,64,824,32768,0,36,12,19,4
+low-house       ,model   e_si    ,64,824,32768,0,36,6,11,4
+low-house_p1    ,model   e_stone ,64,584,0,0,36,325,777,4
+low-house_p1    ,model   sidestep,64,584,0,0,36,22,45,4
+low-house_p1    ,model   wall    ,64,584,0,0,36,131,239,4
+low-house_p1    ,model   e_si    ,64,584,0,0,36,12,19,4
+low-house_p1    ,model   e_yuka2 ,64,584,0,0,36,8,10,4
+low-house_p1    ,model   e_yuka  ,64,584,0,0,36,51,105,4
+low-house_p1    ,                ,64,584,0,0,36,3,3,4
+low-house_p1    ,model   wall    ,64,584,32768,0,36,64,121,4
+low-house_p1    ,model   e_stone ,64,584,32768,0,36,26,49,4
+low-mark        ,model   e_pole  ,64,28,0,0,36,26,34,1
+low-mark        ,model   sidestep,64,28,0,0,36,12,19,1
+low-mark2       ,model   gyo_sig ,64,38,0,0,36,22,61,5
+low-mark2       ,model   sidestep,64,38,0,0,36,10,25,5
+low-parts01     ,model   wall    ,64,66,0,0,36,88,173,4
+low-parts02     ,model   sidestep,64,108,0,0,36,140,178,24
+low-room        ,model   ten     ,64,2704,0,0,36,530,941,4
+low-room        ,model   wall    ,64,2704,0,0,36,569,1189,4
+low-room        ,model   e_b_wall,64,2704,0,0,36,211,431,4
+low-room        ,model   e_stone ,64,2704,0,0,36,1069,2357,4
+low-room        ,model   e_yuka2 ,64,2704,0,0,36,385,921,4
+low-room        ,model   e_pole  ,64,2704,0,0,36,28,51,4
+low-room        ,model   sidestep,64,2704,32768,0,36,80,167,4
+low-room        ,model   wall    ,64,2704,32768,0,36,17,29,4
+mntd_x00z04     ,model   munt    ,64,28,0,0,36,27,67,1
+mntd_x00z05     ,model   munt    ,64,67,0,0,36,67,165,1
+mntd_x00z06     ,model   munt    ,64,74,0,0,36,75,169,1
+mntd_x01z02     ,model   munt    ,64,15,0,0,36,19,35,1
+mntd_x01z03     ,model   munt    ,64,109,0,0,36,92,241,1
+mntd_x01z04     ,model   munt    ,64,65,0,0,36,59,151,1
+mntd_x01z06     ,model   munt    ,64,45,0,0,36,45,107,1
+mntd_x01z07     ,model   munt    ,64,155,0,0,36,171,367,1
+mntd_x02z02     ,model   munt    ,64,46,0,0,36,44,101,1
+mntd_x02z03     ,model   munt    ,64,6,0,0,36,10,12,1
+mntd_x02z07     ,model   munt    ,64,175,0,0,36,206,421,1
+mntd_x02z08     ,model   munt    ,64,228,0,0,36,254,527,1
+mntd_x02z09     ,model   munt    ,64,224,0,0,36,284,577,1
+mntd_x03z02     ,model   munt    ,64,39,0,0,36,33,79,1
+mntd_x03z09     ,model   munt    ,64,100,0,0,36,107,255,1
+mntd_x03z10     ,model   munt    ,64,249,0,0,36,276,617,1
+mntd_x03z10     ,                ,64,249,0,0,36,3,3,1
+mntd_x04z01     ,model   munt    ,64,53,0,0,36,38,101,1
+mntd_x04z10     ,model   munt    ,64,211,0,0,36,201,477,1
+mntd_x05z01     ,model   munt    ,64,72,0,0,36,62,155,1
+mntd_x05z10     ,model   munt    ,64,177,0,0,36,232,459,1
+mntd_x06z01     ,model   munt    ,64,76,0,0,36,63,165,1
+mntd_x06z01     ,                ,64,76,0,0,36,3,3,1
+mntd_x06z10     ,model   munt    ,64,236,0,0,36,277,565,1
+mntd_x07z01     ,model   munt    ,64,72,0,0,36,56,147,1
+mntd_x07z09     ,model   munt    ,64,139,0,0,36,163,331,1
+mntd_x07z10     ,model   munt    ,64,104,0,0,36,108,217,1
+mntd_x08z01     ,model   munt    ,64,28,0,0,36,24,59,1
+mntd_x08z02     ,model   munt    ,64,60,0,0,36,50,115,1
+mntd_x08z08     ,model   munt    ,64,65,0,0,36,59,137,1
+mntd_x08z09     ,model   munt    ,64,162,0,0,36,140,323,1
+mntd_x09z02     ,model   munt    ,64,73,0,0,36,57,137,1
+mntd_x10z02     ,model   munt    ,64,69,0,0,36,56,125,1
+mntd_x10z03     ,model   munt    ,64,36,0,0,36,43,89,1
+mntd_x11z03     ,model   munt    ,64,61,0,0,36,54,119,1
+mntd_x11z04     ,model   munt    ,64,104,0,0,36,107,251,1
+plgdnt01        ,model   wall    ,64,1772,0,0,36,522,1103,1
+plgdnt01        ,model   sidestep,64,1772,0,0,36,366,725,1
+plgdnt01        ,model   e_stone ,64,1772,0,0,36,626,1359,1
+plgdnt01        ,model   e_b_wall,64,1772,0,0,36,66,107,1
+plgdnt01        ,model   e_yuka2 ,64,1772,0,0,36,124,247,1
+plgdnt01        ,model   flag    ,64,1772,0,0,36,69,105,1
+plgdnt01        ,model   e_yuka  ,64,1772,0,0,36,48,97,1
+plgdnt01        ,model   wall    ,64,1772,32768,0,36,72,139,1
+plgdnt01        ,model   e_yuka2 ,64,1772,32768,0,36,21,37,1
+plgdnt01        ,model   sidestep,64,1772,32768,0,36,7,9,1
+plgdnt01        ,model   e_stone ,64,1772,32768,0,36,23,53,1
+plgdnt02        ,model   roof    ,64,204,0,0,36,140,279,4
+plgdnt02        ,model   wall    ,64,204,0,0,36,108,181,4
+plgdnt02        ,model   e_si    ,64,204,0,0,36,43,73,4
+plgdnt03        ,model   sidestep,64,1715,0,0,36,363,733,1
+plgdnt03        ,model   e_stone ,64,1715,0,0,36,622,1387,1
+plgdnt03        ,model   e_b_wall,64,1715,0,0,36,65,109,1
+plgdnt03        ,model   e_yuka2 ,64,1715,0,0,36,127,241,1
+plgdnt03        ,model   wall    ,64,1715,0,0,36,514,1119,1
+plgdnt03        ,model   e_yuka  ,64,1715,0,0,36,49,111,1
+plgdnt03        ,model   flag    ,64,1715,0,0,36,69,105,1
+plgdnt03        ,model   wall    ,64,1715,32768,0,36,19,27,1
+plgdnt03        ,model   e_yuka2 ,64,1715,32768,0,36,19,33,1
+plgdnt03        ,model   e_stone ,64,1715,32768,0,36,23,59,1
+plgdnt04        ,model   wall    ,64,1661,0,0,36,503,1157,2
+plgdnt04        ,model   sidestep,64,1661,0,0,36,453,889,2
+plgdnt04        ,model   e_stone ,64,1661,0,0,36,527,1139,2
+plgdnt04        ,model   flag    ,64,1661,0,0,36,32,46,2
+plgdnt04        ,model   e_b_wall,64,1661,0,0,36,24,41,2
+plgdnt04        ,model   e_yuka  ,64,1661,0,0,36,119,281,2
+plgdnt04        ,model   e_yuka2 ,64,1661,0,0,36,32,46,2
+plgdnt04        ,model   e_yuka  ,64,1661,32768,0,36,21,45,2
+plgdoor2l       ,model   doors   ,64,12,0,0,36,22,35,3
+plgdoor2r       ,model   doors   ,64,12,0,0,36,21,35,3
+plgdoorl        ,model   doors   ,64,32,0,0,36,42,83,3
+plgdoorr        ,model   doors   ,64,32,0,0,36,42,83,3
+plg-ent         ,model   e_stone ,64,2080,0,0,36,768,1609,1
+plg-ent         ,model   e_b_wall,64,2080,0,0,36,108,227,1
+plg-ent         ,model   wall    ,64,2080,0,0,36,383,853,1
+plg-ent         ,model   e_si    ,64,2080,0,0,36,8,13,1
+plg-ent         ,model   ten     ,64,2080,0,0,36,156,373,1
+plg-ent         ,model   e_pole  ,64,2080,0,0,36,289,633,1
+plg-ent         ,model   e_yuka2 ,64,2080,0,0,36,205,503,1
+plg-ent         ,model   sidestep,64,2080,0,0,36,91,201,1
+plg-ent         ,model   e_stone ,64,2080,32768,0,36,80,94,1
+plg-kaigi       ,model   e_stone ,64,726,0,0,36,216,471,1
+plg-kaigi       ,model   e_yuka2 ,64,726,0,0,36,75,169,1
+plg-kaigi       ,model   e_b_wall,64,726,0,0,36,106,225,1
+plg-kaigi       ,model   wall    ,64,726,0,0,36,132,301,1
+plg-kaigi       ,model   e_si    ,64,726,0,0,36,8,17,1
+plg-kaigi       ,model   ten     ,64,726,0,0,36,194,355,1
+plg-koumu       ,model   e_stone ,64,774,0,0,36,219,485,1
+plg-koumu       ,model   e_yuka2 ,64,774,0,0,36,104,237,1
+plg-koumu       ,model   e_b_wall,64,774,0,0,36,129,271,1
+plg-koumu       ,model   wall    ,64,774,0,0,36,149,317,1
+plg-koumu       ,model   ten     ,64,774,0,0,36,181,457,1
+plg-koumu       ,                ,64,774,0,0,36,3,3,1
+plg-light       ,model   sidestep,64,134,0,0,36,38,89,2
+plg-light       ,model   tetu_01 ,64,134,0,0,36,144,233,2
+plg-mark        ,model   e_pole  ,64,22,0,0,36,12,29,4
+plg-mark        ,model   sidestep,64,22,0,0,36,10,25,4
+plg-mark2       ,model   e_pole  ,64,30,0,0,36,20,28,1
+plg-mark2       ,model   sidestep,64,30,0,0,36,16,28,1
+plg-mark2       ,model   e_pole  ,64,30,32768,0,36,4,4,1
+plg-mark2b      ,model   e_pole  ,64,132,0,0,36,170,299,2
+plg-mark2c      ,model   e_pole  ,64,82,0,0,36,64,141,2
+plg-mark3       ,model   e_pole  ,64,30,0,0,36,16,22,1
+plg-mark3       ,model   sidestep,64,30,0,0,36,16,34,1
+plg-mark3       ,model   e_pole  ,64,30,32768,0,36,4,4,1
+plg-reijou      ,model   ten     ,64,807,0,0,36,175,357,1
+plg-reijou      ,model   e_yuka2 ,64,807,0,0,36,68,145,1
+plg-reijou      ,model   e_b_wall,64,807,0,0,36,128,257,1
+plg-reijou      ,model   wall    ,64,807,0,0,36,246,539,1
+plg-reijou      ,model   danro   ,64,807,0,0,36,180,427,1
+plg-reijou      ,model   e_stone ,64,807,0,0,36,89,199,1
+plg-room01      ,model   e_yuka2 ,64,840,0,0,36,123,285,1
+plg-room01      ,model   e_b_wall,64,840,0,0,36,138,289,1
+plg-room01      ,model   e_pole  ,64,840,0,0,36,86,169,1
+plg-room01      ,model   wall    ,64,840,0,0,36,130,275,1
+plg-room01      ,model   ten     ,64,840,0,0,36,196,399,1
+plg-room01      ,model   e_stone ,64,840,0,0,36,228,489,1
+plg-sisitu      ,model   ten     ,64,903,0,0,36,167,389,1
+plg-sisitu      ,                ,64,903,0,0,36,15,23,1
+plg-sisitu      ,model   e_yuka2 ,64,903,0,0,36,84,215,1
+plg-sisitu      ,model   e_b_wall,64,903,0,0,36,130,277,1
+plg-sisitu      ,model   wall    ,64,903,0,0,36,211,449,1
+plg-sisitu      ,model   danro   ,64,903,0,0,36,180,425,1
+plg-sisitu      ,model   e_stone ,64,903,0,0,36,132,331,1
+plg-sisitu      ,model   danro   ,64,903,32768,0,36,9,14,1
+plg-tuuro       ,model   e_yuka2 ,64,204,0,0,36,36,59,1
+plg-tuuro       ,model   e_b_wall,64,204,0,0,36,99,197,1
+plg-tuuro       ,model   wall    ,64,204,0,0,36,88,197,1
+plg-tuuro       ,model   ten     ,64,204,0,0,36,18,27,1
+plg-tuuro       ,model   wall    ,64,204,32768,0,36,33,52,1
+ryoujikandoorl  ,model   doors   ,64,12,0,0,36,20,30,4
+ryoujikandoorr  ,model   doors   ,64,12,0,0,36,21,30,4
+ryoujikan-light ,model   tetu_01 ,64,92,0,0,36,113,219,30
+ryoujikan-light ,model   light   ,64,92,0,0,36,8,17,30
+ryoujikan-light2,model   light   ,64,110,0,0,36,8,17,10
+ryoujikan-light2,model   tetu_01 ,64,110,0,0,36,152,285,10
+saku2           ,model   tetu_02 ,64,68,0,0,36,128,190,4
+saku2           ,model   tetu_01 ,64,68,0,0,36,8,10,4
+san-kokki       ,model   flag2   ,64,32,0,0,36,25,63,1
+san-mark        ,model   gyo_sig ,64,38,0,0,36,22,61,1
+san-mark        ,model   sidestep,64,38,0,0,36,10,25,1
+san-mark2       ,model   gyo_sig ,64,28,0,0,36,6,6,1
+san-mark2       ,model   e_pole  ,64,28,0,0,36,20,26,1
+san-mark2       ,model   sidestep,64,28,0,0,36,12,19,1
+shopin          ,model   e_stone ,64,412,0,0,36,114,205,1
+shopin          ,model   e_wall  ,64,412,0,0,36,107,215,1
+shopin          ,model   e_si    ,64,412,0,0,36,236,421,1
+shopin          ,model   e_yuka2 ,64,412,0,0,36,70,111,1
+shopin          ,model   ten     ,64,412,0,0,36,12,23,1
+shopin          ,model   tetu_02 ,64,412,0,0,36,69,112,1
+shopin          ,model   e_si    ,64,412,32768,0,36,25,45,1
+shopin          ,model   ten     ,64,412,32768,0,36,4,4,1
+sid-ent         ,model   e_yuka  ,64,216,0,0,36,70,139,1
+sid-ent         ,model   e_si    ,64,216,0,0,36,202,357,1
+sid-ent         ,model   ten     ,64,216,0,0,36,23,34,1
+sid-ent         ,model   e_stone ,64,216,0,0,36,27,38,1
+sid-ent         ,model   ten     ,64,216,32768,0,36,10,15,1
+sid-ent         ,model   e_si    ,64,216,32768,0,36,6,6,1
+sidmark         ,model   sign    ,64,22,0,0,36,24,51,3
+sidmark         ,model   dai_sig ,64,22,32768,0,36,4,4,3
+sid-room        ,model   e_wall  ,64,700,0,0,36,317,561,1
+sid-room        ,model   e_si    ,64,700,0,0,36,194,377,1
+sid-room        ,model   e_stone ,64,700,0,0,36,272,493,1
+sid-room        ,model   ten     ,64,700,0,0,36,44,73,1
+sid-room        ,model   e_yuka2 ,64,700,0,0,36,125,253,1
+sid-room        ,model   yuka_ren,64,700,0,0,36,90,165,1
+sid-room        ,model   tetu_02 ,64,700,0,0,36,32,46,1
+sid-room        ,model   tetu_01 ,64,700,0,0,36,4,4,1
+step            ,model   e_stone ,64,134,0,0,36,191,425,2
+suisya_z        ,model   tetu_01 ,64,3660,0,0,36,5314,10545,0
+suisya_z        ,                ,64,3660,0,0,36,25,69,0
+suisya01        ,model   tetu_01 ,64,328,0,0,36,401,669,2
+suisya02        ,model   tetu_01 ,64,268,0,0,36,304,517,1
+suisya03        ,model   tetu_01 ,64,384,0,0,36,498,646,0
+sukimaume       ,model   e_stone ,64,32,0,0,36,31,39,3
+sukimaume       ,model   e_yuka2 ,64,32,0,0,36,6,11,3
+to_guild01ad    ,model   e_yuka  ,64,95,0,0,36,38,65,1
+to_guild01ad    ,model   e_wall  ,64,95,0,0,36,52,93,1
+to_guild01ad    ,model   e_si    ,64,95,0,0,36,28,47,1
+to_guild01ad    ,model   e_si    ,64,95,32768,0,36,8,8,1
+to_guild01au    ,model   e_wall  ,64,260,0,0,36,210,407,1
+to_guild01au    ,model   wall    ,64,260,0,0,36,30,46,1
+to_guild01au    ,model   e_yuka  ,64,260,0,0,36,16,22,1
+to_guild01au    ,model   wall    ,64,260,32768,0,36,76,137,1
+to_guild01b     ,model   e_wall  ,64,520,0,0,36,352,687,1
+to_guild01b     ,model   e_stone ,64,520,0,0,36,179,337,1
+to_guild01b     ,model   e_yuka  ,64,520,0,0,36,94,163,1
+to_guild01b     ,model   e_si    ,64,520,0,0,36,109,189,1
+to_guild01b     ,model   ten     ,64,520,0,0,36,12,14,1
+to_guild01b     ,model   wall    ,64,520,0,0,36,6,6,1
+to_guild01b     ,model   ten     ,64,520,32768,0,36,8,10,1
+to-guild02ad    ,model   e_yuka  ,64,91,0,0,36,36,65,1
+to-guild02ad    ,model   e_wall  ,64,91,0,0,36,56,97,1
+to-guild02ad    ,model   e_si    ,64,91,0,0,36,28,47,1
+to-guild02ad    ,model   ten     ,64,91,32768,0,36,4,4,1
+to-guild02au    ,model   e_wall  ,64,206,0,0,36,193,363,1
+to-guild02au    ,model   e_si    ,64,206,0,0,36,66,113,1
+to-guild02au    ,model   e_yuka  ,64,206,0,0,36,16,22,1
+to-guild02au    ,model   e_si    ,64,206,32768,0,36,12,16,1
+to-guild02au    ,model   wall    ,64,206,32768,0,36,4,4,1
+to-guild02b     ,model   e_wall  ,64,516,0,0,36,350,651,1
+to-guild02b     ,model   e_stone ,64,516,0,0,36,170,381,1
+to-guild02b     ,model   e_yuka  ,64,516,0,0,36,92,153,1
+to-guild02b     ,model   e_si    ,64,516,0,0,36,95,161,1
+to-guild02b     ,model   ten     ,64,516,0,0,36,14,22,1
+to-guild02b     ,                ,64,516,0,0,36,8,10,1
+to-guild02b     ,model   ten     ,64,516,32768,0,36,7,10,1
+to-guild03      ,model   e_si    ,64,2381,0,0,36,2131,4291,1
+to-guild03      ,model   e_wall  ,64,2381,0,0,36,371,645,1
+to-guild03      ,model   e_yuka  ,64,2381,0,0,36,114,211,1
+to-guild03      ,model   ten     ,64,2381,0,0,36,59,101,1
+to-guild03      ,model   e_stone ,64,2381,0,0,36,133,227,1
+to-guild03      ,model   e_yuka2 ,64,2381,0,0,36,204,373,1
+to-guild03      ,                ,64,2381,0,0,36,20,28,1
+to-guild03      ,model   tetu_02 ,64,2381,0,0,36,60,95,1
+to-guild03      ,model   e_si    ,64,2381,32768,0,36,54,99,1
+to-guild03      ,model   ten     ,64,2381,32768,0,36,53,89,1
+to-guild04      ,model   e_wall  ,64,2083,0,0,36,406,775,1
+to-guild04      ,model   e_si    ,64,2083,0,0,36,1738,3345,1
+to-guild04      ,model   ten     ,64,2083,0,0,36,45,71,1
+to-guild04      ,model   e_stone ,64,2083,0,0,36,120,241,1
+to-guild04      ,model   e_yuka  ,64,2083,0,0,36,102,195,1
+to-guild04      ,model   e_yuka2 ,64,2083,0,0,36,211,353,1
+to-guild04      ,                ,64,2083,0,0,36,49,105,1
+to-guild04      ,model   tetu_02 ,64,2083,0,0,36,64,99,1
+to-guild04      ,model   ten     ,64,2083,32768,0,36,74,133,1
+to-guild04      ,model   e_si    ,64,2083,32768,0,36,44,75,1
+to-guild05      ,model   e_si    ,64,1296,0,0,36,1025,2027,1
+to-guild05      ,                ,64,1296,0,0,36,18,27,1
+to-guild05      ,model   e_wall  ,64,1296,0,0,36,274,533,1
+to-guild05      ,model   e_yuka2 ,64,1296,0,0,36,167,301,1
+to-guild05      ,model   e_stone ,64,1296,0,0,36,116,281,1
+to-guild06      ,model   e_si    ,64,1360,0,0,36,1009,1927,1
+to-guild06      ,model   e_wall  ,64,1360,0,0,36,331,693,1
+to-guild06      ,model   e_yuka2 ,64,1360,0,0,36,178,297,1
+to-guild06      ,                ,64,1360,0,0,36,3,3,1
+to-guild06      ,model   e_stone ,64,1360,0,0,36,126,295,1
+to-low01d       ,model   e_yuka  ,64,64,0,0,36,29,46,1
+to-low01d       ,model   e_wall  ,64,64,0,0,36,48,91,1
+to-low01d       ,model   e_si    ,64,64,0,0,36,12,14,1
+to-low01u       ,model   e_b_wall,64,800,0,0,36,15,27,1
+to-low01u       ,model   wall    ,64,800,0,0,36,19,37,1
+to-low01u       ,model   e_si    ,64,800,0,0,36,104,243,1
+to-low01u       ,model   e_yuka  ,64,800,0,0,36,217,401,1
+to-low01u       ,model   e_wall  ,64,800,0,0,36,510,1037,1
+to-low01u       ,model   e_yuka2 ,64,800,0,0,36,5,5,1
+to-low01u       ,model   e_si    ,64,800,32768,0,36,57,95,1
+to-low01u_p1    ,model   e_yuka  ,64,8,0,0,36,16,22,1
+to-low02d       ,model   e_yuka  ,64,64,0,0,36,31,46,1
+to-low02d       ,model   e_wall  ,64,64,0,0,36,48,78,1
+to-low02d       ,model   e_si    ,64,64,0,0,36,12,25,1
+to-low02u       ,model   e_b_wall,64,795,0,0,36,12,29,1
+to-low02u       ,model   wall    ,64,795,0,0,36,22,47,1
+to-low02u       ,model   e_si    ,64,795,0,0,36,88,219,1
+to-low02u       ,model   e_yuka  ,64,795,0,0,36,219,381,1
+to-low02u       ,model   e_wall  ,64,795,0,0,36,509,1025,1
+to-low02u       ,model   e_yuka2 ,64,795,0,0,36,5,5,1
+to-low02u       ,model   wall    ,64,795,32768,0,36,20,35,1
+to-low02u       ,model   e_si    ,64,795,32768,0,36,31,55,1
+to-low02u_p1    ,model   e_yuka  ,64,8,0,0,36,16,22,1
+to-low03        ,model   e_yuka  ,64,80,0,0,36,98,155,1
+to-low03        ,model   e_b_wall,64,80,0,0,36,20,31,1
+to-low03        ,model   wall    ,64,80,0,0,36,24,35,1
+to-low03_p1     ,model   e_yuka  ,64,8,0,0,36,16,22,1
+to-low03_p2     ,model   e_yuka  ,64,88,0,0,36,33,57,1
+to-low03_p2     ,model   e_stone ,64,88,0,0,36,80,118,1
+to-low03_p2     ,model   e_stone ,64,88,32768,0,36,8,13,1
+to-low04        ,model   e_yuka  ,64,80,0,0,36,102,154,1
+to-low04        ,model   e_b_wall,64,80,0,0,36,15,33,1
+to-low04        ,model   wall    ,64,80,0,0,36,22,31,1
+to-low04_p1     ,model   e_yuka  ,64,8,0,0,36,14,18,1
+to-low04_p2     ,model   e_yuka  ,64,88,0,0,36,33,55,1
+to-low04_p2     ,model   e_stone ,64,88,0,0,36,77,141,1
+to-low04_p2     ,model   e_stone ,64,88,32768,0,36,8,13,1
+to-low06        ,model   e_yuka  ,64,439,0,0,36,137,249,1
+to-low06        ,model   e_b_wall,64,439,0,0,36,52,99,1
+to-low06        ,model   wall    ,64,439,0,0,36,165,309,1
+to-low06        ,model   e_stone ,64,439,0,0,36,129,167,1
+to-low06        ,model   sidestep,64,439,0,0,36,63,141,1
+to-low06        ,model   wall    ,64,439,32768,0,36,36,63,1
+to-low06        ,model   sidestep,64,439,32768,0,36,20,30,1
+to-low07        ,model   e_b_wall,64,1242,0,0,36,111,207,1
+to-low07        ,model   wall    ,64,1242,0,0,36,899,1885,1
+to-low07        ,model   sidestep,64,1242,0,0,36,78,153,1
+to-low07        ,model   e_yuka2 ,64,1242,0,0,36,28,41,1
+to-low07        ,                ,64,1242,0,0,36,4,4,1
+to-low07        ,model   e_yuka  ,64,1242,0,0,36,134,245,1
+to-low07        ,model   wall    ,64,1242,32768,0,36,34,57,1
+to-low07        ,model   yuka2_yo,64,1242,32768,0,36,21,41,1
+to-low07        ,model   e_yuka  ,64,1242,32768,0,36,16,33,1
+to-low08        ,model   e_b_wall,64,1226,0,0,36,131,199,1
+to-low08        ,model   wall    ,64,1226,0,0,36,935,1981,1
+to-low08        ,model   sidestep,64,1226,0,0,36,78,141,1
+to-low08        ,model   e_yuka2 ,64,1226,0,0,36,28,41,1
+to-low08        ,model   e_yuka  ,64,1226,0,0,36,133,255,1
+to-low08        ,model   wall    ,64,1226,32768,0,36,35,61,1
+to-low08        ,model   yuka2_yo,64,1226,32768,0,36,21,47,1
+to-underroom    ,model   e_si    ,64,311,0,0,36,174,331,1
+to-underroom    ,model   e_yuka2 ,64,311,0,0,36,9,12,1
+to-underroom    ,model   e_stone ,64,311,0,0,36,201,337,1
+to-underroom    ,model   ten     ,64,311,0,0,36,6,6,1
+to-underroom    ,model   e_si    ,64,311,32768,0,36,18,18,1
+to-understep    ,model   e_stone ,64,294,0,0,36,446,1003,1
+tower01         ,model   wall    ,64,312,0,0,36,284,623,1
+tower02         ,model   wall    ,64,72,0,0,36,59,106,1
+tozonel         ,model   e_si    ,64,1976,0,0,36,1299,2607,1
+tozonel         ,model   e_yuka  ,64,1976,0,0,36,151,341,1
+tozonel         ,model   e_stone ,64,1976,0,0,36,648,1317,1
+tozonel         ,model   ten     ,64,1976,0,0,36,30,54,1
+tozonel         ,model   e_yuka2 ,64,1976,0,0,36,83,149,1
+tozonel         ,model   e_wall  ,64,1976,0,0,36,24,45,1
+tozonel         ,model   tetu_02 ,64,1976,0,0,36,88,130,1
+tozonel         ,model   e_stone ,64,1976,32768,0,36,32,73,1
+tozonel         ,model   e_si    ,64,1976,32768,0,36,45,85,1
+tozoner         ,model   e_si    ,64,1974,0,0,36,1327,2777,1
+tozoner         ,model   e_yuka  ,64,1974,0,0,36,147,347,1
+tozoner         ,model   e_stone ,64,1974,0,0,36,627,1251,1
+tozoner         ,model   e_yuka2 ,64,1974,0,0,36,82,139,1
+tozoner         ,model   e_wall  ,64,1974,0,0,36,28,51,1
+tozoner         ,model   ten     ,64,1974,0,0,36,18,28,1
+tozoner         ,model   tetu_02 ,64,1974,0,0,36,112,166,1
+tozoner         ,model   e_stone ,64,1974,32768,0,36,12,29,1
+tozoner         ,model   e_si    ,64,1974,32768,0,36,58,115,1
+tukue           ,model   tetu_05 ,64,48,0,0,36,30,53,1
+tukue           ,model   tetu_02 ,64,48,0,0,36,24,34,1
+tukue           ,model   tetu_01 ,64,48,0,0,36,6,11,1
+tukue           ,model   mono_01 ,64,48,0,0,36,20,31,1
+tukue           ,model   tetu_02 ,64,48,32768,0,36,14,21,1
+underroom       ,                ,64,169,0,0,36,271,507,1
+usu01           ,model   tetu_02 ,64,334,0,0,36,230,345,1
+usu01           ,model   tetu_05 ,64,334,0,0,36,57,94,1
+usu01           ,                ,64,334,0,0,36,16,18,1
+usu01           ,model   e_stone ,64,334,0,0,36,149,232,1
+wall            ,model   e_stone ,64,308,0,0,36,190,325,2
+wall            ,model   e_wall  ,64,308,0,0,36,160,349,2
+walll           ,model   wall    ,64,262,0,0,36,219,447,1
+walll           ,model   e_pole  ,64,262,0,0,36,21,30,1
+wallmark        ,model   sidestep,64,38,0,0,36,13,27,4
+wallmark        ,model   flag    ,64,38,0,0,36,25,51,4
+wallr           ,model   wall    ,64,282,0,0,36,196,443,1
+wallr           ,model   e_pole  ,64,282,0,0,36,21,41,1
+wallr           ,model   e_si    ,64,282,32768,0,36,32,42,1
+win-kokki       ,model   flag2   ,64,32,0,0,36,25,63,1
+win-mark        ,model   gyo_sig ,64,38,0,0,36,22,61,1
+win-mark        ,model   sidestep,64,38,0,0,36,10,25,1
+win-mark2       ,model   gyo_sig ,64,28,0,0,36,6,6,1
+win-mark2       ,model   e_pole  ,64,28,0,0,36,20,26,1
+win-mark2       ,model   sidestep,64,28,0,0,36,12,19,1
+yasuri          ,model   e_stone ,64,430,0,0,36,95,189,1
+yasuri          ,model   tetu_02 ,64,430,0,0,36,336,651,1
+yasuri          ,model   tetu_01 ,64,430,0,0,36,44,65,1
+yasuri          ,model   tetu_03 ,64,430,0,0,36,32,61,1
+yasuri01        ,model   tetu_02 ,64,100,0,0,36,64,115,0
+yasuri01        ,model   e_stone ,64,100,0,0,36,70,86,0
+yasuri02        ,model   e_stone ,64,100,0,0,36,70,86,0
+yasuri02        ,model   tetu_02 ,64,100,0,0,36,66,114,0
+yasuri03        ,model   tetu_02 ,64,384,0,0,36,644,963,0
+yasuri04        ,model   tetu_01 ,64,44,0,0,36,12,25,0
+yasuri04        ,model   tetu_02 ,64,44,0,0,36,45,70,0
+zonemark        ,model   gyo_sig ,64,22,0,0,36,12,29,2
+zonemark        ,model   tetu_01 ,64,22,0,0,36,10,25,2
+ent_p           ,model   wall    ,64,82,0,0,36,35,62,1
+ent_p           ,model   e_yuka2 ,64,82,0,0,36,9,14,1
+ent_p           ,model   e_b_wall,64,82,32768,0,36,12,19,1
+ent_p           ,model   wall    ,64,82,32768,0,36,28,49,1
+ent_p           ,model   e_yuka2 ,64,82,32768,0,36,6,6,1
+ent_p           ,model   e_pole  ,64,82,32768,0,36,12,19,1
+clod_a01        ,clod    clod_a01,64,668,0,0,36,117,211,0
+clod_a01        ,clod    clod_a01,64,668,32768,0,36,493,975,0
+sunsphere       ,                ,64,144,0,0,36,81,186,0
+sunsphere       ,                ,64,144,0,0,36,81,186,0
+suny_a01        ,suny    suny_a01,64,668,0,0,36,117,211,0
+suny_a01        ,suny    suny_a01,64,668,32768,0,36,493,975,0
+star            ,star    star01  ,64,172,0,0,36,516,1029,0
+moonsphere      ,                ,64,80,0,0,36,49,157,0
+clod_a01        ,mist    clod_a01,64,668,0,0,36,117,211,0
+clod_a01        ,mist    clod_a01,64,668,32768,0,36,493,975,0
+sunsphere       ,                ,64,144,0,0,36,81,186,0
+cld_fine_a01    ,fine    fine_a01,64,128,0,0,36,108,158,0
+sunsphere       ,                ,64,144,0,0,36,81,186,0
+moonsphere      ,                ,64,80,0,0,36,49,157,0
+star            ,star    star01  ,64,172,0,0,36,516,1029,0
+ramp            ,effect  ramp    ,64,12,32768,0,36,12,29,0
+ltcube          ,                ,64,2,0,0,36,4,4,0
+suimen1         ,suisya  muzu    ,64,128,0,0,36,8,10,0
+suimen1         ,suisya  muzu    ,64,128,32768,0,36,122,261,0
+awan            ,suisya  abuk    ,64,2,0,0,36,4,4,0
+sh-u            ,suisya  umi02   ,64,24,32768,0,36,27,64,0
+col1            ,                ,64,128,0,0,36,86,165,0
+ring            ,                ,64,32,0,0,36,9,10,0
+ring            ,suisya  umi02   ,64,32,32768,0,36,48,70,0
+objtp           ,smk     bsmk    ,64,8,32768,0,36,9,14,0
+ramp            ,effect  ramp    ,64,12,32768,0,36,12,29,0
+2wylanp         ,effect  ramp    ,64,16,32768,0,36,32,46,0

@@ -226,6 +226,7 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
 
         const bool shaderActive = texture && D3DModelRenderState::SetFfxiTexturePixelShader(
             device, true, expandDxt3Alpha, controller.opacity, controller.colorScale);
+        device->SetTexture(1, shaderActive ? texture : nullptr);
         D3DModelRenderState::SetTextureStageForOptionalTexture(
             device, texture, shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
         D3DModelBuffers::DrawSubmesh(device, model, submesh);
@@ -234,6 +235,7 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
     D3DModelRenderState::SetTextureScroll(device, false);
     device->SetPixelShader(nullptr);
     device->SetTexture(0, nullptr);
+    device->SetTexture(1, nullptr);
     device->SetRenderState(D3DRS_ZENABLE, TRUE);
     device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
     device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);

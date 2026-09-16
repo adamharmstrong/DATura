@@ -154,6 +154,7 @@ public:
 			{ "mvr", "mvr", false }, { "jmp", "jmp", false },
 			{ "wlk_relaxed", "wlk", true }, { "run_relaxed", "run", true },
 			{ "mvb_relaxed", "mvb", true }, { "idl_relaxed", "idl", true },
+			{ "tlk", "tlk", false }, { "tlk_relaxed", "tlk", true },
 		};
 		for (const Motion &motion : motions)
 		{

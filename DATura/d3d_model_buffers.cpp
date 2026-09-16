@@ -200,6 +200,11 @@ void BuildStaticOpaqueBatches(noesisModel_t *model, IDirect3DDevice9 *device)
         {
             batch.pTexture = model->pMatData->textures[batch.pMaterial->texIdx];
         }
+        if (batch.pMaterial && model->pMatData && batch.pMaterial->normalTexIdx >= 0 &&
+            batch.pMaterial->normalTexIdx < model->pMatData->texCount)
+        {
+            batch.pNormalTexture = model->pMatData->textures[batch.pMaterial->normalTexIdx];
+        }
 
         int maxVertexIndex = 0;
         for (size_t submeshIndex : entry.second)

@@ -21,6 +21,20 @@ bool SelectIdleAnimation(noesisModel_t* model)
     return false;
 }
 
+bool SelectTalkAnimation(noesisModel_t* model)
+{
+    if (!model) return false;
+    for (const char* name : { "tlk_relaxed", "tlk", "talk", "tlk0", "tlk1" })
+    {
+        if (noesisAnim_t* clip = model->FindAnimation(name))
+        {
+            model->pAnim = clip;
+            return true;
+        }
+    }
+    return SelectIdleAnimation(model);
+}
+
 float ComputeNameplateLocalY(const noesisModel_t* model)
 {
     if (!model)

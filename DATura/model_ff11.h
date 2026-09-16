@@ -390,6 +390,7 @@ bool        Model_FF11_GetZoneVisibleMapObjects(const float viewerPoint[3],
 bool        Model_FF11_IsZonePointVisible(const float viewerPoint[3], const float subjectPoint[3]);
 int         Model_FF11_GetLastMapGeoDrawBatchCount();
 const ff11MapGeoDrawBatchDebug_t *Model_FF11_GetLastMapGeoDrawBatch(int index);
+const char *Model_FF11_GetCurrentDatSetSourceName();
 
 class CFFXIChunkHandler;
 

@@ -11,6 +11,7 @@ struct MaterialBindingCache
 {
     const noesisMaterial_t *material = nullptr;
     const noesisTex_t *texture = nullptr;
+    const noesisTex_t *normalTexture = nullptr;
     bool valid = false;
 
     void Invalidate();
@@ -27,12 +28,15 @@ DWORD FloatBits(float value);
 
 bool SetFfxiTexturePixelShader(IDirect3DDevice9 *device, bool useAuthoredAlpha,
                                bool expandDxt3Alpha, float opacityScale = 1.0f,
-                               const float *colorScale = nullptr, bool hasTexture = true);
+                               const float *colorScale = nullptr, bool hasTexture = true,
+                               bool hasNormalTexture = false);
 bool SetFfxiUiPixelShader(IDirect3DDevice9 *device, bool expandDxt3Alpha,
                           float alphaScale = 1.0f, float maxOpacity = 1.0f);
 void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
-                         const noesisMaterial_t *material, const noesisTex_t *texture);
+                         const noesisMaterial_t *material, const noesisTex_t *texture,
+                         const noesisTex_t *normalTexture = nullptr);
 void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
-                              const noesisMaterial_t *material, const noesisTex_t *texture);
+                              const noesisMaterial_t *material, const noesisTex_t *texture,
+                              const noesisTex_t *normalTexture = nullptr);
 void ReleaseFfxiPixelShaders();
 }

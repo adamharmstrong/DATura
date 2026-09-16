@@ -26,15 +26,20 @@ bool EnsureFfxiTexturePixelShader(IDirect3DDevice9 *device)
     g_texturePixelShaderTried = true;
     static const char kShaderSource[] =
         "sampler2D BaseTexture : register(s0);\n"
+        "sampler2D NormalTexture : register(s1);\n"
         "float4 AlphaParams : register(c0);\n"
         "float4 ColorScale : register(c1);\n"
+        "float4 BumpParams : register(c2);\n"
         "float4 main(float4 diffuse : COLOR0, float2 uv : TEXCOORD0) : COLOR0\n"
         "{\n"
         "    float4 texel = lerp(tex2D(BaseTexture, uv), float4(1,1,1,1), AlphaParams.w);\n"
+        "    float3 bumpNormal = tex2D(NormalTexture, uv).xyz * 2.0 - 1.0;\n"
+        "    float bumpLight = saturate(dot(normalize(bumpNormal), normalize(BumpParams.xyz)));\n"
+        "    float bumpScale = lerp(1.0, 0.65 + bumpLight * 0.70, BumpParams.w);\n"
         "    float textureAlpha = (AlphaParams.y > 0.5) ? saturate(texel.a * 1.875) : texel.a;\n"
         "    float vertexAlpha = saturate(diffuse.a * 2.0);\n"
         "    float alpha = ((AlphaParams.x > 0.5) ? textureAlpha * vertexAlpha : 1.0) * AlphaParams.z;\n"
-        "    return float4(saturate(2.0 * texel.rgb * diffuse.rgb * ColorScale.rgb), saturate(alpha));\n"
+        "    return float4(saturate(2.0 * texel.rgb * diffuse.rgb * ColorScale.rgb * bumpScale), saturate(alpha));\n"
         "}\n";
 
     ID3DBlob *byteCode = nullptr;
@@ -117,6 +122,7 @@ void MaterialBindingCache::Invalidate()
 {
     material = nullptr;
     texture = nullptr;
+    normalTexture = nullptr;
     valid = false;
 }
 
@@ -155,6 +161,12 @@ void ApplyFixedFunctionModelState(IDirect3DDevice9 *device, const bool enableMip
     device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
     device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
     device->SetSamplerState(0, D3DSAMP_MIPFILTER,
+                            enableMipMapping ? D3DTEXF_LINEAR : D3DTEXF_NONE);
+    device->SetSamplerState(1, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
+    device->SetSamplerState(1, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
+    device->SetSamplerState(1, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+    device->SetSamplerState(1, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+    device->SetSamplerState(1, D3DSAMP_MIPFILTER,
                             enableMipMapping ? D3DTEXF_LINEAR : D3DTEXF_NONE);
 }
 
@@ -244,7 +256,8 @@ DWORD FloatBits(const float value)
 
 bool SetFfxiTexturePixelShader(IDirect3DDevice9 *device, const bool useAuthoredAlpha,
                                const bool expandDxt3Alpha, const float opacityScale,
-                               const float *colorScale, const bool hasTexture)
+                               const float *colorScale, const bool hasTexture,
+                               const bool hasNormalTexture)
 {
     if (!EnsureFfxiTexturePixelShader(device))
     {
@@ -272,6 +285,14 @@ bool SetFfxiTexturePixelShader(IDirect3DDevice9 *device, const bool useAuthoredA
     device->SetPixelShaderConstantF(0, alphaParams, 1);
     device->SetPixelShaderConstantF(1,
         colorScale ? authoredColorScale : defaultColorScale, 1);
+    const float bumpParams[4] =
+    {
+        0.35f,
+        -0.45f,
+        0.82f,
+        hasNormalTexture ? 1.0f : 0.0f
+    };
+    device->SetPixelShaderConstantF(2, bumpParams, 1);
     return true;
 }
 
@@ -298,17 +319,21 @@ bool SetFfxiUiPixelShader(IDirect3DDevice9 *device, const bool expandDxt3Alpha,
 }
 
 void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
-                         const noesisMaterial_t *material, const noesisTex_t *texture)
+                         const noesisMaterial_t *material, const noesisTex_t *texture,
+                         const noesisTex_t *normalTexture)
 {
-    if (!device || (cache.valid && material == cache.material && texture == cache.texture))
+    if (!device || (cache.valid && material == cache.material && texture == cache.texture &&
+        normalTexture == cache.normalTexture))
         return;
 
     cache.valid = true;
     cache.material = material;
     cache.texture = texture;
+    cache.normalTexture = normalTexture;
     const bool twoSided = !material || (material->flags & NMATFLAG_TWOSIDED) != 0;
     const float alphaRef = material ? material->alphaTest : 0.0f;
     IDirect3DTexture9 *d3dTexture = texture ? texture->pD3DTex : nullptr;
+    IDirect3DTexture9 *d3dNormalTexture = normalTexture ? normalTexture->pD3DTex : nullptr;
     const bool expandDxt3Alpha = texture && texture->texType == NOESISTEX_DXT3;
     device->SetRenderState(D3DRS_CULLMODE, twoSided ? D3DCULL_NONE : D3DCULL_CW);
     device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaRef > 0.0f ? TRUE : FALSE);
@@ -318,31 +343,39 @@ void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
         device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
     }
     const bool shaderActive = d3dTexture && SetFfxiTexturePixelShader(
-        device, alphaRef > 0.0f, expandDxt3Alpha);
+        device, alphaRef > 0.0f, expandDxt3Alpha, 1.0f, nullptr, true,
+        d3dNormalTexture != nullptr);
     if (!d3dTexture)
         device->SetPixelShader(nullptr); // Untextured materials use fixed-function vertex color.
+    device->SetTexture(1, shaderActive ? d3dNormalTexture : nullptr);
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 :
         (alphaRef > 0.0f ? D3DTOP_MODULATE4X : D3DTOP_MODULATE2X));
 }
 
 void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
-                              const noesisMaterial_t *material, const noesisTex_t *texture)
+                              const noesisMaterial_t *material, const noesisTex_t *texture,
+                              const noesisTex_t *normalTexture)
 {
-    if (!device || (cache.valid && material == cache.material && texture == cache.texture))
+    if (!device || (cache.valid && material == cache.material && texture == cache.texture &&
+        normalTexture == cache.normalTexture))
         return;
 
     cache.valid = true;
     cache.material = material;
     cache.texture = texture;
+    cache.normalTexture = normalTexture;
     const bool twoSided = !material || (material->flags & NMATFLAG_TWOSIDED) != 0;
     IDirect3DTexture9 *d3dTexture = texture ? texture->pD3DTex : nullptr;
+    IDirect3DTexture9 *d3dNormalTexture = normalTexture ? normalTexture->pD3DTex : nullptr;
     const bool expandDxt3Alpha = texture && texture->texType == NOESISTEX_DXT3;
     device->SetRenderState(D3DRS_CULLMODE, twoSided ? D3DCULL_NONE : D3DCULL_CW);
     const bool shaderActive = d3dTexture && SetFfxiTexturePixelShader(
-        device, true, expandDxt3Alpha);
+        device, true, expandDxt3Alpha, 1.0f, nullptr, true,
+        d3dNormalTexture != nullptr);
     if (!d3dTexture)
         device->SetPixelShader(nullptr);
+    device->SetTexture(1, shaderActive ? d3dNormalTexture : nullptr);
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
 }

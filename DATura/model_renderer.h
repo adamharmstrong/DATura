@@ -29,6 +29,7 @@ struct Context
     // Borrowed for the duration of a draw; the application owns these collections.
     ZoneObjectVisibility::RenderContext visibility;
     float cameraPosition[3] = {};
+    bool (*findZoneShadowReceiverY)(float x, float y, float z, float* outY) = nullptr;
 };
 
 struct TextureScrollState
@@ -43,6 +44,8 @@ struct TextureScrollState
 
 void DrawActorPlanarShadow(const Context& context, noesisModel_t* model,
                            const D3DMATRIX& baseWorld);
+void DrawZoneObjectPlanarShadows(const Context& context, noesisModel_t* model,
+                                 const D3DMATRIX& baseWorld);
 void PrepareFixedFunctionPass(const Context& context, const D3DMATRIX& baseWorld);
 // Draw the requested geometry pass and restore the model-pass baseline.
 // Split zone passes around actors so water blends with the completed opaque scene.

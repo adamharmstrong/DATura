@@ -29,6 +29,17 @@ enum LightingQuality
     LightingDynamicShadows = 2
 };
 
+enum RenderingBackend
+{
+    RenderingBackendDirectX8 = 0,
+    RenderingBackendDirectX9 = 1,
+    RenderingBackendDirectX11 = 2,
+    RenderingBackendDirectX12 = 3,
+    RenderingBackendOpenGL = 4,
+    RenderingBackendVulkan = 5,
+    RenderingBackendMetal = 6
+};
+
 enum DoorInteractionMode
 {
     DoorClassic = 0,
@@ -59,6 +70,7 @@ struct State
     bool enableTextureCompression = true;
     bool mirrorWorldZones = false;
     bool showCollisionGeometry = false;
+    int renderingBackend = RenderingBackendDirectX9;
 };
 
 int ResolutionOptionCount();
@@ -81,4 +93,8 @@ int ClampEnvironmentalAnimationMode(int mode);
 const char* EnvironmentalAnimationModeName(int mode);
 int ClampLightingQuality(int quality);
 const char* LightingQualityName(int quality);
+int RenderingBackendOptionCount();
+int ClampRenderingBackend(int backend);
+const char* RenderingBackendName(int backend);
+bool RenderingBackendIsAvailable(int backend);
 }
