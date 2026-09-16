@@ -28,11 +28,19 @@ void Prepare(noesisModel_t *model, IDirect3DDevice9 *device)
         submesh.pResolvedMaterial = (model->pMatData && !submesh.materialName.empty()) ?
             model->pMatData->FindMaterial(submesh.materialName.c_str()) : nullptr;
         submesh.pResolvedTexture = nullptr;
+        submesh.pResolvedNormalTexture = nullptr;
         if (submesh.pResolvedMaterial && model->pMatData &&
             submesh.pResolvedMaterial->texIdx >= 0 &&
             submesh.pResolvedMaterial->texIdx < model->pMatData->texCount)
         {
             submesh.pResolvedTexture = model->pMatData->textures[submesh.pResolvedMaterial->texIdx];
+        }
+        if (submesh.pResolvedMaterial && model->pMatData &&
+            submesh.pResolvedMaterial->normalTexIdx >= 0 &&
+            submesh.pResolvedMaterial->normalTexIdx < model->pMatData->texCount)
+        {
+            submesh.pResolvedNormalTexture =
+                model->pMatData->textures[submesh.pResolvedMaterial->normalTexIdx];
         }
         submesh.environmentObject = ZoneEnvironmentIdentity::IsEnvironmentObjectName(submesh.objectName);
         submesh.animatedWater = IsAnimatedWaterSurface(submesh);

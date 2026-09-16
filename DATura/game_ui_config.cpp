@@ -386,6 +386,10 @@ bool GameUiConfig_SavePlayerNameplate(const GameUiConfig &config)
     write("Subtitle", player.subtitleMode == PlayerSubtitleMode::Jobs ? "jobs" :
         (player.subtitleMode == PlayerSubtitleMode::Linkshell ? "linkshell" : "none"));
     write("LinkshellName", player.linkshellName);
+    char color[32] = {};
+    sprintf_s(color, "%u,%u,%u", GetRValue(player.linkshellColor),
+        GetGValue(player.linkshellColor), GetBValue(player.linkshellColor));
+    write("LinkshellColor", color);
     write("MainJob", FFXIStats::JobName(static_cast<FFXIStats::Job>(player.mainJob)));
     write("SubJob", FFXIStats::JobName(static_cast<FFXIStats::Job>(player.subJob)));
     write("MainLevel", std::to_string(player.mainLevel).c_str());

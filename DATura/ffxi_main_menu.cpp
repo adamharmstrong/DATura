@@ -4,8 +4,6 @@
 #include "ffxi_title_ui_primitives.h"
 #include "ffxi_title_assets.h"
 #include "d3d_ui_renderer.h"
-// Need the full definition of noesisTex_t when accessing texture fields
-#include "noesis_rapi.h"
 
 #include <algorithm>
 
@@ -18,6 +16,64 @@ const char* const kPageItems[][14] = {
       "Help Desk", "Current Time", "Communication", "Shut Down", "Log Out" }
 };
 constexpr int kPageItemCounts[] = { 14, 12 };
+
+void DrawChatStylePanel(IDirect3DDevice9* device, const int left, const int top,
+                        const int width, const int height)
+{
+    if (!device || width <= 0 || height <= 0)
+        return;
+
+    constexpr DWORD kBlue = 0xFF111B46;       // RGB(17, 27, 70)
+    constexpr DWORD kDark = 0xFF0C1232;       // RGB(12, 18, 50)
+    constexpr DWORD kEdgeTop = 0xFF4E5676;    // RGB(78, 86, 118)
+    constexpr DWORD kEdgeLight = 0xFFBEC5DC;  // RGB(190, 197, 220)
+    constexpr DWORD kEdgeDark = 0xFF373E5C;   // RGB(55, 62, 92)
+
+    auto blend = [](const DWORD background, const DWORD foreground, const int strength) -> DWORD
+    {
+        const int clamped = (std::max)(0, (std::min)(255, strength));
+        const int inv = 255 - clamped;
+        const int br = background & 0xFF;
+        const int bg = (background >> 8) & 0xFF;
+        const int bb = (background >> 16) & 0xFF;
+        const int fr = foreground & 0xFF;
+        const int fg = (foreground >> 8) & 0xFF;
+        const int fb = (foreground >> 16) & 0xFF;
+        return 0xFF000000 |
+            (((bb * inv + fb * clamped) / 255) << 16) |
+            (((bg * inv + fg * clamped) / 255) << 8) |
+            ((br * inv + fr * clamped) / 255);
+    };
+
+    for (int y = 0; y < height; y += 2)
+    {
+        const DWORD color = ((y / 2) & 1) == 0 ? kBlue : kDark;
+        D3DUiRenderer::DrawSolidQuad(device, static_cast<float>(left),
+            static_cast<float>(top + y), static_cast<float>(width),
+            static_cast<float>((std::min)(2, height - y)), color);
+    }
+
+    const DWORD edgeRows[] = { kEdgeTop, kEdgeLight, kEdgeDark };
+    const int fade = (std::min)(96, (std::max)(1, width / 5));
+    for (int row = 0; row < 3 && row < height; ++row)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            const int leftDistance = x;
+            const int rightDistance = width - 1 - x;
+            int strength = 255;
+            if (leftDistance < fade)
+                strength = (std::min)(strength, leftDistance * 255 / fade);
+            if (rightDistance < fade)
+                strength = (std::min)(strength, rightDistance * 255 / fade);
+            const DWORD color = blend(row == 1 ? kDark : kBlue, edgeRows[row], strength);
+            D3DUiRenderer::DrawSolidQuad(device, static_cast<float>(left + x),
+                static_cast<float>(top + row), 1.0f, 1.0f, color);
+            D3DUiRenderer::DrawSolidQuad(device, static_cast<float>(left + x),
+                static_cast<float>(top + height - 1 - row), 1.0f, 1.0f, color);
+        }
+    }
+}
 }
 
 namespace FFXIMainMenu
@@ -38,26 +94,7 @@ void DrawTextures(IDirect3DDevice9* device, const bool enableMipMapping,
     const int itemCount = kPageItemCounts[state.page] -
         (state.page == 0 && !showMogHouse ? 1 : 0);
     const int panelHeight = titleHeight + 4 + rowHeight * kPageItemCounts[0] + 10;
-    // Prefer the dedicated menu background atlas (menu2fon) which contains
-    // the horizontal blue stripe artwork. Fall back to the older ustatshd
-    // atlas for installations that don't have the newer texture.
-    // Ignore any installed atlas and draw a simple striped background so the
-    // menu always uses horizontal blue / dark-blue bands rather than an
-    // unintended icon sheet.
-    const int stripeHeight = 2; // fixed 2-pixel stripes as requested
-    for (int y = 0; y < panelHeight; y += stripeHeight)
-    {
-        const DWORD color = ((y / stripeHeight) & 1) == 0
-            ? 0xFF2A4B7A : 0xFF16273B; // lighter and darker blue bands
-        D3DUiRenderer::DrawSolidQuad(device, static_cast<float>(left),
-            static_cast<float>(top + y), static_cast<float>(menuWidth),
-            static_cast<float>((std::min)(stripeHeight, panelHeight - y)), color);
-    }
-    D3DUiRenderer::DrawSolidQuad(device, static_cast<float>(left), static_cast<float>(top),
-        static_cast<float>(menuWidth), 2.0f, 0xFFE4E8F0);
-    D3DUiRenderer::DrawSolidQuad(device, static_cast<float>(left),
-        static_cast<float>(top + panelHeight - 2), static_cast<float>(menuWidth), 2.0f,
-        0xFFE4E8F0);
+    DrawChatStylePanel(device, left, top, menuWidth, panelHeight);
     for (int i = 0; i < itemCount; ++i)
     {
         const int row = state.page == 0 && !showMogHouse && i >= 13 ? i - 1 : i;

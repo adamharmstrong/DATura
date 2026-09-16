@@ -20,6 +20,13 @@
 #include "model_ff11_map_handlers.h"
 #include "model_ff11_weather.h"
 
+static const char *g_modelFF11CurrentDatSetSourceName = "";
+
+const char *Model_FF11_GetCurrentDatSetSourceName()
+{
+	return g_modelFF11CurrentDatSetSourceName;
+}
+
 bool Model_FF11_CheckDAT(BYTE *fileBuffer, int bufferLen, noeRAPI_t *rapi)
 {
 	CFFXIDat dat(fileBuffer, bufferLen, rapi);
@@ -1379,7 +1386,7 @@ noesisModel_t *Model_FF11_LoadDATSet(BYTE *fileBuffer, int bufferLen, int &numMd
 				}
 				else
 				{
-					//else, name is currently unused. might be useful for future functionality.
+					g_modelFF11CurrentDatSetSourceName = currentDatName;
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Texture);
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Geo);
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_Map);
@@ -1387,6 +1394,7 @@ noesisModel_t *Model_FF11_LoadDATSet(BYTE *fileBuffer, int bufferLen, int &numMd
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectModel);
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectAnimated);
 					pDat->RunChunkHandlersForChunksOfInterest(CFFXIDat::skChunkType_EffectMorph);
+					g_modelFF11CurrentDatSetSourceName = "";
 				}
 			}
 			else

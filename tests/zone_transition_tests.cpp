@@ -49,5 +49,7 @@ int main()
             }
         }
     }
-    std::cout << "All zone transition checks passed (8 routes, both coordinate modes).\n";
+    std::cout << "All zone transition checks passed ("
+              << (sizeof(lines) / sizeof(lines[0]))
+              << " routes, both coordinate modes).\n";
 }

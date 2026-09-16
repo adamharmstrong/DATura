@@ -28,6 +28,17 @@ const char* kDrawDistanceOptionLabels[] =
     "500", "1000", "2000", "4000", "8000", "Unlimited"
 };
 
+const char* kRenderingBackendNames[] =
+{
+    "DirectX 8",
+    "DirectX 9",
+    "DirectX 11",
+    "DirectX 12",
+    "OpenGL",
+    "Vulkan",
+    "Metal (macOS)"
+};
+
 template <typename T, std::size_t Size>
 constexpr int ArrayCount(const T (&)[Size])
 {
@@ -154,5 +165,27 @@ const char* LightingQualityName(const int quality)
     case LightingDynamicShadows:
     default: return "Dynamic Shadows";
     }
+}
+
+int RenderingBackendOptionCount()
+{
+    return ArrayCount(kRenderingBackendNames);
+}
+
+int ClampRenderingBackend(const int backend)
+{
+    return backend >= 0 && backend < RenderingBackendOptionCount()
+        ? backend
+        : RenderingBackendDirectX9;
+}
+
+const char* RenderingBackendName(const int backend)
+{
+    return kRenderingBackendNames[ClampRenderingBackend(backend)];
+}
+
+bool RenderingBackendIsAvailable(const int backend)
+{
+    return backend == RenderingBackendDirectX9;
 }
 }

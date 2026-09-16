@@ -53,6 +53,7 @@ struct State
     void* callbackContext = nullptr;
     EventCallback eventCallback = nullptr;
     IsGameModeCallback isGameModeCallback = nullptr;
+    int activeTab = 0;
 };
 
 void Initialize(

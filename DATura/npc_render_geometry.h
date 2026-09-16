@@ -8,6 +8,8 @@ namespace NpcRenderGeometry
 {
     // Standing NPCs must not inherit the model viewer's locomotion default.
     bool SelectIdleAnimation(noesisModel_t* model);
+    // Retail NPCs use their talk loop while a conversation prompt is active.
+    bool SelectTalkAnimation(noesisModel_t* model);
     // Returns the local Y coordinate used to place an NPC nameplate above an
     // assembled model in DATura's downward-positive model coordinate system.
     float ComputeNameplateLocalY(const noesisModel_t* model);

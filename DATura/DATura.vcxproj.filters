@@ -147,6 +147,9 @@
     <ClCompile Include="d3d9_device.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="renderer_backend.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="d3d_math.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -373,6 +376,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="d3d9_device.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer_backend.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="d3d_math.h">

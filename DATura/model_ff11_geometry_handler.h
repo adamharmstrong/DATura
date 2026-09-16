@@ -107,11 +107,17 @@ public:
 		{
 			memcpy(mName, pName, 4);
 			mName[4] = 0;
+			const char *sourceName = Model_FF11_GetCurrentDatSetSourceName();
+			if (sourceName && sourceName[0])
+				sprintf_s(mObjectName, "%s:%s", sourceName, mName);
+			else
+				strcpy_s(mObjectName, mName);
 		}
 
 		const SGeoHeader *mpGeoHdr;
 		int mGeoDataSize;
 		char mName[8];
+		char mObjectName[64];
 	};
 	typedef std::vector<SGeoHeaderData> TGeoHeaderList;
 
@@ -158,7 +164,7 @@ public:
 			const SGeoHeader *pGeoHdr = geoHeaderData.mpGeoHdr;
 			const unsigned short *pSData = (const unsigned short *)pGeoHdr;
 
-			pRapi->rpgSetName(const_cast<char *>(geoHeaderData.mName));
+			pRapi->rpgSetName(const_cast<char *>(geoHeaderData.mObjectName));
 
 			SGeoDrawState drawState;
 

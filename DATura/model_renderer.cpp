@@ -5,6 +5,7 @@
 #include "d3d_model_buffers.h"
 #include "d3d_model_render_state.h"
 #include "noesis_rapi.h"
+#include "zone_object_transform.h"
 #include "zone_vegetation_animation.h"
 
 #include <cmath>
@@ -14,6 +15,73 @@ namespace ModelRenderer
 {
 namespace
 {
+float DynamicLightX(const int minuteOfDay)
+{
+    const float angle = (static_cast<float>(minuteOfDay) / 1440.0f) * 6.2831853f;
+    return -0.45f * cosf(angle);
+}
+
+float DynamicLightY(const int minuteOfDay)
+{
+    const float angle = (static_cast<float>(minuteOfDay) / 1440.0f) * 6.2831853f;
+    return -0.35f - 0.65f * fmaxf(sinf(angle - 1.5707963f), 0.15f);
+}
+
+float DynamicLightZ(const int minuteOfDay)
+{
+    const float angle = (static_cast<float>(minuteOfDay) / 1440.0f) * 6.2831853f;
+    return 0.45f * sinf(angle);
+}
+
+D3DMATRIX BuildPlanarShadowWorld(const D3DMATRIX& baseWorld, const float localGroundY,
+                                 const int minuteOfDay)
+{
+    const float lightX = DynamicLightX(minuteOfDay);
+    const float lightY = DynamicLightY(minuteOfDay);
+    const float lightZ = DynamicLightZ(minuteOfDay);
+    if (fabsf(lightY) < 0.0001f)
+        return {};
+
+    const float groundY = localGroundY * baseWorld._22 + baseWorld._42;
+    const float inverseLightY = 1.0f / lightY;
+    D3DMATRIX shadow = D3DMath::BuildIdentity();
+    shadow._21 = -lightX * inverseLightY;
+    shadow._22 = 0.0f;
+    shadow._23 = -lightZ * inverseLightY;
+    shadow._41 = groundY * lightX * inverseLightY;
+    shadow._42 = groundY;
+    shadow._43 = groundY * lightZ * inverseLightY;
+    return D3DMath::Multiply(baseWorld, shadow);
+}
+
+void ApplyPlanarShadowState(IDirect3DDevice9* device, const D3DMATRIX& shadowWorld)
+{
+    device->SetFVF(FFXI_VERTEX_FVF);
+    device->SetTransform(D3DTS_WORLD, &shadowWorld);
+    device->SetPixelShader(nullptr);
+    device->SetRenderState(D3DRS_LIGHTING, FALSE);
+    device->SetRenderState(D3DRS_COLORVERTEX, FALSE);
+    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+    device->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
+    device->SetRenderState(D3DRS_DEPTHBIAS,
+        D3DModelRenderState::FloatBits(-0.00001f));
+    device->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
+    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    device->SetTexture(0, nullptr);
+    device->SetTexture(1, nullptr);
+    device->SetRenderState(D3DRS_TEXTUREFACTOR, D3DCOLOR_ARGB(82, 0, 0, 0));
+    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+    device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
+    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+    device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TFACTOR);
+    device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+    device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+}
+
 void ApplyWaterMaterial(IDirect3DDevice9* device, const noesisModel_t::Submesh& mesh,
                         const ZoneWater::State& state)
 {
@@ -36,6 +104,7 @@ void ApplyWaterMaterial(IDirect3DDevice9* device, const noesisModel_t::Submesh& 
     device->SetRenderState(D3DRS_SRCBLEND, source);
     device->SetRenderState(D3DRS_DESTBLEND, destination);
     D3DModelRenderState::SetTextureStageForOptionalTexture(device, d3dTexture, D3DTOP_MODULATE2X);
+    device->SetTexture(1, d3dTexture);
     const bool shader = D3DModelRenderState::SetFfxiTexturePixelShader(device, true,
         texture && texture->texType == NOESISTEX_DXT3, state.opacity, state.colorScale,
         d3dTexture != nullptr);
@@ -100,7 +169,7 @@ void DrawActorPlanarShadow(const Context& context, noesisModel_t* const model,
         !context.dynamicActorShadows)
         return;
 
-    float groundY = 0.0f;
+    float localGroundY = 0.0f;
     bool hasGround = false;
     for (const noesisModel_t::Submesh& submesh : model->submeshes)
     {
@@ -108,9 +177,11 @@ void DrawActorPlanarShadow(const Context& context, noesisModel_t* const model,
             ? submesh.cpuVerts : submesh.cpuBindVerts;
         for (const FFXIVertex& vertex : vertices)
         {
-            if (!hasGround || vertex.pos[1] < groundY)
+            // DATura scene Y increases downward, so actor feet are at the
+            // largest local Y rather than the smallest.
+            if (!hasGround || vertex.pos[1] > localGroundY)
             {
-                groundY = vertex.pos[1];
+                localGroundY = vertex.pos[1];
                 hasGround = true;
             }
         }
@@ -118,45 +189,81 @@ void DrawActorPlanarShadow(const Context& context, noesisModel_t* const model,
     if (!hasGround)
         return;
 
-    const float angle = (static_cast<float>(context.minuteOfDay) / 1440.0f) * 6.2831853f;
-    const float lightX = -0.45f * cosf(angle);
-    const float lightY = -0.35f - 0.65f * fmaxf(sinf(angle - 1.5707963f), 0.15f);
-    const float lightZ = 0.45f * sinf(angle);
-    D3DMATRIX shadow = {};
-    shadow._11 = lightY;
-    shadow._21 = -lightX;
-    shadow._23 = -lightZ;
-    shadow._33 = lightY;
-    shadow._41 = lightX * groundY;
-    shadow._42 = groundY * lightY;
-    shadow._43 = lightZ * groundY;
-    shadow._44 = lightY;
+    const D3DMATRIX shadowWorld =
+        BuildPlanarShadowWorld(baseWorld, localGroundY, context.minuteOfDay);
+    if (shadowWorld._44 == 0.0f)
+        return;
 
-    const D3DMATRIX shadowWorld = D3DMath::Multiply(baseWorld, shadow);
-    D3DMATERIAL9 shadowMaterial = {};
-    shadowMaterial.Diffuse = { 0.0f, 0.0f, 0.0f, 0.32f };
-    shadowMaterial.Ambient = shadowMaterial.Diffuse;
-    device->SetFVF(FFXI_VERTEX_FVF);
-    device->SetTransform(D3DTS_WORLD, &shadowWorld);
-    device->SetMaterial(&shadowMaterial);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_COLORVERTEX, FALSE);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-    device->SetRenderState(D3DRS_DEPTHBIAS,
-        D3DModelRenderState::FloatBits(-0.00001f));
-    device->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetTexture(0, nullptr);
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+    ApplyPlanarShadowState(device, shadowWorld);
     for (const size_t index : model->opaqueSubmeshOrder)
         D3DModelBuffers::DrawSubmesh(device, model, model->submeshes[index]);
+    device->SetTransform(D3DTS_WORLD, &baseWorld);
+}
+
+void DrawZoneObjectPlanarShadows(const Context& context, noesisModel_t* const model,
+                                 const D3DMATRIX& baseWorld)
+{
+    IDirect3DDevice9* const device = context.device;
+    if (!device || !model || !context.rendersZoneObjects ||
+        !context.dynamicActorShadows)
+        return;
+
+    const auto& renderVisibility = context.visibility;
+    for (const size_t index : model->opaqueSubmeshOrder)
+    {
+        const noesisModel_t::Submesh& submesh = model->submeshes[index];
+        if (!D3DModelBuffers::HasDrawBuffers(model, submesh) ||
+            submesh.objectName.empty() ||
+            submesh.environmentObject ||
+            submesh.water ||
+            !submesh.hasBounds)
+        {
+            continue;
+        }
+        if (!ZoneObjectVisibility::PassesRenderVisibility(
+                model, submesh, context.rendersZoneObjects, renderVisibility))
+        {
+            continue;
+        }
+
+        D3DMATRIX objectWorld = baseWorld;
+        if (renderVisibility.overrides)
+        {
+            const auto overrideIt = renderVisibility.overrides->find(submesh.objectName);
+            if (overrideIt != renderVisibility.overrides->end())
+                objectWorld = ZoneObjectTransform::BuildWorldMatrix(overrideIt->second);
+        }
+
+        if (!context.findZoneShadowReceiverY)
+            continue;
+
+        float receiverY = 0.0f;
+        {
+            float floorY = 0.0f;
+            const float queryY = (submesh.boundsMin[1] + submesh.boundsMax[1]) * 0.5f;
+            if (!context.findZoneShadowReceiverY(
+                    submesh.boundsCenter[0], queryY, submesh.boundsCenter[2], &floorY))
+            {
+                continue;
+            }
+
+            // Scene Y increases downward. If the collision lookup returns a
+            // surface above the object's own bottom, it is usually a roof,
+            // bridge, or stacked-floor false receiver; drawing there creates
+            // the visible "floating sheet" artifact.
+            if (floorY < submesh.boundsMax[1] - 0.25f)
+                continue;
+            receiverY = floorY;
+        }
+
+        const D3DMATRIX shadowWorld =
+            BuildPlanarShadowWorld(objectWorld, receiverY, context.minuteOfDay);
+        if (shadowWorld._44 == 0.0f)
+            continue;
+
+        ApplyPlanarShadowState(device, shadowWorld);
+        D3DModelBuffers::DrawSubmesh(device, model, submesh);
+    }
     device->SetTransform(D3DTS_WORLD, &baseWorld);
 }
 
@@ -188,7 +295,7 @@ void DrawOpaqueBatch(const Context& context,
     if (!context.device || !model)
         return;
     D3DModelRenderState::ApplyOpaqueMaterial(
-        context.device, cache, batch.pMaterial, batch.pTexture);
+        context.device, cache, batch.pMaterial, batch.pTexture, batch.pNormalTexture);
     textureAnimation.Update(
         context.device, context.rendersZoneObjects && batch.animatedWater,
         0.012f, 0.006f);
@@ -250,7 +357,8 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
                 ZoneObjectTransform::ApplyWorldTransform(
                     context.device, sm.objectName, true, *renderVisibility.overrides, baseWorld);
             D3DModelRenderState::ApplyOpaqueMaterial(
-                context.device, materialCache, sm.pResolvedMaterial, sm.pResolvedTexture);
+                context.device, materialCache, sm.pResolvedMaterial, sm.pResolvedTexture,
+                sm.pResolvedNormalTexture);
             textureAnimation.Update(
                 context.device, context.rendersZoneObjects && sm.animatedWater, 0.012f, 0.006f);
             D3DModelBuffers::DrawSubmesh(context.device, pModel, sm);
@@ -336,12 +444,14 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
                 context.device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
                 context.device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
                 context.device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+                context.device->SetTexture(1, nullptr);
                 context.device->SetPixelShader(nullptr);
                 textureAnimation.Reset(context.device);
                 previousWater = false;
             }
             D3DModelRenderState::ApplyTransparentMaterial(
-                context.device, materialCache, sm.pResolvedMaterial, sm.pResolvedTexture);
+                context.device, materialCache, sm.pResolvedMaterial, sm.pResolvedTexture,
+                sm.pResolvedNormalTexture);
             textureAnimation.Update(
                 context.device, context.rendersZoneObjects && sm.animatedWater, -0.009f, 0.004f);
         }
@@ -353,6 +463,7 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
         context.device->SetRenderState(D3DRS_LIGHTING, sceneLighting);
         context.device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
         context.device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+        context.device->SetTexture(1, nullptr);
         textureAnimation.Reset(context.device);
     }
 
@@ -376,6 +487,7 @@ void RestoreModelPassState(IDirect3DDevice9* const device,
     device->SetRenderState(D3DRS_DEPTHBIAS, 0);
     device->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
     device->SetTexture(0, nullptr);
+    device->SetTexture(1, nullptr);
     textureAnimation.Update(device, false, 0.0f, 0.0f);
     device->SetPixelShader(nullptr);
     device->SetTransform(D3DTS_WORLD, &baseWorld);

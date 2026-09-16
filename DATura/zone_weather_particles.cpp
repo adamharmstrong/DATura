@@ -111,6 +111,7 @@ bool DrawAuthoredBatchedWeather(
             controller.uvScrollU, controller.uvScrollV);
         const bool shaderActive = texture && D3DModelRenderState::SetFfxiTexturePixelShader(
             device, true, expandDxt3Alpha, controller.opacity, controller.colorScale);
+        device->SetTexture(1, shaderActive ? texture : nullptr);
         D3DModelRenderState::SetTextureStageForOptionalTexture(
             device, texture, shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
 
@@ -143,6 +144,7 @@ bool DrawAuthoredBatchedWeather(
     D3DModelRenderState::SetTextureScroll(device, false);
     device->SetPixelShader(nullptr);
     device->SetTexture(0, nullptr);
+    device->SetTexture(1, nullptr);
     device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
     device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
     device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
@@ -268,9 +270,11 @@ void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
     device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
     device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
     ZoneEnvironmentRenderState::ApplyBlendMode(device, g.hasBlendMode ? g.blendMode : 0x44);
+    device->SetTexture(1, texture->pD3DTex);
     const bool shader = D3DModelRenderState::SetFfxiTexturePixelShader(device, true, texture->texType == NOESISTEX_DXT3, 1, colors);
     D3DModelRenderState::SetTextureStageForOptionalTexture(device, texture->pD3DTex, shader ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE2X);
     device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)vertices.size()/3, vertices.data(), sizeof(FFXIVertex));
+    device->SetTexture(1, nullptr);
 }
 }
 
