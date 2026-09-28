@@ -1,5 +1,21 @@
 # Renderer validation — September 5, 2026
 
+## PS2 conformance additions — 2026-09-20
+
+Add the following source-derived validation cases:
+
+- zone name beginning with `_` enables hard alpha;
+- PS2 zone alpha reference converts to normalized threshold `0.375`;
+- PS2 character alpha-tested groups use approximately `0.375`, not the later-PC `69/255` value;
+- ordinary and transparent groups remain separate through submission;
+- transparent groups use their own test/blend state and are drawn after ordinary and shadow-designated zone geometry;
+- placed-part LOD exercises both boundaries, clipping, and missing-high fallback;
+- grid-chip LOD changes at squared grid distance `5`;
+- character and background fog environments can differ;
+- weather interpolation covers fog, ambient/light values, focus, clip range, and sky parameters;
+- character environment-map and specular passes remain distinct; and
+- framebuffer-derived background light maps do not collapse into bump mapping or ordinary alpha overlays.
+
 Tested the current working tree after Slice 11c. No application source changed
 during this validation. The repeatable harness is
 `tools/test_renderer_runtime.ps1`.

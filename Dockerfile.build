@@ -1,0 +1,29 @@
+# escape=`
+
+# DATura is a Win32/MSVC project. This image is for compilation and headless
+# tests only; Windows containers do not provide an interactive desktop for the
+# DATura GUI.
+ARG WINDOWS_BASE_TAG=ltsc2025
+FROM mcr.microsoft.com/dotnet/framework/runtime:4.8.1-windowsservercore-${WINDOWS_BASE_TAG}
+
+SHELL ["cmd", "/S", "/C"]
+
+# Install the current stable Visual Studio C++ Build Tools. DATura currently
+# targets PlatformToolset v145, so the stable channel used to build this image
+# must provide that toolset.
+RUN curl.exe -SL --output C:\vs_buildtools.exe https://aka.ms/vs/stable/vs_buildtools.exe `
+    && (start /w C:\vs_buildtools.exe --quiet --wait --norestart --nocache `
+        --installPath C:\BuildTools `
+        --add Microsoft.VisualStudio.Workload.VCTools `
+        --includeRecommended `
+        || IF "%ERRORLEVEL%"=="3010" EXIT 0) `
+    && del /q C:\vs_buildtools.exe
+
+COPY docker\build.ps1 C:\DATuraBuild\build.ps1
+
+WORKDIR C:\src
+
+# VsDevCmd prepares MSBuild, MSVC, and Windows SDK environment variables. The
+# command supplied to docker run is appended after the final &&.
+ENTRYPOINT ["C:\\BuildTools\\Common7\\Tools\\VsDevCmd.bat", "-arch=x64", "-host_arch=x64", "&&"]
+CMD ["powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\DATuraBuild\\build.ps1"]

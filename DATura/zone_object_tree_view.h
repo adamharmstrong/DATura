@@ -21,6 +21,7 @@ HTREEITEM AddZoneTreeItem(HWND tree, HTREEITEM parent, const char* text, LPARAM 
 void AddZoneTreePlaceholder(HWND tree, HTREEITEM parent);
 bool ZoneTreeNodeHasPlaceholder(HWND tree, HTREEITEM item);
 void ZoneTreeDeleteChildren(HWND tree, HTREEITEM item);
+bool SelectMapObjectIndex(HWND tree, int mapObjectIndex);
 
 void AddZoneTreeField(HWND tree, HTREEITEM parent, const char* name, const char* value);
 void AddZoneTreeIntField(HWND tree, HTREEITEM parent, const char* name, int value);

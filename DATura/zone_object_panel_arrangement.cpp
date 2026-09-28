@@ -13,7 +13,7 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
     const Controls& controls = context.controls;
     const int margin = 8;
     const int headerHeight = 56;
-    const int bottomHeight = 230;
+    const int bottomHeight = 270;
     const int listBottom = clientHeight - bottomHeight;
     int placedX = 0;
     int placedWidth = 0;
@@ -29,8 +29,8 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
     const int bottomTop = listBottom + 42;
     const int toolWidth = 150;
     const int inspectorX = margin + toolWidth + 14;
-    const int actionY = bottomTop + 4;
-    const int transformTop = bottomTop + 42;
+    const int actionY = bottomTop + 64;
+    const int transformTop = bottomTop + 96;
     const int rowLabelWidth = 70;
     const int transformColumnWidth = 80;
     const int transformEditWidth = 76;
@@ -53,7 +53,7 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
         if (controls.placedListLabel)
         {
             SetWindowTextA(controls.placedListLabel, "DAT File Contents");
-            ShowWindow(controls.placedListLabel, SW_SHOW);
+            ShowWindow(controls.placedListLabel, SW_HIDE);
             MoveWindow(controls.placedListLabel, margin, 36, clientWidth - margin * 2 - 140, 18, TRUE);
         }
         if (controls.unreferencedListLabel) ShowWindow(controls.unreferencedListLabel, SW_HIDE);
@@ -69,24 +69,24 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
         if (controls.placedHideAllButton) MoveWindow(controls.placedHideAllButton, margin + 110, paneButtonTop, 104, 24, TRUE);
         if (controls.unreferencedShowAllButton) MoveWindow(controls.unreferencedShowAllButton, margin + 220, paneButtonTop, 90, 24, TRUE);
         if (controls.unreferencedHideAllButton) MoveWindow(controls.unreferencedHideAllButton, margin + 316, paneButtonTop, 90, 24, TRUE);
-        if (controls.collisionVisibleCheck) MoveWindow(controls.collisionVisibleCheck, margin + 424, paneButtonTop, 360, 24, TRUE);
+        if (controls.collisionVisibleCheck) MoveWindow(controls.collisionVisibleCheck, margin + 424, paneButtonTop - 2, 420, 28, TRUE);
     }
     else
     {
         if (controls.placedListLabel)
         {
             SetWindowTextA(controls.placedListLabel, "Placed Geometry");
-            ShowWindow(controls.placedListLabel, SW_SHOW);
+            ShowWindow(controls.placedListLabel, SW_HIDE);
             MoveWindow(controls.placedListLabel, placedX, 36, placedWidth, 18, TRUE);
         }
         if (controls.unreferencedListLabel)
         {
-            ShowWindow(controls.unreferencedListLabel, SW_SHOW);
+            ShowWindow(controls.unreferencedListLabel, SW_HIDE);
             MoveWindow(controls.unreferencedListLabel, rawX, 36, rawWidth, 18, TRUE);
         }
         if (controls.collisionListLabel)
         {
-            ShowWindow(controls.collisionListLabel, SW_SHOW);
+            ShowWindow(controls.collisionListLabel, SW_HIDE);
             MoveWindow(controls.collisionListLabel, collisionX, 36, collisionWidth, 18, TRUE);
         }
         if (controls.dataTree)
@@ -108,14 +108,15 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
         if (controls.placedHideAllButton) MoveWindow(controls.placedHideAllButton, placedX + 110, paneButtonTop, 104, 24, TRUE);
         if (controls.unreferencedShowAllButton) MoveWindow(controls.unreferencedShowAllButton, rawX, paneButtonTop, 90, 24, TRUE);
         if (controls.unreferencedHideAllButton) MoveWindow(controls.unreferencedHideAllButton, rawX + 96, paneButtonTop, 90, 24, TRUE);
-        if (controls.collisionVisibleCheck) MoveWindow(controls.collisionVisibleCheck, collisionX, paneButtonTop, collisionWidth, 24, TRUE);
+        if (controls.collisionVisibleCheck) MoveWindow(controls.collisionVisibleCheck, collisionX, paneButtonTop - 2, collisionWidth, 28, TRUE);
     }
     if (controls.loadingLabel) MoveWindow(controls.loadingLabel, 18, 58, 220, 32, TRUE);
 
     for (int index = 0; index < controls.toolButtonCount; ++index)
     {
         if (controls.toolButtons && controls.toolButtons[index])
-            MoveWindow(controls.toolButtons[index], margin, bottomTop + index * 28, toolWidth, 26, TRUE);
+            MoveWindow(controls.toolButtons[index], margin + index * (toolWidth + 8),
+                bottomTop + 30, toolWidth, 26, TRUE);
     }
 
     if (controls.showSelectedButton) MoveWindow(controls.showSelectedButton, inspectorX, actionY, 160, 26, TRUE);

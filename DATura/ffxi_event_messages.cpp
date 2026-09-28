@@ -14,6 +14,20 @@ std::uint32_t U32(const std::vector<std::uint8_t>& b, std::size_t p)
     return static_cast<std::uint32_t>(b[p]) | (static_cast<std::uint32_t>(b[p + 1]) << 8) |
         (static_cast<std::uint32_t>(b[p + 2]) << 16) | (static_cast<std::uint32_t>(b[p + 3]) << 24);
 }
+
+std::size_t QueryControlSize(const std::vector<std::uint8_t>& raw, std::size_t at)
+{
+    if (at + 1 >= raw.size()) return 1;
+    switch (raw[at + 1])
+    {
+    case 0x8f: case 0x8e: case 0x8d: case 0x8c: case 0x8b: case 0x8a:
+    case 0x89: case 0x88: case 0x87: case 0x86: case 0x84: case 0x83:
+    case 0x82: case 0x81: case 0x80: case 0x36: case 0x35: case 0x34:
+        return at + 2 < raw.size() ? 3 : 2;
+    default:
+        return 2;
+    }
+}
 }
 
 std::string DecodeText(const std::vector<std::uint8_t>& raw)
@@ -38,10 +52,12 @@ std::string DecodeText(const std::vector<std::uint8_t>& raw)
     return text;
 }
 
-bool SplitChoiceText(const Entry& entry, std::string& prompt, std::vector<std::string>& options)
+bool SplitChoiceText(const Entry& entry, std::uint32_t hiddenMask, std::string& prompt,
+    std::vector<std::string>& options, std::vector<std::uint32_t>& optionValues)
 {
     prompt.clear();
     options.clear();
+    optionValues.clear();
     const auto& raw = entry.raw;
     const auto marker = std::find(raw.begin(), raw.end(), static_cast<std::uint8_t>(0x0b));
     if (marker == raw.end())
@@ -50,21 +66,43 @@ bool SplitChoiceText(const Entry& entry, std::string& prompt, std::vector<std::s
     std::vector<std::uint8_t> promptBytes(raw.begin(), marker);
     prompt = DecodeText(promptBytes);
 
-    std::size_t start = static_cast<std::size_t>((marker - raw.begin()) + 1);
-    while (start < raw.size())
+    std::size_t at = static_cast<std::size_t>((marker - raw.begin()) + 1);
+    std::uint32_t sourceIndex = 0;
+    std::vector<std::uint8_t> optionBytes;
+    const auto finishOption = [&]()
     {
-        if (raw[start] == 0 || raw[start] == 0x7f)
-            break;
-        std::size_t end = start;
-        while (end < raw.size() && raw[end] != 0 && raw[end] != 0x07 && raw[end] != 0x7f)
-            ++end;
-        std::vector<std::uint8_t> optionBytes(raw.begin() + start, raw.begin() + end);
         std::string option = DecodeText(optionBytes);
-        if (!option.empty())
+        if (!option.empty() && (sourceIndex >= 32 || (hiddenMask & (1u << sourceIndex)) == 0))
+        {
             options.push_back(std::move(option));
-        if (end >= raw.size() || raw[end] == 0 || raw[end] == 0x7f)
+            optionValues.push_back(sourceIndex);
+        }
+        ++sourceIndex;
+        optionBytes.clear();
+    };
+    while (at < raw.size())
+    {
+        const std::uint8_t c = raw[at];
+        if (c == 0)
+        {
+            finishOption();
             break;
-        start = end + 1;
+        }
+        if (c == 0x07)
+        {
+            finishOption();
+            ++at;
+            continue;
+        }
+        if (c == 0x7f)
+        {
+            at += QueryControlSize(raw, at);
+            continue;
+        }
+        optionBytes.push_back(c);
+        if ((c & 0x80) != 0 && at + 1 < raw.size())
+            optionBytes.push_back(raw[++at]);
+        ++at;
     }
     return !options.empty();
 }

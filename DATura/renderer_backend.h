@@ -35,6 +35,7 @@ namespace RendererBackend
         bool ApplyDisplayConfiguration(const DisplayConfiguration& display);
         bool Resize(int clientWidth, int clientHeight);
         FrameStatus PrepareFrame();
+        HRESULT ResolveFrame();
         HRESULT Present();
         void Shutdown();
 

@@ -129,6 +129,8 @@ void GameUiConfig_SetDefaults(GameUiConfig &config)
     config.chatLogTimeoutSeconds = 15;
     config.chatLogWidthPercent = 50;
     config.chatLogHeightPercent = 25;
+    CopyText(config.chatLogFont, sizeof(config.chatLogFont), "FFXI");
+    config.chatLogFontSize = 17;
     config.playerNameplate.enabled = true;
     config.playerNameplate.linkshellColor = RGB(160, 128, 224);
     config.playerNameplate.subtitleMode = PlayerSubtitleMode::Linkshell;
@@ -209,6 +211,8 @@ bool GameUiConfig_Load(GameUiConfig &config)
     config.chatLogWidthPercent = std::clamp(ReadInt(p, "ChatLog", "WidthPercent", 50), 20, 100);
     config.chatLogHeightPercent = std::clamp(ReadInt(p, "ChatLog", "HeightPercent", 25), 10, 75);
     config.chatLogTimeoutSeconds = std::clamp(ReadInt(p, "ChatLog", "TimeoutSeconds", 15), 1, 300);
+    ReadString(p, "ChatLog", "Font", "FFXI", config.chatLogFont, sizeof(config.chatLogFont));
+    config.chatLogFontSize = std::clamp(ReadInt(p, "ChatLog", "FontSize", 17), 10, 32);
     auto& player = config.playerNameplate;
     player.enabled = ReadInt(p, "Player.Nameplate", "Enabled", 1) != 0;
     ReadString(p, "Player.Nameplate", "Name", "", player.name, sizeof(player.name));
@@ -357,8 +361,13 @@ bool GameUiConfig_SaveChatLog(const GameUiConfig &config)
         std::to_string(std::clamp(config.chatLogWidthPercent, 20, 100)).c_str(), path) != FALSE;
     const bool heightSaved = WritePrivateProfileStringA("ChatLog", "HeightPercent",
         std::to_string(std::clamp(config.chatLogHeightPercent, 10, 75)).c_str(), path) != FALSE;
+    const bool fontSaved = WritePrivateProfileStringA("ChatLog", "Font",
+        config.chatLogFont[0] ? config.chatLogFont : "FFXI", path) != FALSE;
+    const bool fontSizeSaved = WritePrivateProfileStringA("ChatLog", "FontSize",
+        std::to_string(std::clamp(config.chatLogFontSize, 10, 32)).c_str(), path) != FALSE;
     return WritePrivateProfileStringA("ChatLog", "TimeoutSeconds",
-        std::to_string(std::clamp(config.chatLogTimeoutSeconds, 1, 300)).c_str(), path) != FALSE && widthSaved && heightSaved;
+        std::to_string(std::clamp(config.chatLogTimeoutSeconds, 1, 300)).c_str(), path) != FALSE &&
+        widthSaved && heightSaved && fontSaved && fontSizeSaved;
 }
 
 bool GameUiConfig_SavePlayerNameplate(const GameUiConfig &config)

@@ -3,6 +3,7 @@
 #include "model_ff11.h"
 #include "model_renderer.h"
 #include "d3d_model_render_state.h"
+#include "custom_texture_assets.h"
 #include "d3d_math.h"
 #include "zone_model_render_metadata.h"
 #include "zone_environment_fog.h"
@@ -197,7 +198,27 @@ struct Texture
             for (int x = 0; x < 4; ++x) row[x] = color;
         }
         gpu->UnlockRect(0); info.pD3DTex = gpu.ptr;
+        info.w = 4; info.h = 4;
         info.texType = dxt3Nibble >= 0 ? NOESISTEX_DXT3 : NOESISTEX_RGBA32;
+        return true;
+    }
+    bool CreateRamp(IDirect3DDevice9* device)
+    {
+        if (FAILED(device->CreateTexture(4, 4, 1, 0, D3DFMT_A8R8G8B8,
+            D3DPOOL_MANAGED, &gpu.ptr, nullptr)))
+        { Check(false, "create bump-map ramp texture"); return false; }
+        D3DLOCKED_RECT lock = {};
+        if (FAILED(gpu->LockRect(0, &lock, nullptr, 0)))
+        { Check(false, "lock bump-map ramp texture"); return false; }
+        const BYTE levels[4] = { 64, 128, 192, 255 };
+        for (int y = 0; y < 4; ++y)
+        {
+            DWORD* row = reinterpret_cast<DWORD*>(static_cast<char*>(lock.pBits) + y * lock.Pitch);
+            for (int x = 0; x < 4; ++x)
+                row[x] = D3DCOLOR_ARGB(255, levels[x], levels[x], levels[x]);
+        }
+        gpu->UnlockRect(0);
+        info.pD3DTex = gpu.ptr; info.w = 4; info.h = 4; info.texType = NOESISTEX_RGBA32;
         return true;
     }
 };
@@ -280,6 +301,26 @@ void TestTextureTransitions(IDirect3DDevice9* device, const std::filesystem::pat
         Expect(pixels, 96, 64, transparent ? std::array<int,3>{82,116,62} : std::array<int,3>{144,192,64},
             transparent ? "untextured transparency survives a textured predecessor" : "untextured color survives a textured predecessor");
     }
+}
+
+void TestClassicBumpMapping(IDirect3DDevice9* device, const std::filesystem::path& output)
+{
+    Texture ramp;
+    if (!ramp.CreateRamp(device)) return;
+    auto opaque = Material("bump-ramp", true);
+    const auto draw = [&](const bool enabled)
+    {
+        D3DModelRenderState::MaterialBindingCache cache;
+        D3DModelRenderState::ApplyOpaqueMaterial(
+            device, cache, &opaque, &ramp.info, enabled, 1.0f);
+        ImmediateQuad(device, -.85f, .85f, 2, 0x80808080);
+    };
+    const Capture flat = Frame(device, [&] { draw(false); });
+    const Capture bumped = Frame(device, [&] { draw(true); }, output / "classic-bump-ramp.bmp");
+    const int flatRed = static_cast<int>((flat[64 * size + 64] >> 16) & 255);
+    const int bumpedRed = static_cast<int>((bumped[64 * size + 64] >> 16) & 255);
+    Check(bumpedRed - flatRed >= 40,
+        "classic bump mapping embosses diffuse height differences without a normal map");
 }
 
 struct Model
@@ -443,8 +484,11 @@ int main(int argc, char** argv)
     if (!device.gpu) return 2;
     D3DCAPS9 caps = {}; device.gpu->GetDeviceCaps(&caps);
     Check(caps.PixelShaderVersion >= D3DPS_VERSION(2,0),"required production ps_2_0 shader support");
+    Check(CustomTextureAssets::SupportsPbr(device.gpu.ptr),
+        "optional metallic/roughness PBR shader compiles on the D3D9 device");
     TestAlpha(device.gpu.ptr,output);
     TestTextureTransitions(device.gpu.ptr,output);
+    TestClassicBumpMapping(device.gpu.ptr,output);
     TestDepthOrdering(device.gpu.ptr,output);
     TestFog(device.gpu.ptr,output);
     std::cout << "Material/depth/fog: " << assertions << " assertions, " << failures << " failures\n";

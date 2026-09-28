@@ -1,5 +1,13 @@
 # Generator-owned water rendering
 
+## PS2 client evidence revision — 2026-09-20
+
+The original PS2 client independently confirms that water has a dedicated rendering path (`ko_water`) and is also coordinated through generator/effect resources. Water should therefore remain generator-owned rather than being folded into ordinary `0x2E` terrain material handling.
+
+The client keeps water rendering distinct from three nearby systems that can look similar in screenshots: linear environment fog, framebuffer-derived background light maps, and general distortion effects. Implementations should preserve those ownership boundaries. Weather may control color, visibility, and activation, but it does not turn the water surface into an ordinary weather record.
+
+The decompilation does not yet justify replacing this document's generator-specific resource findings with one universal water shader. Exact wave, reflection, and distortion equations still require targeted tracing through the water and effect modules.
+
 ## Scope
 
 Normal zone loads now enable a dedicated water path. The first supported asset families are permanent river sheets (`effect  kaw1`), base sea meshes (`umi0`, `umif`, `ukro` with `effect  umi0`), city canal meshes (`allsea`, `lowsea` with `sea     sea01`), and untextured `mizu`/`funmiz` basins. Admission requires a persistent, unattached, automatically started world MMB generator. Arbitrary transparent effects and unreferenced geometry are not enabled by this feature.

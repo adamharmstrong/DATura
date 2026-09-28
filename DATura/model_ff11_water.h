@@ -117,7 +117,9 @@ inline bool IsSurfaceBatch(const char *objectName, const char *materialName)
     if (object == "umi0" || object == "umif" || object == "ukro")
         return IsSeaSurfaceBatch(objectName, materialName);
     if (material == "effect  kaw1") return true;
-    if (material == "sea     sea01" && (object == "allsea" || object == "lowsea"))
+    if (material == "sea     sea01" &&
+        (object == "allsea" || object == "lowsea" || object == "sea0" ||
+         object == "1sea"))
         return true;
     return material.empty() && (object == "mizu" || object == "funmiz");
 }
@@ -162,7 +164,7 @@ inline std::shared_ptr<ZoneWater::Surface> BuildSurface(const ff11GeneratorRecor
         surface->colorScale[0] = ((generator.colorBgra >> 16) & 0xff) / 128.0f;
         surface->colorScale[1] = ((generator.colorBgra >> 8) & 0xff) / 128.0f;
         surface->colorScale[2] = (generator.colorBgra & 0xff) / 128.0f;
-        surface->colorScale[3] = ((generator.colorBgra >> 24) & 0xff) / 64.0f;
+        surface->colorScale[3] = ((generator.colorBgra >> 24) & 0xff) / 128.0f;
     }
     const char *names[] = { generator.redKeyframe, generator.greenKeyframe,
                             generator.blueKeyframe, generator.alphaKeyframe };

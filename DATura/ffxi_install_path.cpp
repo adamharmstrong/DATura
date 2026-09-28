@@ -6,27 +6,80 @@
 
 namespace
 {
-constexpr char kPlayOnlineRegKey[] = "SOFTWARE\\PlayOnlineUS\\1000";
-constexpr char kPlayOnlineRegKeyWow[] = "SOFTWARE\\WOW6432Node\\PlayOnlineUS\\1000";
-constexpr char kPlayOnlineValue[] = "InstallFolder";
+constexpr char kInstallFolderValue[] = "0001";
+
+constexpr const char* kInstallFolderKeys[] =
+{
+    "SOFTWARE\\PlayOnlineUS\\InstallFolder",
+    "SOFTWARE\\PlayOnlineEU\\InstallFolder",
+    "SOFTWARE\\PlayOnline\\InstallFolder"
+};
 
 bool ReadLocalMachineString(const char* keyPath, const char* valueName,
+                            const REGSAM registryView,
                             char* outPath, const std::size_t outPathSize)
 {
     if (!outPath || outPathSize == 0 || outPathSize > MAXDWORD)
         return false;
 
     HKEY key = nullptr;
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, keyPath, 0, KEY_READ, &key) != ERROR_SUCCESS)
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, keyPath, 0,
+                      KEY_READ | registryView, &key) != ERROR_SUCCESS)
         return false;
 
+    char registryValue[MAX_PATH] = {};
     DWORD type = 0;
-    DWORD size = static_cast<DWORD>(outPathSize);
+    DWORD size = sizeof(registryValue);
     const bool success = RegQueryValueExA(key, valueName, nullptr, &type,
-        reinterpret_cast<LPBYTE>(outPath), &size) == ERROR_SUCCESS &&
+        reinterpret_cast<LPBYTE>(registryValue), &size) == ERROR_SUCCESS &&
         (type == REG_SZ || type == REG_EXPAND_SZ);
     RegCloseKey(key);
-    return success;
+    if (!success || size == 0 || size > sizeof(registryValue))
+        return false;
+
+    registryValue[sizeof(registryValue) - 1] = '\0';
+
+    char expanded[MAX_PATH] = {};
+    const char* path = registryValue;
+    if (type == REG_EXPAND_SZ)
+    {
+        const DWORD expandedLength = ExpandEnvironmentStringsA(
+            registryValue, expanded, static_cast<DWORD>(sizeof(expanded)));
+        if (expandedLength == 0 || expandedLength > sizeof(expanded))
+            return false;
+        path = expanded;
+    }
+
+    char romPath[MAX_PATH] = {};
+    if (strcpy_s(romPath, path) != 0)
+        return false;
+    const std::size_t pathLength = std::strlen(romPath);
+    const char separator = pathLength > 0 &&
+        (romPath[pathLength - 1] == '\\' || romPath[pathLength - 1] == '/')
+        ? '\0' : '\\';
+    if (separator != '\0' && strcat_s(romPath, "\\") != 0)
+        return false;
+    if (strcat_s(romPath, "ROM") != 0)
+        return false;
+    const DWORD romAttributes = GetFileAttributesA(romPath);
+    if (romAttributes == INVALID_FILE_ATTRIBUTES ||
+        (romAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+    {
+        return false;
+    }
+
+    if (strcpy_s(outPath, outPathSize, path) != 0)
+        return false;
+    const std::size_t outputLength = std::strlen(outPath);
+    if (outputLength > 0 && outPath[outputLength - 1] != '\\' &&
+        outPath[outputLength - 1] != '/')
+    {
+        if (outputLength + 1 >= outPathSize)
+            return false;
+        outPath[outputLength] = '\\';
+        outPath[outputLength + 1] = '\0';
+    }
+    return true;
 }
 }
 
@@ -34,8 +87,19 @@ namespace FFXIInstallPath
 {
 bool DetectFromRegistry(char* outPath, const std::size_t outPathSize)
 {
-    return ReadLocalMachineString(kPlayOnlineRegKey, kPlayOnlineValue, outPath, outPathSize) ||
-           ReadLocalMachineString(kPlayOnlineRegKeyWow, kPlayOnlineValue, outPath, outPathSize);
+    constexpr REGSAM kRegistryViews[] = { KEY_WOW64_32KEY, KEY_WOW64_64KEY };
+    for (const REGSAM registryView : kRegistryViews)
+    {
+        for (const char* keyPath : kInstallFolderKeys)
+        {
+            if (ReadLocalMachineString(keyPath, kInstallFolderValue,
+                                       registryView, outPath, outPathSize))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool LoadSavedPath(const char* applicationRegistryKey, const char* valueName,
@@ -94,6 +158,9 @@ bool InitializePath(const char* applicationRegistryKey, const char* valueName,
         return false;
 
     if (LoadSavedPath(applicationRegistryKey, valueName, outPath, outPathSize))
+        return true;
+
+    if (DetectFromRegistry(outPath, outPathSize))
         return true;
 
     return strcpy_s(outPath, outPathSize, defaultPath) == 0;

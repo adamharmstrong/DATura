@@ -1,5 +1,13 @@
 # City room coverage
 
+## PS2 client evidence revision — 2026-09-20
+
+The original PS2 client confirms that city-room coverage is controlled through dedicated visibility data rather than distance culling alone. Runtime placed parts carry `clip_id`, `env_no`, `place_code`, LOD thresholds, draw distance, point-light indices, and water height.
+
+Door records own lists of placed parts. Entering a matching room marks those parts hidden or visible through the placement flag, records the indoor clip identifier, and switches the map location between the main location table and an environment-specific location table. Rendering then uses the selected environment number for fog, lighting, visibility, shadows, and transparent geometry.
+
+Coverage tests should therefore verify all of these together: room/door identifier, part list membership, `clip_id`, active `env_no`, selected location table, LOD, and the hidden flag. A mesh that exists and parses correctly can still be absent because it belongs to a different room environment.
+
 The loader now resolves 230 drawable companion DATs across 25 city zones,
 175 more than the original Bastok catalog. It also recognizes one referenced
 Windurst Walls environment placeholder with no drawable geometry, skipped by

@@ -1,5 +1,19 @@
 # Reference-driven DATura implementation
 
+## PS2 reference integration — 2026-09-20
+
+Use the 2003 PS2 client decompilation as the first behavioral reference for features present in that release. Immediate implementation targets are:
+
+1. exact placed-part LOD thresholds, clipping, and fallbacks;
+2. platform-qualified alpha thresholds;
+3. preservation of native ordinary/transparent group boundaries;
+4. separate character/background weather environments and vector interpolation;
+5. explicit character environment-map and specular passes;
+6. the framebuffer-derived background light-map pass; and
+7. indoor `clip_id`/`env_no` room visibility.
+
+Later-client behavior remains authoritative for features or render paths not present in the 2003 executable. Every ported rule should record its client generation and whether its name came from debug symbols or inference.
+
 Authorized by the user on 2026-09-09: implement the improvements identified from XI-Test-Client, Kuluu, xi-tools, xi-zone-editor and FFXINavMeshes, beginning with water. Work is staged so each feature has a reviewable implementation and appropriate checks. Existing uncommitted work must be preserved.
 
 ## Stages and status

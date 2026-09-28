@@ -16,7 +16,7 @@ struct State
 
 enum class Action { None, Opened, Closed, Activated };
 
-Action HandleKey(State& state, unsigned int key);
+Action HandleKey(State& state, unsigned int key, bool showMogHouse);
 void Draw(HDC dc, const State& state, int width, int height, bool showMogHouse);
 void DrawTextures(IDirect3DDevice9* device, bool enableMipMapping,
                   noesisModel_t* uiModel, const State& state,

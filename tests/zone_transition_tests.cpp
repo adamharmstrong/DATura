@@ -1,4 +1,5 @@
 #include "../DATura/zone_transition.h"
+#include "../DATura/zone_entry_message.h"
 #include <cstdlib>
 #include <iostream>
 
@@ -10,6 +11,18 @@ static void Check(bool value, const char* message)
 int main()
 {
     using namespace ZoneTransition;
+
+    Check(EncodeHeading(0.0f) == 0 && EncodeHeading(1.570796f) == 64 &&
+          EncodeHeading(3.141593f) == 128 && EncodeHeading(4.712389f) == 192 &&
+          EncodeHeading(5.497787f) == 224,
+        "FFXI packet heading encoding is incorrect");
+    Check(EncodeHeading(kHeadingTurn) == 0 && EncodeHeading(-1.570796f) == 192,
+        "FFXI packet heading wrapping is incorrect");
+
+    Check(ZoneEntryMessage::ForZone(235) == "You have entered Bastok Markets.",
+        "Known zone entry message is incorrect");
+    Check(ZoneEntryMessage::ForZone(-1).empty(),
+        "Unknown zones should not produce an entry message");
     for (const auto& line : lines)
     {
         for (bool mirror : { false, true })
@@ -36,7 +49,8 @@ int main()
             }
             Check(!Crossed(line.fromZone, scene(wideStart), scene(wideEnd), mirror), "Outside corridor triggered");
             const float yaw = ArrivalYaw(line, mirror);
-            const auto forward = scene({ std::cos(line.heading), 0, -std::sin(line.heading) });
+            const float heading = DecodeHeading(line.heading);
+            const auto forward = scene({ std::cos(heading), 0, -std::sin(heading) });
             Check(std::fabs(-std::sin(yaw)-forward[0]) < 0.00001f &&
                 std::fabs(-std::cos(yaw)-forward[2]) < 0.00001f, "Arrival heading incorrect");
             for (const auto& reverse : lines)

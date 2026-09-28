@@ -45,7 +45,8 @@ bool DrawAuthoredBatchedWeather(
     const char *weatherPath, const std::vector<ff11GeneratorRecord_t> &generators,
     const std::vector<ff11KeyframeRecord_t> &keyframes,
     const float cameraX, const float cameraY, const float cameraZ,
-    const ff11GeneratorRecord_t *generator, double seconds, int vanadielMinute)
+    const ff11GeneratorRecord_t *generator, double seconds, int vanadielMinute,
+    const float opacity)
 {
     if (!device || !model || !generator || !generator->linkedResource[0])
         return false;
@@ -110,7 +111,8 @@ bool DrawAuthoredBatchedWeather(
             controller.uvScrollU != 0.0f || controller.uvScrollV != 0.0f,
             controller.uvScrollU, controller.uvScrollV);
         const bool shaderActive = texture && D3DModelRenderState::SetFfxiTexturePixelShader(
-            device, true, expandDxt3Alpha, controller.opacity, controller.colorScale);
+            device, true, expandDxt3Alpha,
+            controller.opacity * std::clamp(opacity, 0.0f, 1.0f), controller.colorScale);
         device->SetTexture(1, shaderActive ? texture : nullptr);
         D3DModelRenderState::SetTextureStageForOptionalTexture(
             device, texture, shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
@@ -155,7 +157,7 @@ bool DrawAuthoredBatchedWeather(
 
 void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
                  const ff11GeneratorRecord_t &g, const std::vector<ff11KeyframeRecord_t> &curves,
-                 double seconds, int minute, const float camera[3])
+                 double seconds, int minute, const float camera[3], const float opacity)
 {
     const noesisModel_t::WeatherSprite *sprite = nullptr;
     for (const auto &candidate : model->weatherSprites)
@@ -168,10 +170,35 @@ void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
     }
     if (!sprite || sprite->vertices.size() < 6 || !model->pMatData) return;
     noesisTex_t *texture = nullptr;
+    // Batched weather can reuse a global animated shape as its card/UV
+    // template while supplying the atlas in the active weather directory.
+    // Konschtat's ~1du is the retail example: hit3 supplies the 16 shapes,
+    // but f_ko/weat/dust/dust supplies dust00.  Binding hit3's global hit111
+    // atlas is what turns the field into a falling orange strip.
+    const char *weatherName = strrchr(g.directoryPath, '/');
+    weatherName = weatherName ? weatherName + 1 : g.directoryPath;
+    char localAtlasName[32] = {};
+    char scopedLocalAtlasName[128] = {};
+    if (weatherName && weatherName[0])
+    {
+        sprintf_s(localAtlasName, "%s00", weatherName);
+        Model_FF11_BuildScopedResourceName(scopedLocalAtlasName,
+            sizeof(scopedLocalAtlasName), g.directoryPath, localAtlasName);
+    }
     for (int i = 0; i < model->pMatData->texCount; ++i)
-        if (model->pMatData->textures[i] && model->pMatData->textures[i]->name &&
-            sprite->textureName == model->pMatData->textures[i]->name)
-            texture = model->pMatData->textures[i];
+    {
+        noesisTex_t *candidate = model->pMatData->textures[i];
+        if (!candidate || !candidate->name)
+            continue;
+        if (scopedLocalAtlasName[0] &&
+            _stricmp(scopedLocalAtlasName, candidate->name) == 0)
+        {
+            texture = candidate;
+            break;
+        }
+        if (!texture && sprite->textureName == candidate->name)
+            texture = candidate;
+    }
     if (!texture || !texture->pD3DTex) return;
     float origin[3] = {};
     float distanceSquared = 0;
@@ -210,7 +237,9 @@ void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
             g.hasColor ? ((g.colorBgra >> 24) & 255) / 128.0f : 1.0f) :
             (g.hasColor ? ((g.colorBgra >> 24) & 255) / 128.0f : 1.0f);
         if (!std::isfinite(alpha) || alpha * dayAlpha <= 0.001f) continue;
-        for (unsigned int i = 0; i < g.particlesPerEmission && particles.size() < 32768; ++i)
+        // ShapeAnm::DrawVuParticle iterates through mParticleCount + 1.
+        const unsigned int particleCount = (unsigned int)g.particlesPerEmission + 1u;
+        for (unsigned int i = 0; i < particleCount && particles.size() < 32768; ++i)
         {
             const unsigned int seed = g.sourceDataOffset ^ (unsigned int)(cycle-generation)*747796405u ^ i*2891336453u;
             const float radius = g.hasPositionVariance ? g.spawnRadius * Hash(seed+1) : 0;
@@ -218,7 +247,7 @@ void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
             const float pitch = (Hash(seed+3)*2-1)*3.14159265f;
             const float direction[3] = {cosf(pitch)*cosf(yaw), sinf(pitch), cosf(pitch)*sinf(yaw)};
             Particle particle = {};
-            particle.alpha = std::clamp(alpha * dayAlpha, 0.0f, 1.0f);
+            particle.alpha = std::clamp(alpha * dayAlpha * opacity, 0.0f, 1.0f);
             const size_t frames = sprite->vertices.size()/6;
             particle.spriteOffset = g.animateSprite ?
                 std::min(frames-1, static_cast<size_t>((frames+1)*age/life))*6 : 0;
@@ -282,9 +311,12 @@ void DrawAtTime(IDirect3DDevice9 *device, noesisModel_t *model, bool environment
           bool enableMipMapping, const char *weatherPath,
           const std::vector<ff11GeneratorRecord_t> &generators,
           const std::vector<ff11KeyframeRecord_t> &keyframes,
-          float cameraX, float cameraY, float cameraZ, double seconds, int minute)
+          float cameraX, float cameraY, float cameraZ, double seconds, int minute,
+          float opacity)
 {
-    if (!device || !model || !environmentValid || !std::isfinite(seconds) || seconds < 0) return;
+    opacity = std::clamp(opacity, 0.0f, 1.0f);
+    if (!device || !model || !environmentValid || !std::isfinite(seconds) ||
+        seconds < 0 || opacity <= 0.001f) return;
     IDirect3DStateBlock9 *saved = nullptr;
     if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &saved))) return;
     const float camera[3] = {cameraX,cameraY,cameraZ};
@@ -294,9 +326,9 @@ void DrawAtTime(IDirect3DDevice9 *device, noesisModel_t *model, bool environment
         // Some 0x0E resources are complete rain card fields already instantiated
         // as environment meshes. Keep that path before trying a sprite atlas.
         const bool hasMeshBatch = DrawAuthoredBatchedWeather(device, model, enableMipMapping, weatherPath, generators,
-            keyframes, cameraX, cameraY, cameraZ, &g, seconds, minute);
+            keyframes, cameraX, cameraY, cameraZ, &g, seconds, minute, opacity);
         if (!hasMeshBatch && g.linkedDataType == 0x0e)
-            DrawSprites(device, model, g, keyframes, seconds, minute, camera);
+            DrawSprites(device, model, g, keyframes, seconds, minute, camera, opacity);
     }
     saved->Apply();
     saved->Release();
@@ -306,9 +338,10 @@ void Draw(IDirect3DDevice9 *device, noesisModel_t *model, bool environmentValid,
           bool enableMipMapping, const char *weatherPath,
           const std::vector<ff11GeneratorRecord_t> &generators,
           const std::vector<ff11KeyframeRecord_t> &keyframes,
-          float cameraX, float cameraY, float cameraZ)
+          float cameraX, float cameraY, float cameraZ, float opacity)
 {
     DrawAtTime(device, model, environmentValid, enableMipMapping, weatherPath, generators,
-        keyframes, cameraX, cameraY, cameraZ, GetTickCount64()*0.001, ZoneEnvironmentState::CurrentMinuteOfDay());
+        keyframes, cameraX, cameraY, cameraZ, GetTickCount64()*0.001,
+        ZoneEnvironmentState::CurrentMinuteOfDay(), opacity);
 }
 }

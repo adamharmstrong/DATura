@@ -1,5 +1,19 @@
 # FFXI Rendering: Findings for the DATura and xim/cexi Teams
 
+## PS2 client revision — 2026-09-20
+
+The original PS2 retail client changes the scope of several “retail-exact” statements in this document:
+
+- `69/255` is not universal character alpha behavior. The PS2 display-list path uses reference `0x30`, corresponding to approximately `0.375` after conversion from its native half-range alpha convention.
+- The zone leading-underscore classifier is now direct client evidence: the model identifier's low byte is compared with ASCII `_`.
+- The PS2 zone test reference is `0x60`, exactly matching conventional normalized threshold `0.375`.
+- Zone ordinary and transparent records are stored in separate runtime group arrays and drawn with distinct state.
+- Placed-part LOD boundaries, clipping, and high-to-medium-to-low fallback are directly implemented.
+- PS2 character environment-map and specular passes are separate, whereas later PC findings describe a cubemap-oriented second stage.
+- A framebuffer-derived PS2 background light-map pass exists and belongs in the multi-texture ledger.
+
+All cross-client recommendations below should preserve these platform distinctions rather than replacing one client's value with another's.
+
 **Date:** 2026-07-22
 **From:** the third RE effort (FFXiMain disassembly + DAT corpus tooling)
 **Replying to:** `FFXI_GEOMETRY_AND_TEXTURE_RENDERING.md` (DATura) and the xim/cexi corrections list
@@ -36,9 +50,9 @@ That is exactly DATura's `size = (info >> 3) & 0x7FFFF0`. xim's `(info >> 3) & 0
 
 (War story for the joint doc: we ourselves once used a 17-bit mask, which truncates ≥2 MB zone blocks. 19-bit walks every monolithic zone cleanly.)
 
-## 1.2 DATura's character alpha-test 0.5 is wrong; xim's 69/255 is retail-exact
+## 1.2 Character alpha thresholds differ between client generations
 
-See §2.1 for the full table. The retail character/actor pass sets `ALPHAREF = 0x45` (69) — xim's 0.27 character discard is the retail value. DATura's 0.5 generic character threshold should be replaced.
+See §2.1 for the full table. The later PC client examined for the original report sets the character/actor pass to `ALPHAREF = 0x45` (69), so `69/255` is exact for that client. The 2003 PS2 renderer instead selects an AREF of `0x30` for alpha-tested character geometry; under the PS2 renderer's half-range alpha convention, that corresponds to approximately `0.375` on a conventional normalized-alpha scale. A generic `0.5` threshold is wrong, but replacing it requires choosing the target client generation rather than declaring one value universal.
 
 We'll own our half of this: **our own previously-published "flat ALPHAREF = 0x20" was wrong for retail too.** It came from AltanaView decoder source — a viewer, not the client. The retail enumeration below supersedes it. This is the concrete case for the "evidence class beats confidence adjective" rule.
 
@@ -75,7 +89,8 @@ This section is the core payload: exact D3D8 render state, byte-read from the re
 |---|---|---|---|---|
 | Device default | `0x60` (96) | ALWAYS (8) | — | `0x10009b81/91` |
 | **Zone pass** | **`0x60` (96)** | **GREATER (5)** | **96/255 = 0.376** | `0x1017b6ef`, `0x1017b6d9` |
-| **Character/actor pass** | **`0x45` (69)** | GREATER | **69/255 = 0.271** | `0x1002be86` (restores 0x60/ALWAYS at `0x1002bee8/bed2`) |
+| **Character/actor pass (later PC)** | **`0x45` (69)** | GREATER | **69/255 = 0.271** | `0x1002be86` (restores 0x60/ALWAYS at `0x1002bee8/bed2`) |
+| **Character/actor pass (2003 PS2)** | **`0x30` (48)** | renderer-specific greater-than mode | **approximately 0.375 after half-range conversion** | `KzOsm` alpha-tested group setup |
 | Particle/effect batches | `0x7f` (127) | GREATER | 0.498 | `0x1000c201` |
 | UI / second renderer | param (0x7f observed) | **GREATEREQUAL (7)** | — | `0x10281f99`, `0x102e798e` |
 | Minimap blit | `0x10` | GREATER | 0.063 | `0x10253b26` |
@@ -83,8 +98,8 @@ This section is the core payload: exact D3D8 render state, byte-read from the re
 
 **Ledger moves this enables:**
 - DATura zone cutout `0.375` — "described in source as a retail threshold... treated as strongly supported" → **Confirmed** (96/255 = 0.376; the GREATER comparison makes 0.375-as-float the exact working threshold).
-- xim character discard `69/255` → **Confirmed**.
-- DATura character `0.5` → replace with `0x45`.
+- Later-PC character discard `69/255` → **Confirmed for that client generation**.
+- Generic character `0.5` → replace with a client-specific value (`69/255` for the traced later PC path; approximately `0.375` conventional normalized alpha for the traced 2003 PS2 path).
 
 **Per-mesh control is only the enable toggle.** Zone geometry carries a runtime short (`geom+0xd6` in the loaded object): `0` = alpha test off + texture WRAP, `1` = **on** + WRAP, `2` = off + CLAMP (sites `0x1017d918`, `0x1017d94e`). So your three-class model (opaque / cutout / blend) maps to: cutout = this toggle on; the *reference* never moves within a pass.
 

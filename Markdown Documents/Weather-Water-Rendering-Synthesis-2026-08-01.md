@@ -1,5 +1,15 @@
 # FFXI Zone Weather & Water Rendering — KB Synthesis (2026-08-01)
 
+## PS2 client evidence revision — 2026-09-20
+
+The 2003 PS2 retail client decompilation resolves several items that were previously inferred from later clients or reconstructed output. Its debug-symbol-backed runtime types separate character and background color environments. Each carries room-light color and direction, ambient color, fog color, fog near/far, and light power. A world environment additionally carries focus distances, clip range, sky-sphere parameters, and a zone-sound resource link.
+
+Weather transitions interpolate character and background colors, fog distances, light power, focus values, clip range, and sky parameters. Directional light vectors are normalized and interpolated through a quaternion-derived rotation rather than by independently lerping XYZ components. The transition fraction is elapsed weather-transition ticks divided by total transition ticks.
+
+The PS2 renderer also confirms that water is not merely an environment-color special case. It has a dedicated water module and generator/effect ownership, while background light mapping uses a separate framebuffer-to-texture path. Accordingly, references below to weather color, water geometry, distortion, and projected lighting should remain distinct systems even when they share weather inputs.
+
+Platform scope matters: these findings describe the original PS2 client. Later PC rendering can preserve the same DAT semantics while using different graphics-state encodings.
+
 A handoff document for collaborating developers, synthesized from our FFXI reverse-engineering
 knowledgebase. It covers **how the retail client decides, styles, and renders weather in a zone**,
 and **what "water" actually is in FFXI zones and how to render it**. Everything below carries an

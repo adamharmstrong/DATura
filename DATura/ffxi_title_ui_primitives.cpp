@@ -35,7 +35,10 @@ void DrawButton(IDirect3DDevice9* device, const bool enableMipMapping,
     if (destinationCapWidth * 2.0f > width)
         destinationCapWidth = width * 0.5f;
 
-    const DWORD color = hover ? 0xFFFFB060 : 0xFFFFFFFF;
+    // The PS2 lobby draws selected menu shapes with 0x80805020 and neutral
+    // shapes with 0x80808080.  Its 0x80 RGB channels are the neutral midpoint,
+    // so the equivalent D3D modulation is approximately (255, 159, 64).
+    const DWORD color = hover ? D3DCOLOR_ARGB(255, 255, 159, 64) : 0xFFFFFFFF;
     const bool expandDxt3Alpha = D3DUiRenderer::UsesFfxiDxt3Alpha(texture);
 
     // Left cap uses the left half of the circular source.

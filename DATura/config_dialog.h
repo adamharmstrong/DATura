@@ -16,7 +16,11 @@ enum class Command
     ShowPath,
     MipMappingChanged,
     BumpMappingChanged,
+    CustomTextureSettingsChanged,
     LightingQualityChanged,
+    ShadowSettingsChanged,
+    LightDirectionChanged,
+    SceneClockChanged,
     DoorInteractionChanged,
     EnvironmentalAnimationChanged,
     DisplayChanged,
@@ -24,13 +28,19 @@ enum class Command
     MirrorWorldChanged,
     DrawDistanceChanged,
     TextureCompressionChanged,
+    RenderingResolutionChanged,
+    MapTextureCompressionChanged,
+    WeatherEffectsChanged,
     ColorThemeChanged,
     PlayerNameplateChanged,
     ChatLogChanged,
     CollisionVisibilityChanged,
     SoundSettingsChanged,
     HardwareCursorChanged,
-    ShowZoneObjects
+    MouseCursorStyleChanged,
+    MovementStyleChanged,
+    TitleBackgroundChanged,
+    ApplySettings
 };
 
 struct Event
@@ -48,12 +58,22 @@ struct State
     HWND window = NULL;
     const char* ffxiPath = NULL;
     ApplicationSettings::State* settings = nullptr;
+    ApplicationSettings::State* liveSettings = nullptr;
+    ApplicationSettings::State pendingSettings;
     Win32Theme::State* theme = nullptr;
     GameUiConfig* gameUi = nullptr;
+    GameUiConfig* liveGameUi = nullptr;
+    GameUiConfig pendingGameUi = {};
     void* callbackContext = nullptr;
     EventCallback eventCallback = nullptr;
     IsGameModeCallback isGameModeCallback = nullptr;
+    int categoryTab = 0;
     int activeTab = 0;
+    int scrollOffsets[6] = {};
+    bool editing = false;
+    bool pendingDarkTheme = true;
+    bool pendingGameMode = true;
+    int capturingBinding = -1;
 };
 
 void Initialize(

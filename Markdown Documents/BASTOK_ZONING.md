@@ -1,5 +1,13 @@
 # Bastok Markets zoning
 
+## PS2 client evidence revision — 2026-09-20
+
+The PS2 zone runtime confirms that city zoning combines a spatial grid with indoor clip regions and environment-specific location tables. The active area is not selected solely from a zone number or one global mesh list.
+
+Placed parts carry a room/placement code, `clip_id`, `env_no`, two LOD thresholds, draw distance, light indices, and optional water height. Door records reference lists of parts; matching the active room changes hidden flags and the indoor clip identifier. The renderer then draws either the main location table or the selected environment table and performs visibility checks before ordinary, shadow, and transparent passes.
+
+For Bastok diagnostics, log the current grid cell, active room code, indoor clip ID, environment number, location-table choice, hidden flag, and selected LOD. This separates routing failures from valid client-side visibility suppression.
+
 Game-mode player movement checks the collision-resolved movement segment against
 outward crossing planes in `DATura/zone_transition.h`. This catches crossings
 between frames without using a proximity radius or triggering while stationary.

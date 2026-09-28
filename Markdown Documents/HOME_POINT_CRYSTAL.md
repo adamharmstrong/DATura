@@ -1,5 +1,13 @@
 # FFXI Home Point crystal
 
+## PS2 client evidence revision — 2026-09-20
+
+The PS2 client clarifies how this object's effects should be separated conceptually. Character/object display lists can emit ordinary, environment-map, or specular passes; generator resources independently control animated effect geometry, color, scale, timing, and child effects. A crystal's reflective body and its surrounding animated effects therefore need not share one material or one runtime owner.
+
+Environment mapping and specular drawing are distinct native paths selected from display-list header state. Alpha-tested geometry uses packed test state rather than a texture-wide transparency rule, and distance alpha can also be applied at actor level. Any reconstruction should preserve those boundaries before tuning crystal-specific appearance.
+
+The source strengthens the existing conclusion that geometry, scheduled/generator effects, lighting, and sound must be validated separately. It does not by itself identify every Home Point resource command, so object-specific byte claims below retain their existing evidence grades.
+
 This document records what is currently known about the Final Fantasy XI Home Point crystal from the installed retail client, its DAT resources, and DATura's implementation. The evidence is primarily offline static analysis; the official client was not launched for a side-by-side capture.
 
 ## What the object is
@@ -69,7 +77,9 @@ DATura decodes the installed SPW files to PCM/WAV data and plays them through in
 
 DATura recognizes appearance `0x33`, loads the Home Point effect through the retail resource resolver, advances its animation clock, and draws Home Points with the effect renderer. Visible Home Points contribute ambient sound candidates. Interaction within six world units starts the activation effect with a one-second cooldown.
 
-The renderer does not implement the game's teleport menu, destination selection, or saved-home-point state. It is a visual and audio implementation attached to DATura's existing NPC and interaction systems.
+For an active character, interaction also registers the crystal as that character's saved Home Point. DATura persists every activated Home Point and presents the other registered crystals as teleport destinations. Loading a character starts it at its saved Home Point when the zone and entity can be resolved, with the character's home nation as the fallback.
+
+Home Point registration also completes a partially missing character save. DATura creates a missing `.ff11datset` from the active player's current race, face, equipment, weapons, and animation bank; creates a missing `.noesis` scene that references that DAT set; and creates a missing `.ini` using the active character's retained home nation before writing the Home Point state. Existing files are preserved.
 
 ## Validation
 

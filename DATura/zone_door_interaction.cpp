@@ -3,6 +3,7 @@
 #include "d3d_math.h"
 #include "model_ff11.h"
 #include <limits>
+#include <set>
 
 namespace ZoneDoorInteraction
 {
@@ -28,6 +29,23 @@ ZoneObjectTransform::DebugTransform Swing(const Door &door)
 float DistanceXZ(const float *a, const float *b)
 {
     return std::hypot(a[0] - b[0], a[2] - b[2]);
+}
+bool IsDoorObjectName(const char *name)
+{
+    if (!name)
+        return false;
+    std::string objectName(name);
+    objectName.erase(objectName.find_last_not_of(' ') + 1);
+    return objectName.find("door") != std::string::npos;
+}
+bool MeshMatchesResource(const std::string &meshName, const char *resourceName)
+{
+    std::string resource(resourceName ? resourceName : "");
+    resource.erase(resource.find_last_not_of(' ') + 1);
+    if (meshName == resource)
+        return true;
+    const size_t slash = meshName.find_last_of('/');
+    return slash != std::string::npos && meshName.substr(slash + 1) == resource;
 }
 bool RayTriangle(const float *origin, const float *direction, const float p[3][3], float &distance)
 {
@@ -87,26 +105,36 @@ void State::Initialize(noesisModel_t *model, bool mirrorX)
     if (!model)
         return;
     model->UpdateSubmeshBounds();
+    std::set<std::string> claimedMeshes;
     for (const auto &object : gFF11LastMapObjects)
     {
-        if (object.replacedByRoom || !std::string(object.objectName).starts_with("door_"))
+        if (object.replacedByRoom || !IsDoorObjectName(object.objectName))
             continue;
         Door door;
-        door.name = object.displayName;
         float lo[3] = {FLT_MAX, FLT_MAX, FLT_MAX}, hi[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-        bool found = false;
+        float bestDistance = FLT_MAX;
         for (const auto &mesh : model->submeshes)
-            if (mesh.objectName == door.name && mesh.hasBounds)
+            if (mesh.hasBounds && !claimedMeshes.count(mesh.objectName) &&
+                (mesh.objectName == object.displayName ||
+                 MeshMatchesResource(mesh.objectName, object.objectName)))
             {
-                found = true;
-                for (int i = 0; i < 3; ++i)
+                const float center[3] = {
+                    (mesh.boundsMin[0] + mesh.boundsMax[0]) * 0.5f,
+                    (mesh.boundsMin[1] + mesh.boundsMax[1]) * 0.5f,
+                    (mesh.boundsMin[2] + mesh.boundsMax[2]) * 0.5f,
+                };
+                const float distance = DistanceXZ(center, object.trans);
+                if (distance < bestDistance)
                 {
-                    lo[i] = (std::min)(lo[i], mesh.boundsMin[i]);
-                    hi[i] = (std::max)(hi[i], mesh.boundsMax[i]);
+                    bestDistance = distance;
+                    door.name = mesh.objectName;
+                    memcpy(lo, mesh.boundsMin, sizeof(lo));
+                    memcpy(hi, mesh.boundsMax, sizeof(hi));
                 }
             }
-        if (!found)
+        if (door.name.empty())
             continue;
+        claimedMeshes.insert(door.name);
         for (int i = 0; i < 3; ++i)
         {
             door.hinge[i] = object.trans[i];

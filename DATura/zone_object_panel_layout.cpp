@@ -11,7 +11,7 @@ constexpr int kGap = 10;
 constexpr int kMinimumTotalWidth = 300;
 constexpr int kDefaultMinimumPaneWidth = 220;
 constexpr int kHeaderHeight = 56;
-constexpr int kBottomHeight = 230;
+constexpr int kBottomHeight = 270;
 
 int GetTotalPaneWidth(const int clientWidth)
 {

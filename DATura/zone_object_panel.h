@@ -2,6 +2,7 @@
 
 #include "zone_object_panel_style.h"
 #include "zone_object_transform.h"
+#include "win32_theme.h"
 
 #include <commctrl.h>
 #include <windows.h>
@@ -158,10 +159,13 @@ struct State
     int collisionColumnMode = -1;
     int drawBatchColumnMode = -1;
     int treeSelectedMapObjectIndex = -1;
+    int pendingMapObjectSelection = -1;
+    bool preservingMapObjectSelection = false;
     bool combinedObjectTree = false;
     int paneWidths[kPaneCount] = {};
     int activeSplitter = 0;
     ZoneObjectPanelStyle::Brushes brushes;
+    Win32Theme::State* theme = nullptr;
 
     EventHandler eventHandler = nullptr;
     void* eventContext = nullptr;
@@ -170,11 +174,14 @@ struct State
     bool creationEditingEnabled = false;
 };
 
-void Initialize(State& state, HWND owner, EventHandler eventHandler,
+void Initialize(State& state, HWND owner, Win32Theme::State& theme, EventHandler eventHandler,
                 void* eventContext = nullptr);
 HWND Window(const State& state) noexcept;
 HWND TreeWindow(const State& state, Tree tree) noexcept;
 int SelectedMapObjectIndex(const State& state) noexcept;
+std::vector<int> SelectedMapObjectIndices(const State& state);
+void SelectMapObject(State& state, int mapObjectIndex, bool additive = false,
+                     bool selectionWillRefresh = false);
 void SetTreeSelectedMapObjectIndex(State& state, int mapObjectIndex) noexcept;
 void ToggleCombinedTree(State& state) noexcept;
 void Show(State& state, const char* zoneLabel, bool collisionVisible,

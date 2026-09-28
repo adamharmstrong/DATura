@@ -1,5 +1,19 @@
 # DAT-authored vegetation animation
 
+## PS2 client evidence revision — 2026-09-20
+
+The PS2 background renderer has explicit `MIME` draw paths for both ordinary and transparent zone groups. These paths receive an additional parameter vector and operate on the 48-byte vertex form, corroborating that the second position-sized field is an animatable displacement rather than an absolute replacement position.
+
+Primitive topology remains independent from displacement support. Both list and strip batches can participate. Alpha classification and two-sided rendering are also independent: a leading `_` selects hard alpha, while the batch's no-cull state controls whether a vegetation card is visible from both sides.
+
+The runtime selects animation/keyframe data per placed part before issuing `MIME` draws. The safe implementation model remains:
+
+```text
+animatedPosition = basePosition + animationWeight * displacement
+```
+
+Roots with zero displacement remain anchored; nonzero tip vectors sway. Do not use the 48-byte stride as a transparency classifier.
+
 DATura now retains the wind displacement in 48-byte MapGeo/MMB vertices and
 updates visible vegetation before drawing. The CPU base vertices remain immutable;
 the D3D9 upload computes `base + weight * displacement`. This works with both

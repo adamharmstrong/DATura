@@ -9,8 +9,10 @@ transparency, with depth testing and restored D3D state.
 The crystal rotates with its authored animation; UV scrolling, aura emissions,
 ground rings, and activation particles use the DAT's 60 Hz timing. Selecting and
 interacting with a Home Point within six world units triggers its activation
-effect, with a one-second cooldown. This does not implement teleport menus or
-change the player's saved home point.
+effect, with a one-second cooldown. For an active character, interaction registers
+the Home Point as the saved spawn location and offers travel to the character's
+other registered Home Points. Missing `.ff11datset`, `.noesis`, or `.ini` files
+are recreated without replacing files that already exist.
 
 The DAT's sound references resolve to `se009013.spw` (looping ambience) and
 `se016023.spw` (activation). Independent XAudio2 voices provide distance falloff

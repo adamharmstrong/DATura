@@ -42,6 +42,8 @@
     <ClCompile Include="material_rendering_tests.cpp" />
     <ClCompile Include="..\DATura\model_renderer.cpp" />
     <ClCompile Include="..\DATura\d3d_model_render_state.cpp" />
+    <ClCompile Include="..\DATura\custom_texture_assets.cpp" />
+    <ClCompile Include="..\DATura\d3d_bump_mapping.cpp" />
     <ClCompile Include="..\DATura\d3d_model_buffers.cpp" />
     <ClCompile Include="..\DATura\zone_environment_identity.cpp" />
     <ClCompile Include="..\DATura\zone_model_render_metadata.cpp" />
@@ -56,6 +58,7 @@
     <ClCompile Include="..\DATura\d3d_math.cpp" />
     <ClCompile Include="..\DATura\zone_environment_fog.cpp" />
     <ClCompile Include="..\DATura\zone_environment_state.cpp" />
+    <ClCompile Include="..\DATura\zone_environment_animation.cpp" />
     <ClCompile Include="..\DATura\zone_sky_dome.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

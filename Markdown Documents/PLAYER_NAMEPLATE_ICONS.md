@@ -1,5 +1,11 @@
 # Player nameplate icons
 
+## Client-generation scope — 2026-09-20
+
+The PS2 decompilation represents the 2003 client and can verify inherited actor, target, text, and nameplate drawing infrastructure. It cannot establish the complete catalog or eligibility rules for icons introduced in later FFXI updates.
+
+Use it to separate base nameplate ownership from later icon policy, but keep modern artwork, status mappings, packet fields, and display priority tied to a client generation that shipped them. Absence from the 2003 executable is not evidence that a later retail icon is unused.
+
 Config > Appearance provides a temporary manual Player icon selector. Each option
 uses a stable string ID from `FFXIPlayerIcons::Catalog`; gameplay status can choose
 the same IDs later without changing texture composition. None clears the badge.

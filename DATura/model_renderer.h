@@ -1,12 +1,15 @@
 #pragma once
 
 #include <d3d9.h>
+#include <vector>
 
 #include "noesis_rapi.h"
 #include "d3d_model_render_state.h"
 #include "zone_object_visibility.h"
 
 struct noesisModel_t;
+struct ff11GeneratorRecord_t;
+struct ff11KeyframeRecord_t;
 
 namespace ModelRenderer
 {
@@ -18,10 +21,41 @@ struct Context
     GeometryPass geometryPass = GeometryPass::All;
     int minuteOfDay = 0;
     int lightingQuality = 0;
+    bool automaticLightDirection = true;
+    float lightAzimuthDegrees = 0.0f;
+    float lightElevationDegrees = 0.0f;
+    bool useAuthoredLightColor = false;
+    D3DCOLOR authoredMainLightColor = 0;
+    D3DCOLOR authoredSecondaryLightColor = 0;
+    D3DCOLOR authoredAmbientLightColor = 0;
+    float authoredLightPower = 1.0f;
+    bool useAuthoredFog = false;
+    D3DCOLOR authoredFogColor = 0;
+    float authoredFogNear = 0.0f;
+    float authoredFogFar = 0.0f;
+    bool useAuthoredLightDirection = false;
+    float authoredMainLightDirection[3] = {};
+    const std::vector<ff11GeneratorRecord_t>* authoredGenerators = nullptr;
+    const std::vector<ff11KeyframeRecord_t>* authoredKeyframes = nullptr;
+    bool mirrorAuthoredLightX = false;
     int vegetationAnimationMode = 0;
     bool rendersZoneObjects = false;
     bool dynamicActorShadows = false;
+    bool dynamicObjectShadows = false;
+    bool shadowGroundLikeObjects = false;
+    bool shadowAlphaTestedObjects = false;
+    float shadowMaxDistance = 80.0f;
+    int shadowObjectLimit = 64;
+    float shadowMinimumSize = 0.25f;
+    float shadowMaximumSize = 40.0f;
+    int shadowReceiverUpdateFrames = 4;
+    float shadowMaximumLength = 30.0f;
+    float shadowOpacity = 0.32f;
+    bool shadowDebugVisualization = false;
+    bool shadowPerformanceCounters = false;
     bool enableMipMapping = false;
+    bool enableBumpMapping = false;
+    float bumpMappingIntensity = 1.0f;
     bool indoorZone = false;
     bool waterRenderingEnabled = true;
     // Negative selects the runtime clock; tests can request an exact animation frame.

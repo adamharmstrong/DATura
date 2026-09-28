@@ -145,6 +145,8 @@ struct GameUiConfig
     int chatLogTimeoutSeconds;
     int chatLogWidthPercent;
     int chatLogHeightPercent;
+    char chatLogFont[64];
+    int chatLogFontSize;
 };
 
 struct GameUiTitleMenuMetrics

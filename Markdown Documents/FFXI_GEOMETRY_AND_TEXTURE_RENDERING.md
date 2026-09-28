@@ -35,8 +35,11 @@ FFXI uses a compact, chunk-oriented asset pipeline designed for early-2000s hard
 | `0x2A` | Character/equipment geometry | Confirmed for common assets |
 | `0x2B` | Skeletal animation | Mostly understood; some channel semantics remain uncertain |
 | `0x2E` | Zone/map geometry | Confirmed for common zone assets |
-| `0x2F` | Environment/light-related record | Purpose suggested; layout largely unknown |
+| `0x2F` | Environment, lighting, and fog record | Confirmed by xim parsing |
 | `0x3D` | Sound pointer | Confirmed as a resource pointer, not a rendering primitive |
+| `0x5D` | Bump-map height field | Confirmed by xim parsing |
+
+xim's broader resource map also identifies `0x04` table, `0x06` route, `0x07` effect routine, `0x21` sprite-sheet mesh, `0x25` weighted/morphing mesh, `0x30`/`0x31` UI menu/element group, `0x36` zone interactions, `0x3E` point list, `0x45` info, `0x49` spell list, `0x4A` path, `0x53` ability list, `0x54` weapon trace, and `0x5E` blur. These are included for resource identification; most are outside this document's geometry/texture focus.
 
 At a high level:
 
@@ -44,11 +47,11 @@ At a high level:
 2. It walks 16-byte chunk headers and conditionally decrypts/deobfuscates chunk payloads.
 3. Texture chunks provide a 16-byte name and either indexed-color pixels, DXT-compressed pixels, or both.
 4. Character `0x2A` geometry uses a draw-command stream that switches texture/material names and emits triangle lists or strips. Vertices can be rigid or two-weight skinned.
-5. Zone `0x2E` geometry stores named reusable meshes as bounded groups of draw batches. Zone `0x1C` records place those meshes using translation, XYZ Euler rotation, and non-uniform scale.
+5. Zone `0x2E` geometry stores named reusable meshes as bounded groups of draw batches. Zone `0x1C` records place those meshes using non-uniform scale, X/Y/Z rotations composed as `Rz * Ry * Rx`, and translation.
 6. A draw batch supplies positions, normals, packed vertex color, one UV set, a 16-byte texture/material name, 16-bit indices, and state-like flag words.
 7. The visible result is consistent with a Direct3D 8-era fixed-function design: texture color multiplied by interpolated vertex color, with separate opaque, alpha-tested cutout, and source-alpha-blended cases. The exact retail equations and state transitions are not all proved.
 
-The most important negative result is that **the DATs do not expose a modern PBR material system**. There is no confirmed per-pixel roughness/metalness workflow, and DATura's flat normal/specular helper textures and material suffixes are viewer-generated conveniences, not original FFXI assets.
+The most important negative result is that **the DATs do not expose a modern PBR material system**. There is no confirmed per-pixel roughness/metalness workflow. Native `0x5D` bump maps and character cubemap reflections do exist, but DATura's flat normal/specular helper textures and material suffixes remain viewer-generated conveniences rather than original FFXI assets.
 
 ## Evidence base and limitations
 
@@ -66,6 +69,8 @@ The strongest local evidence is the parser and renderer implementation:
 
 Legacy FFXI Tool structures independently agree on the broad `0x2A` header, one- and two-weight vertex layouts, triangle-list and strip records, skeleton records, and Direct3D 8-era vertex format. The source explicitly targets Direct3D 8 (`DIRECT3D_VERSION 0x0800`). This corroborates the format interpretation and historical rendering family, but does not prove every state used by the current retail client.
 
+The `thirdparty/xim` client reimplementation and cexi parsers provide additional byte-level evidence. Their resource parsers have been checked against retail DATs and decode several fields that DATura still preserves only as raw state. Claims attributed to xim/cexi below describe that corroborated implementation evidence rather than direct original-client disassembly.
+
 Microsoft's Direct3D documentation is useful for terminology: DXT1/3/5 are native D3D compressed formats, texture stages can combine texture and interpolated diffuse color, and source-alpha/inverse-source-alpha is the conventional non-premultiplied blend pair. See [D3DFORMAT](https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dformat), [texture blending](https://learn.microsoft.com/en-us/windows/win32/direct3d9/texture-blending), [texture alpha](https://learn.microsoft.com/en-us/windows/win32/direct3d9/texture-alpha), and [D3DTEXTUREOP](https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dtextureop).
 
 ### What this evidence cannot prove on its own
@@ -73,9 +78,9 @@ Microsoft's Direct3D documentation is useful for terminology: DXT1/3/5 are nativ
 - The exact retail draw order or batching strategy.
 - The exact Direct3D render state assigned to every unknown flag bit.
 - Whether current PC-client behavior exactly matches the original PS2 or early PC path.
-- The complete lighting, fog, weather, shadow, particle, post-processing, and UI compositing pipelines.
+- The complete shadow, particle, post-processing, and UI compositing pipelines, plus platform-specific differences in the decoded lighting/fog path.
 - Whether a value that looks unused is truly unused by retail.
-- Whether name-based conventions in DATura correspond to retail tests or merely correlate with the real hidden flag.
+- Whether DATura's broader name-family fallbacks correspond to additional retail tests beyond xim's confirmed leading-underscore cutout rule.
 
 ## DAT container and chunk processing
 
@@ -94,7 +99,7 @@ From the packed word:
 
 ```text
 type = info & 0x7F
-size = (info >> 3) & 0x7FFFF0
+size = (info >> 3) & 0xFFFFF0
 is_shadow    = (info >> 26) & 1
 is_extracted = (info >> 27) & 1
 version      = (info >> 28) & 7
@@ -133,7 +138,9 @@ offset  size  interpretation
 0x11    4     version (commonly 40)
 0x15    4     width
 0x19    4     height
-0x1D    24    six unknown 32-bit fields
+0x1D    2     unknown u16
+0x1F    2     bit count (notably 32 for raw BGRA)
+0x21    20    remaining format/state fields
 0x35    4     palette color-depth-like field
 ```
 
@@ -147,7 +154,7 @@ The final field is accepted as `16` or `32` by DATura and is best described as *
 |---:|---|---|---|
 | `0x01` | Pal2 | 256-entry palette followed by 8-bit indices | Confirmed decoding; distinction from `0x91` unknown |
 | `0x81` | PalCombo | Palette/indexed image followed by a DXT copy | Confirmed |
-| `0x91` | Pal | 256-entry palette followed by 8-bit indices | Confirmed |
+| `0x91` | Pal/raw | Palette plus indices, or raw 32-bit BGRA when `bitCount == 32` | Confirmed |
 | `0xA1` | DXT | DXT-tagged compressed image | Confirmed |
 | `0xB1` | PalLeadingInt | Unknown 32-bit value, then palette/indexed image | Confirmed layout in samples; purpose unknown |
 
@@ -172,17 +179,17 @@ sourceIndex = (height - y - 1) * width + x
 
 This strongly indicates that the stored indexed image is bottom-up relative to DATura/Noesis texture coordinates. Whether the retail client changes UVs instead, changes upload orientation, or uses an equivalent addressing convention is not established.
 
-**Unknown:** the precise semantic difference between `0x01` and `0x91`, and the meaning of the leading 32-bit word in `0xB1`.
+For `0x91`, `bitCount == 32` selects a raw `width * height * 4` BGRA payload with no palette. Other observed `0x91` records use the palette/index path. The complete semantic distinction between `0x01` and `0x91`, and the meaning of the leading 32-bit word in `0xB1`, remain unknown.
 
 ### DXT textures (not standalone DDS files)
 
-**Confirmed.** FFXI stores a proprietary 12-byte mini-header followed by native block-compressed data. This is not a standard DDS container: it has no `DDS ` magic or 124-byte `DDS_HEADER`. The first four mini-header bytes are stored in FFXI's byte order (for example, `3TXD` in the file) and compare as `DXT3` when read as a little-endian 32-bit tag by the Windows client. DATura accepts `DXT1`, `DXT3`, and `DXT5` this way.
+**Confirmed.** FFXI stores a proprietary 12-byte mini-header followed by native block-compressed data. This is not a standard DDS container: it has no `DDS ` magic or 124-byte `DDS_HEADER`. The first four mini-header bytes are stored in FFXI's byte order (for example, `3TXD` in the file) and compare as `DXT3` when read as a little-endian 32-bit tag by the Windows client. Retail `DXT1` and `DXT3` payloads are confirmed. DATura also accepts `DXT5`, but neither xim nor cexi has encountered a retail `5TXD` payload, so native DXT5 presence remains unverified.
 
 - DXT1 uses 8-byte blocks for each 4×4 texel region and may encode one-bit transparency depending on endpoint ordering.
 - DXT3 uses 16-byte blocks with explicit 4-bit alpha.
-- DXT5 uses 16-byte blocks with interpolated alpha endpoints/indices.
+- DXT5 uses 16-byte blocks with interpolated alpha endpoints/indices; this is supported defensively by DATura, not confirmed in retail DATs.
 
-Those codec properties are standard Direct3D behavior; their presence in FFXI is directly confirmed by the FourCC and payload.
+Those codec properties are standard Direct3D behavior. DXT1 and DXT3 presence in FFXI is directly confirmed by FourCC and payload; DXT5 is only an accepted parser path at present.
 
 ### Combination textures (`0x81`)
 
@@ -203,9 +210,9 @@ This dual representation may exist for platform, toolchain, fallback, or quality
 There are two related observations:
 
 1. The original importer historically left-shifts texture alpha by two for decoded RGBA paths, saturating to 255.
-2. DATura's hardware-DXT path treats authored DXT3 alpha as approximately a reduced `0..8` nibble range and expands sampled alpha by about `1.875` before use.
+2. DATura's hardware-DXT path historically treated authored DXT3 alpha as approximately a reduced `0..8` nibble range and expanded sampled alpha by about `1.875` before use.
 
-**Strongly supported for tested assets:** some FFXI DXT3 textures do not use the full nominal 0–15 alpha range in the way a generic renderer expects. Expanding the authored range improves agreement with visible cutouts and transparent layers.
+xim clarifies this as the common `0x80 == 1.0` convention: texture alpha and vertex alpha are each scaled by two, producing `4 * vertexAlpha * textureAlpha`. The apparent `1.875` texture factor is the 4-bit DXT3 form of the same scale (`15/8` versus `255/128`), rather than a separate codec rule.
 
 **Not universally confirmed:** all texture classes, all DXT3 assets, and all retail render paths may not use the same expansion. DMB character-creation atlases already contain full-range RGBA and must not receive the DXT expansion. Palette alpha also needs asset-by-asset validation.
 
@@ -267,8 +274,8 @@ The LOD fields are structurally present and identified by legacy tools, but DATu
 | `0x8010` | Set native draw state (only partly decoded) |
 | `0x0054` | Triangle list |
 | `0x5453` | Triangle strip |
-| `0x4353` | Unknown command with count, 8 unknown bytes, and count 16-bit values |
-| `0x0043` | Unknown command with count and `count * 10` bytes |
+| `0x4353` | Single-color untextured triangle strip |
+| `0x0043` | Untextured triangle list: three indices plus one BGRA color per triangle (`count * 10` bytes) |
 | `0xFFFF` | End |
 
 This is a major architectural clue: material selection and primitive emission are interleaved. The asset is closer to a compact display list than to a modern mesh with one immutable material record.
@@ -354,9 +361,9 @@ two floats tentatively associated with specular behavior
 
 **Confirmed:** the record changes within draw streams and is state-like.
 
-**Reported client-trace reflection fields:** the supplied `ModelRenderer` account says that float `1.0` at state-data `+0x10` enables the environment/reflection stage, and that the float at state-data `+0x24` is multiplied by `0.5` and written to `TEXTUREFACTOR` alpha as reflection/specular intensity rather than an alpha-test reference. DATura now uses that reported enable field instead of its old tail-float heuristic when selecting the reflection-material path. We have not independently reproduced the original-client trace.
+**Loader/renderer-confirmed reflection fields:** float `1.0` at state-data `+0x10` enables texture stage 1, and the float at state-data `+0x24`, multiplied by `0.5`, becomes `TEXTUREFACTOR` alpha/reflection intensity rather than an alpha-test reference. DATura now uses that enable field instead of its old tail-float heuristic when selecting the reflection-material path.
 
-The supplied renderer trace reports texture stage 1 with camera-space normals and a texture transform. Its reported color operation is `MODULATEALPHA_ADDCOLOR`, alpha operation is `ADD`, and texture binding falls back to `CubeTex`. This unifies the previously separate “second additive pass” and “cubemap environment mapping” hypotheses. DATura's generated flat-normal/specular material is still only an approximation until its D3D9 path reproduces the complete stage state and cube-resource construction.
+Texture stage 1 uses camera-space normals and a texture transform. Its color operation is `MODULATEALPHA_ADDCOLOR`, its alpha operation is `ADD`, and texture binding falls back to `CubeTex`. Retail DATs contain `cubemap*` DXT3 textures; xim constructs a cube map from them, filling blank faces with alpha `0x80`, and applies the `0x8010` intensity as specular power. This confirms that the shiny character state is a second-stage cubemap environment map. DATura's generated flat-normal/specular material is still only an approximation until its D3D9 path reproduces the complete stage state and cube-resource construction.
 
 ### Character LOD
 
@@ -413,15 +420,15 @@ name:        char[16]
 translation float3
 rotation    float3
 scale       float3
-vector      float4          (unknown purpose)
-data2       int32[8]        (flags/unknown state)
+lod/link    float4          (effect DatId, high-detail threshold, mid-detail threshold, draw distance)
+data2       int32[8]        (flag bytes, culling-table link, environment DatId link, point-light indices)
 ```
 
-DATura constructs an XYZ Euler rotation matrix (angles interpreted as radians), applies per-axis scale, then translation. A negative scale determinant reverses winding.
+xim composes the transform as `T * Rz * Ry * Rx * S` (angles interpreted as radians). A negative scale determinant reverses winding. DATura's older description of this as an XYZ Euler composition was imprecise.
 
-Two words—`data2[0]` and `data2[4]`—are exposed as candidate object flag groups. Bit `0x01000000` in the first group correlates with explicit transparency/cutout objects in current tests, but its universal retail name and behavior are not proved.
+The integer region begins with four flag bytes; among the decoded behavior, `flags1 & 0x2` skips the object during decal rendering. Other fields link a culling table and per-object environment/lighting record and identify point lights. DATura also exposes two packed words—historically called `data2[0]` and `data2[4]`—for diagnostics; bit `0x01000000` in the first correlates with explicit transparency/cutout objects in current tests, but its universal retail name and behavior are not proved.
 
-**Unknown:** the `float4`, most of the eight integers, visibility linkage, animation/schedule linkage, fade ranges, and placement hierarchy.
+The high/mid thresholds and draw distance provide the missing per-placement LOD selection data for `_h`, `_m`, and `_l` resources. Some remaining flag bits, visibility/schedule behavior, and placement hierarchy are still unknown.
 
 ### Placement-table tail and spatial organization
 
@@ -465,14 +472,14 @@ uint16[]   indices
 padding    to 4-byte boundary
 ```
 
-All observed indices are 16-bit. The batch primitive mode and vertex stride are selected by the subheader flag:
+All observed indices are 16-bit. Primitive mode and vertex stride are selected independently by bits in the `0x2E` header configuration byte:
 
-| Subheader flag | Vertex stride | Index interpretation |
-|---:|---:|---|
-| `0` | 48 bytes | Triangle list |
-| nonzero | 36 bytes | Triangle strip |
+| Config bit | Meaning when set |
+|---:|---|
+| bit 0 | Triangle strip; clear means triangle list |
+| bit 1 | Vertex blending enabled; use the 48-byte layout instead of 36-byte |
 
-This correlation is confirmed in decoded batches, but the full meaning of nonzero subheader values is not known.
+These bits can vary independently; a triangle list is not inherently a 48-byte batch, nor is a strip inherently 36-byte.
 
 ### Zone vertex layouts
 
@@ -490,15 +497,14 @@ This correlation is confirmed in decoded batches, but the full meaning of nonzer
 48-byte form:
 
 ```text
-0x00 24 bytes position-related region
+0x00 float3 base position
+0x0C float3 displacement vector
 0x18 float3 normal
 0x24 u8[4] vertex color/alpha
 0x28 float2 UV
 ```
 
-DATura currently reads the first `float3` of the 48-byte record as position and does not interpret bytes `0x0C..0x17`.
-
-**Unknown:** the extra 12 bytes in the 48-byte layout. Plausible candidates include a second position, tangent/binormal-like data, morph data, duplicated coordinates for a PS2-friendly layout, or per-vertex parameters. There is not enough evidence to choose one.
+The extra 12 bytes are a displacement vector used for vertex blending such as foliage sway, not an absolute second position. xim evaluates `position0 + positionBlendWeight * displacement`. Installed Konschtat grass corroborates this interpretation: tip vertices have nonzero vectors while root vertices have zero vectors.
 
 ### Lists, strips, and winding
 
@@ -518,7 +524,7 @@ Object names commonly use `_h`, `_m`, and `_l` suffixes suggestive of high, medi
 
 **Strongly supported:** these suffixes encode authored detail variants.
 
-**Unknown:** how retail chooses among them. The placement record may point at one canonical name and hidden state may select variants, or separate placement/visibility data may provide the mapping.
+The placement record supplies high-detail and mid-detail distance thresholds plus a maximum draw distance. The original PS2 client selects no model when nonzero draw distance is reached, low beyond the second threshold when available, medium beyond the first threshold when available, and high otherwise. Missing high geometry falls back to medium and then low during resource mapping. A separate grid-chip path uses high detail inside squared grid distance `5` and medium outside it.
 
 ### Unreferenced geometry and environment meshes
 
@@ -540,38 +546,26 @@ There is no confirmed serialized material block corresponding to modern Noesis f
 
 **Confirmed.** Zone vertices carry four packed color bytes. The fourth byte behaves as alpha in reconstruction. Character `0x2A` geometry instead has state records and does not use the same zone vertex layout.
 
-Legacy map-viewer shaders and DATura both produce plausible results with a saturating equation equivalent to:
+xim's zone shader and independent reconstruction agree on the fragment equation:
 
 ```text
-RGB = saturate(2 * texture.rgb * vertex.rgb)
+lit.rgb = vertex.rgb * (ambient + directional0 + directional1 + pointLights)
+RGB     = saturate(2 * lit.rgb * texture.rgb)
 ```
 
 and, where authored alpha matters:
 
 ```text
-A = expandedTextureAlpha * saturate(2 * vertexAlpha)
+A = saturate(4 * vertexAlpha * textureAlpha)
 ```
 
-**Strongly supported, not fully proved:** the `MODULATE2X`-style color equation is consistent across independent reconstruction work and with reduced-range authored vertex colors.
-
-**Unknown:** whether retail uses exactly `D3DTOP_MODULATE2X` for every affected batch, whether lighting has already been baked into vertex color, and whether the multiplication factor changes by asset/state.
+The `0x80 == 1.0` convention applies independently to vertex alpha and texture alpha, producing the combined factor of four. DATura's earlier approximately `1.875` DXT3 expansion was the same convention viewed through 4-bit quantization (`15/8` versus `255/128`), not a separate texture-only rule. State-specific exceptions and platform differences may still exist.
 
 ### Lighting
 
-The DATs contain normals, vertex colors, and a partly decoded character draw-state record. These provide several possible lighting inputs.
+Zone lighting is not purely baked. xim's zone shader applies ambient light, two directional diffuse lights, and point lights using vertex normals, modulates the result by vertex color, and then applies the texture modulation above. The values come from `0x2F` environment records and are interpolated across time-of-day and weather states. Textures and vertex colors still carry substantial authored lighting, so adding unrelated modern lights will over-light the scene.
 
-**Strongly supported:** much of zone appearance is baked or authored into texture and vertex color. A no-lighting reconstruction using texture × vertex color looks substantially more plausible than applying arbitrary modern point lights.
-
-**Possible:** characters use fixed-function directional/ambient lighting plus material/specular state, while zones rely more heavily on vertex color and environmental modulation.
-
-**Unknown:**
-
-- retail ambient/diffuse light setup by time of day and weather;
-- whether normals affect all zone passes;
-- the role of `0x2F` environment/light records;
-- how indoor/outdoor and local lights are represented;
-- the remaining lighting/material fields around the now-confirmed camera-normal cubemap reflection stage; and
-- PS2 versus PC differences.
+Character materials also use fixed-function lighting and the confirmed camera-normal cubemap reflection stage. Remaining uncertainty includes unmapped character state fields, indoor/local-light selection details, and PS2 versus PC differences.
 
 ### DATura-generated material variants
 
@@ -587,7 +581,7 @@ DATura/Noesis creates names such as:
 
 **Confirmed viewer behavior; not native names.** These variants carry decoded/reconstructed draw state through the generic Noesis material interface.
 
-The shiny variant uses generated 4×4 `__flat_normal` and `__flat_spec` textures plus a specular color/exponent. Those textures do not come from the DAT and should not be described as evidence of native normal mapping.
+The shiny variant uses generated 4×4 `__flat_normal` and `__flat_spec` textures plus a specular color/exponent. Those particular textures do not come from the DAT and should not be confused with either the native character cubemap path or native `0x5D` zone bump maps.
 
 ## Alpha, cutouts, blending, culling, and ordering
 
@@ -599,7 +593,7 @@ Current evidence supports at least three useful rendering classes:
 2. **Hard alpha/cutout:** depth test and writes plus alpha comparison; useful for vegetation, nets, hair-like cards, and similar binary coverage.
 3. **Soft blend:** source-alpha blending, usually with depth writes disabled; useful for overlays, translucent detail, clouds, effects, and decals.
 
-The existence of multiple alpha behaviors is strongly supported. The exact retail classifier is incomplete.
+The existence of multiple alpha behaviors is confirmed. Important classifiers are now known, though some state interactions remain incomplete.
 
 ### Zone `VerticeCountAndFlags`
 
@@ -619,11 +613,9 @@ This mapping is traced through `MeshBlockResource.h:33–39` into `MeshBlockMana
 
 ### Hard-alpha classification
 
-DATura treats a batch as a cutout if an object transparency flag correlates with the 48-byte layout, or if the object name matches known conventions such as leading underscore/vegetation tokens.
+For zone meshes, xim selects the hard-alpha path when the mesh name begins with `_`; this is the mechanism, not merely a correlating heuristic. The zone alpha-test threshold is `0.375`, matching DATura's value. DATura's broader vegetation/name-family list remains a compatibility fallback beyond that confirmed leading-underscore rule.
 
-**DATura reconstruction.** The name list is empirical and should not be mistaken for retail code. Retail almost certainly has a data-driven flag/state path; a naming convention may merely correlate with the authoring tool that set it.
-
-DATura uses an alpha-test threshold of `0.375` for zone cutouts and `0.5` for generic character materials. The former is described in source as a retail threshold, but without a documented capture/disassembly in this repository it should be treated as **strongly supported**, not finally proved.
+Character discard thresholds are platform-specific. A later PC path uses `69/255`, approximately `0.27`. The original PS2 display-list path emits alpha reference `0x30`; after accounting for FFXI's `0x80 == 1.0` convention, this corresponds to approximately `0.375` in conventional normalized alpha. DATura's generic threshold of `0.5` matches neither path.
 
 ### Soft blending
 
@@ -635,12 +627,12 @@ destination blend = inverse source alpha
 depth test         = less-or-equal
 depth writes       = off
 alpha test         = off
-small negative depth bias
+depth bias         = 8
 ```
 
 This produces plausible rock/detail overlays and prevents zero-alpha texels from introducing a second cutout rule.
 
-The source/destination blend pair is strongly supported by ordinary non-premultiplied texture content. The depth-write rule, exact bias, and comparison function are still reconstruction unless verified against retail capture.
+The source/destination blend pair is strongly supported by ordinary non-premultiplied texture content. xim records the retail zone blend-layer depth bias as `8`; transparent sorting and some surrounding depth-state details remain reconstruction-dependent.
 
 ### Transparent sorting
 
@@ -672,7 +664,7 @@ These chunks are **not DDS files**. DDS is a file container with a `DDS ` signat
 
 The ground flowers are named `_con_hana_*` and bind regions of the `con_f01c` atlas. The inspected flower batches carry `0x2000` and do **not** carry `0x8000`. Together with the atlas alpha and the observed result, that makes a cutout reconstruction appropriate rather than a source-alpha terrain-overlay reconstruction; it does not yet reveal a universal native cutout-state bit. The visible flower patches are broad, ground-parallel sheets whose alpha removes most of the rectangular atlas region. They are distinct from the nearby `_kusa_*` objects: those are upright grass-card meshes, even though both asset families need binary alpha coverage.
 
-The `_con_hana_*` family includes both 48-byte triangle-list and 36-byte triangle-strip batches. This is an observation about storage and LOD/detail variants, not evidence that the unaccounted-for twelve bytes of a 48-byte vertex record determine the flower alpha rule.
+The `_con_hana_*` family includes both vertex-blended 48-byte batches and ordinary 36-byte batches, and primitive mode is controlled independently. The extra displacement vector in the 48-byte form supports motion such as foliage sway; it does not determine the flower alpha rule.
 
 #### Cermet Crag layers
 
@@ -695,7 +687,7 @@ The observed content is consistent with an early Direct3D fixed-function sequenc
 2. render cutout vegetation/flower cards with alpha comparison and depth writes; and
 3. render `0x8000` layers later with source-alpha blending, depth testing, and no depth writes.
 
-Near-coplanar overlay geometry needs some way to avoid Z fighting. A depth bias/polygon offset is a plausible Direct3D-era mechanism, but the exact retail bias, comparison function, ordering buckets, and whether the client used additional intermediate buffers are still **unknown**. DATura's ordering and bias below are a reconstruction that matches the Konschtat cases; they must not be presented as a captured retail state block.
+Near-coplanar overlay geometry uses depth bias to avoid Z fighting; xim identifies the retail value as `8`. The comparison function, ordering buckets, and whether the client used additional intermediate buffers remain unknown. DATura's ordering and its renderer-specific bias tuning below are reconstructions that match the Konschtat cases.
 
 ### DATura implementation and the problems it fixed
 
@@ -723,7 +715,7 @@ The first Konschtat failure rendered the flower sheets as large blue, purple, an
 
 The corrected DATura rule is that `_con_hana_*` and `_kusa_*` cutout-style objects use the hard-alpha path when their batch is not an authoritative `0x8000` overlay. The `0x2000` bit selects two-sided rendering for these assets, so both sides of thin cards/sheets remain visible. The same `con_f01c` DXT3 atlas is sampled natively; its transparent texels are discarded by the hard-alpha comparison rather than blended across the entire rectangle. This produces flower patches on the terrain and upright grass cards without exposing the opaque terrain beneath as holes.
 
-The object-name classification remains a DATura fallback/reconstruction. It is useful because the observed names correlate with authoring families, but the native file has not yet yielded a fully decoded universal hard-alpha state bit.
+A leading `_` in the mesh name is xim's confirmed native hard-alpha classifier, with threshold `0.375`. DATura's additional family-name checks remain fallback/reconstruction rules for names not covered by that mechanism.
 
 #### Cermet Crags: transparent batches must not be flattened
 
@@ -738,7 +730,7 @@ This is why the repaired Crags can share DXT3 textures between solid rock and pa
 
 ### Remaining limits of this case study
 
-The Konschtat result validates the present reconstruction across the observed flowers, grass, terrain overlays, and Crags. It does not prove that every zone uses the same thresholds, DXT3 alpha expansion, sort key, or depth bias. In particular, DATura's far-to-near center sorting is an effective approximation for the Crags, not a demonstrated retail algorithm. Any future retail GPU capture or executable analysis that resolves the complete zone state words should supersede these reconstruction details.
+The Konschtat result validates the present reconstruction across the observed flowers, grass, terrain overlays, and Crags. The native leading-underscore threshold, alpha equation, and depth-bias value are now supported by xim, but DATura's far-to-near center sorting and renderer-specific bias conversion remain approximations. Future retail GPU capture or executable analysis should still supersede those unresolved ordering details.
 
 ## Selbina case study: sand decals, foliage, nets, and fish
 
@@ -986,9 +978,15 @@ DATura's fixed scale and vertical offsets are preview aids only.
 
 ### Fog
 
-The retail game visibly uses distance/weather fog, but the geometry/texture parsers do not yet connect a decoded DAT field to exact fog color, density, start, or end.
+`0x2F` environment records contain ambient color, fog color, fog start/end, and sun/diffuse-light configuration. xim interpolates these values across time-of-day and weather states.
 
-**Speculation:** fog parameters may reside in environment (`0x2F`) data, zone tables, scripted weather resources, executable constants, or some combination.
+Fog is linear:
+
+```text
+factor = (far - distance) / (far - near)
+```
+
+The factor mixes fog into RGB while preserving fragment alpha.
 
 ### Shadows
 
@@ -1000,19 +998,13 @@ The outer chunk header contains an `is_shadow`-like bit in legacy definitions, a
 
 ### Bump/normal mapping
 
-No confirmed native per-pixel normal-map binding has been found in the common geometry/material path. Texture-name companion scans can find related-looking textures, but correlation is not proof of runtime use.
+Section type `0x5D` is a native `BumpMap` resource. It stores an 8-bit height field that xim converts to a normal map; the zone shader computes tangents/TBN and samples the resulting map. Native per-pixel bump mapping is therefore confirmed, although it is not necessarily used by every material.
 
-DATura's `__flat_normal` is generated. Therefore:
-
-- **Confirmed:** the viewer can synthesize a normal slot.
-- **Not confirmed:** common retail materials bind native normal maps.
-- **Possible:** some later assets or special effects use D3D bump-environment operations, DOT3, or multi-texture tricks hidden in unmapped state.
+DATura's `__flat_normal` remains a generated viewer helper and is unrelated to the native `0x5D` resource path.
 
 ### Multiple texture stages
 
-The D3D8 fixed-function pipeline supports multiple stages, and the unknown draw records could configure them. However, the decoded common draw commands expose one material/texture name at a time.
-
-**Unknown:** whether retail performs light maps, environment maps, projected effects, or detail textures through additional stages resolved outside the visible material command.
+The rendering pipeline supports multiple specialized passes. A later PC character path uses `0x8010` for a second-stage cubemap environment map, while the original PS2 display-list linker selects ordinary, environment-map, and specular passes independently. Zone bump maps add another sampled resource path. The PS2 client also contains a confirmed background light-map pass that clears an auxiliary alpha buffer, exposes framebuffer-derived data as a texture, and redraws selected background geometry. Detail-texture uses beyond these paths remain possible but unverified.
 
 ## Collision geometry is separate from visible geometry
 
@@ -1022,11 +1014,11 @@ The D3D8 fixed-function pipeline supports multiple stages, and the unknown draw 
 - lists of transform-offset/geometry-offset pairs per occupied grid cell;
 - per-mesh transform matrices;
 - float3 vertices and normals; and
-- 8-byte triangle records with 14-bit vertex indices (`index & 0x3FFF`).
+- 8-byte triangle records: `p0` and the normal index use `& 0x7FFF`, while `p1` and `p2` use `& 0x3FFF`.
 
 This explains why helper names and visually hidden geometry should not be assumed to be the authoritative collision surface. Visual geometry can be collected as a fallback, but retail collision/navigation behavior should be based on the dedicated structure where available.
 
-DATura now preserves the first collision-bucket word and the upper two bits of every encoded triangle index in diagnostics. Their semantics are not yet assigned. The collision grid also strengthens the hypothesis that visual culling/streaming may use spatial partitions, though it does not prove they share a format.
+The top nibbles of all four encoded u16 values combine into a 16-bit material/terrain-type word. DATura preserves the raw fields for diagnostics. The collision grid also strengthens the hypothesis that visual culling/streaming may use spatial partitions, though it does not prove they share a format.
 
 ## Reconstructed end-to-end render recipe
 
@@ -1036,24 +1028,24 @@ The following recipe summarizes what a practical viewer can do today. Steps mark
 2. Conditionally decode `0x1C`, `0x20`, `0x29`, `0x2A`, `0x2B`, and `0x2E` payloads.
 3. Decode all `0x20` textures into named resources:
    - expand palette/indexed images with vertical reversal;
-   - accept DXT1/3/5;
+   - accept confirmed DXT1/3 and defensively support unverified DXT5;
    - prefer the DXT half of `0x81` for client-like preview, but expose the palette half for inspection.
 4. For character geometry:
    - parse the `0x2A` draw list;
    - bind texture names on `0x8000`;
-   - preserve unknown `0x8010` data for inspection;
+   - preserve `0x8010` data and reproduce its confirmed cubemap enable/intensity state;
    - emit lists/strips and split UV seams as needed;
    - perform up-to-two-weight skinning;
    - emit the mirrored pass and reverse winding when requested.
 5. For zones:
    - parse `0x1C` placements;
    - hash `0x2E` objects by their 16-byte name;
-   - build XYZ rotation × scale + translation transforms;
+   - build `T * Rz * Ry * Rx * S` transforms and apply placement LOD/draw-distance thresholds;
    - parse nested bounded batches;
    - decode 36- and 48-byte vertices and 16-bit list/strip indices.
 6. Preserve each draw batch's raw state fields.
-7. Reconstruct color as texture × vertex color, likely with a 2× saturating scale.
-8. Classify opaque, cutout, and blended surfaces from known flags first and empirical name rules only as fallback.
+7. Apply environment lighting and reconstruct `rgb = 2 * lit.rgb * texture.rgb`, `a = 4 * vertexAlpha * textureAlpha`.
+8. Classify leading-underscore zone meshes as hard alpha, preserve known flags, and use broader empirical name rules only as fallback.
 9. Render opaque/cutout surfaces with depth writes, then blended surfaces without depth writes.
 10. Keep culling, alpha expansion, alpha threshold, depth bias, and transparent sorting configurable until retail behavior is better established.
 
@@ -1080,19 +1072,19 @@ The following recipe summarizes what a practical viewer can do today. Steps mark
 
 1. **Finish character `0x8010` implementation.** The reflection enable, intensity consumer, cubemap stage, and blend operations are known; reproduce the cube-resource construction, exact texture transform/arguments, and remaining state fields in DATura.
 2. **Finish zone state words.** The `VerticeCountAndFlags` count/transparent/culling mapping is confirmed; determine runtime flags `0x4000`/`0x1000`, `flags2`, and object/sub/super interactions.
-3. **Prove the fragment equation.** Capture retail draws and identify texture-stage operations, vertex-color range, alpha expansion, alpha comparison, and blend factors.
+3. **Validate fragment-equation exceptions.** The xim equation is known; capture retail draws to identify state-specific or platform-specific departures, blend factors, and alpha comparisons.
 4. **Determine native mip layout.** Compare payload sizes with exact DXT/palette level sizes and inspect unknown header fields.
-5. **Decode placement-table tail.** Look for spatial cells, visibility sets, LOD selection, and environment references.
+5. **Decode the remaining placement-table tail.** LOD thresholds, draw distance, culling/environment links, and point-light indices are known; look for remaining spatial cells, visibility sets, and schedule/hierarchy data.
 
 ### Medium priority
 
 6. Complete `0x2A` LOD stream parsing and identify selection rules.
-7. Determine the extra 12 bytes in 48-byte map vertices.
+7. Implement and validate 48-byte vertex displacement/foliage sway in DATura.
 8. Complete animation translation/scale semantics and matrix composition order.
-9. Decode `0x2F` environment/light records and connect them to fog, sky, weather, and time of day.
+9. Integrate decoded `0x2F` environment lighting and fog with sky/weather selection.
 10. Decode `0x21`/`0x25` effect systems, including billboards and texture/color animation.
 11. Implement and validate the known `SYSTEM_KAGE` blob-shadow path; separately decode static/resource shadow flags.
-12. Test remaining native multi-texture, bump-environment, or DOT3 paths; character cubemap environment mapping is now confirmed.
+12. Implement native `0x5D` bump maps and the confirmed character cubemap path; test for additional multi-texture operations.
 
 ### Suggested experimental discipline
 
@@ -1112,20 +1104,22 @@ For each hypothesis:
 - 16-byte chunk stream with typed, aligned chunks.
 - Core texture, skeleton, geometry, animation, placement, and map-geometry chunk identities.
 - 16-byte resource names linking draw data to textures and placements to map meshes.
-- Paletted, DXT1, DXT3, DXT5, and palette+DXT texture payloads.
+- Paletted, raw 32-bit BGRA, DXT1, DXT3, and palette+DXT texture payloads; DXT5 parsing is defensive and retail presence unverified.
 - Palette/index image expansion and bottom-up row order in the decoded path.
 - Character triangle-list and triangle-strip commands with per-corner UVs.
 - One- and two-weight character vertex records, optional bone indirection, and mirrored pass data.
-- Zone reusable mesh placement using translation, Euler rotation, and scale.
-- Zone 36-/48-byte vertex records with positions, normals, packed color, and UVs at known offsets.
+- Zone reusable mesh placement using `T * Rz * Ry * Rx * S`, per-placement LOD thresholds, draw distance, and environment/light links.
+- Zone 36-/48-byte vertex records with positions, normals, packed color, UVs, and displacement vectors for the 48-byte blended form.
 - Zone triangle lists/strips, 16-bit indices, and nested bounded draw groups.
 - Dedicated grid-organized collision geometry separate from visible map geometry.
+- `0x2F` environment lighting/fog, `0x5D` bump maps, leading-underscore cutout classification, and zone fragment/alpha equations.
+- Character `0x8010` second-stage cubemap reflections and untextured `0x2A` commands `0x0043`/`0x4353`.
 - High-poly character-creation shapes and DMB atlases form a distinct path.
 
 ### Strongly supported
 
 - Direct3D 8-era fixed-function rendering heritage.
-- A saturating 2× texture × vertex-color equation for much zone content.
+- The decoded environment/lighting path as reproduced by xim, pending original-client/platform cross-checks.
 - Reduced authored alpha range in at least some DXT3 assets.
 - `0x2000` as a culling-related zone bit and `0x8000` as an alpha-layer bit.
 - Opaque, alpha-test, and source-alpha-blended material classes.
@@ -1134,18 +1128,17 @@ For each hypothesis:
 
 ### Reconstruction/speculation
 
-- Exact alpha-test thresholds.
+- Additional alpha classifiers and thresholds beyond the confirmed zone `_`/`0.375`, 2003 PS2 character approximately `0.375`, and later-PC character `69/255` paths.
 - Exact DXT3 expansion factor across all asset classes.
-- Name-based cutout classification.
-- Transparent far-to-near sorting and depth bias.
+- DATura's broader name-family cutout classification beyond the confirmed leading-underscore rule.
+- Transparent far-to-near sorting and DATura's conversion of the confirmed native depth-bias value.
 - Sky scale/height placement.
 - DMB green/matte-black and race-region alpha rules.
-- Shiny-material implementation using flat normal/specular textures.
-- Fog/environment/light interpretation.
+- DATura's shiny-material approximation using flat normal/specular textures instead of the confirmed cubemap path.
 - Effect-mesh rendering details.
 
 ## Conclusion
 
 The known FFXI rendering architecture is a compact display-list and instancing system built around named textures, per-draw primitive streams, vertex colors, simple UV mapping, two-weight skinning, mirrored geometry, and reusable zone meshes. It is much closer to a PS2/Direct3D 8 fixed-function content pipeline than to a modern shader/material graph.
 
-We can reconstruct ordinary characters, equipment, zone surfaces, textures, alpha layers, and collision with useful fidelity. The remaining uncertainty is concentrated not in “where are the triangles?” but in **state**: the exact meaning of draw-state words, the retail color/alpha equation, lighting and fog, LOD/visibility selection, transparent ordering, environment control, effects, and shadows. Those areas should remain explicitly labeled and configurable until confirmed by stronger evidence.
+We can reconstruct ordinary characters, equipment, zone surfaces, textures, alpha layers, environment lighting/fog, and collision with useful fidelity. The remaining uncertainty is concentrated not in “where are the triangles?” but in the unmapped portions of draw state, visibility/schedule selection, transparent ordering, full environment control, effects, and shadows. Those areas should remain explicitly labeled and configurable until confirmed by stronger evidence.

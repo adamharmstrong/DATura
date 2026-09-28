@@ -18,7 +18,7 @@ enum class PlaybackAction
 
 struct State
 {
-    Mode mode = Mode::Edit;
+    Mode mode = Mode::Game;
     int gameMusicId = 0;
 };
 

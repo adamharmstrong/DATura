@@ -1,5 +1,11 @@
 # Starter quest markers
 
+## Client-generation scope — 2026-09-20
+
+The recovered PS2 executable represents the 2003 client and predates modern starter-quest marker behavior. Its absence there is a temporal boundary, not evidence that later retail clients lack the feature.
+
+Use the PS2 source only for inherited actor, nameplate, UI, event, and effect infrastructure. Marker eligibility, artwork, packet/state inputs, and presentation must continue to be verified against a client generation that actually shipped the markers. Do not backport modern marker rules into claims about original PS2 behavior.
+
 DATura draws a gold `!` above NPC nameplates using the official `font font`
 punctuation glyph from `ROM/119/51.DAT`. The marker is 56 logical pixels high,
 with a dark outline and a gap above the name. It shares the nameplate's distance

@@ -50,6 +50,11 @@ FrameStatus Runtime::PrepareFrame()
     return d3d9_.PrepareFrame();
 }
 
+HRESULT Runtime::ResolveFrame()
+{
+    return d3d9_.ResolveFrame();
+}
+
 HRESULT Runtime::Present()
 {
     return d3d9_.Present();

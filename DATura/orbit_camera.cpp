@@ -38,6 +38,35 @@ void MoveFly(State& state, const FlyInput& input, const float dt)
     state.target[2] += (rightZ * moveRight + forwardZ * moveForward) * step;
 }
 
+void FollowTarget(State& state, const float target[3], const float dt)
+{
+    if (!target || dt <= 0.0f)
+        return;
+
+    // Retail follows the controlled actor over time. Use an exponential
+    // response so the result is stable across frame rates and never overshoots.
+    constexpr float response = 14.0f;
+    const float amount = 1.0f - std::exp(-response * (std::min)(dt, 0.1f));
+    for (int axis = 0; axis < 3; ++axis)
+        state.target[axis] += (target[axis] - state.target[axis]) * amount;
+}
+
+void FollowYaw(State& state, const float yaw, const float dt)
+{
+    if (dt <= 0.0f)
+        return;
+
+    constexpr float response = 5.0f;
+    constexpr float pi = 3.14159265358979323846f;
+    const float fullTurn = 2.0f * pi;
+    float difference = std::fmod(yaw - state.yaw + pi, fullTurn);
+    if (difference < 0.0f)
+        difference += fullTurn;
+    difference -= pi;
+    const float amount = 1.0f - std::exp(-response * (std::min)(dt, 0.1f));
+    state.yaw += difference * amount;
+}
+
 void Pan(State& state, const int deltaX, const int deltaY)
 {
     if (deltaX == 0 && deltaY == 0)
@@ -72,6 +101,14 @@ void Rotate(State& state, const int deltaX, const int deltaY)
     constexpr float sensitivity = 0.005f;
     state.yaw -= static_cast<float>(deltaX) * sensitivity;
     state.pitch -= static_cast<float>(deltaY) * sensitivity;
+    state.pitch = std::clamp(state.pitch, -1.55f, 1.55f);
+}
+
+void RotateByTrackpadScroll(State& state, const float horizontalSteps, const float verticalSteps)
+{
+    constexpr float sensitivity = 0.18f;
+    state.yaw -= horizontalSteps * sensitivity;
+    state.pitch -= verticalSteps * sensitivity;
     state.pitch = std::clamp(state.pitch, -1.55f, 1.55f);
 }
 

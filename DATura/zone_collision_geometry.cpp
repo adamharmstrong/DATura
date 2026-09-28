@@ -267,6 +267,58 @@ bool PointInTriangleXZ(const float x, const float z, const Triangle& triangle)
     return a >= epsilon && b >= epsilon && c >= epsilon;
 }
 
+bool Raycast(const Mesh& mesh, const float origin[3], const float direction[3],
+             const float maxDistance, float* outPoint, float outNormal[3])
+{
+    if (!origin || !direction || !outPoint || maxDistance <= 0.0f)
+        return false;
+
+    float closest = maxDistance;
+    const Triangle* hit = nullptr;
+    for (const Triangle& triangle : mesh.Triangles())
+    {
+        const float edge1[3] = { triangle.p[1][0] - triangle.p[0][0],
+            triangle.p[1][1] - triangle.p[0][1], triangle.p[1][2] - triangle.p[0][2] };
+        const float edge2[3] = { triangle.p[2][0] - triangle.p[0][0],
+            triangle.p[2][1] - triangle.p[0][1], triangle.p[2][2] - triangle.p[0][2] };
+        const float crossX = direction[1] * edge2[2] - direction[2] * edge2[1];
+        const float crossY = direction[2] * edge2[0] - direction[0] * edge2[2];
+        const float crossZ = direction[0] * edge2[1] - direction[1] * edge2[0];
+        const float determinant = edge1[0] * crossX + edge1[1] * crossY + edge1[2] * crossZ;
+        if (std::fabs(determinant) < 0.000001f)
+            continue;
+        const float invDet = 1.0f / determinant;
+        const float toOrigin[3] = { origin[0] - triangle.p[0][0],
+            origin[1] - triangle.p[0][1], origin[2] - triangle.p[0][2] };
+        const float u = (toOrigin[0] * crossX + toOrigin[1] * crossY + toOrigin[2] * crossZ) * invDet;
+        if (u < 0.0f || u > 1.0f)
+            continue;
+        const float qX = toOrigin[1] * edge1[2] - toOrigin[2] * edge1[1];
+        const float qY = toOrigin[2] * edge1[0] - toOrigin[0] * edge1[2];
+        const float qZ = toOrigin[0] * edge1[1] - toOrigin[1] * edge1[0];
+        const float v = (direction[0] * qX + direction[1] * qY + direction[2] * qZ) * invDet;
+        if (v < 0.0f || u + v > 1.0f)
+            continue;
+        const float distance = (edge2[0] * qX + edge2[1] * qY + edge2[2] * qZ) * invDet;
+        if (distance < 0.0f || distance >= closest)
+            continue;
+        closest = distance;
+        hit = &triangle;
+    }
+    if (!hit)
+        return false;
+    outPoint[0] = origin[0] + direction[0] * closest;
+    outPoint[1] = origin[1] + direction[1] * closest;
+    outPoint[2] = origin[2] + direction[2] * closest;
+    if (outNormal)
+    {
+        outNormal[0] = hit->normal[0];
+        outNormal[1] = hit->normal[1];
+        outNormal[2] = hit->normal[2];
+    }
+    return true;
+}
+
 bool PointNearTriangleXZ(const float x, const float z, const Triangle& triangle, const float radius)
 {
     if (x < triangle.minX - radius || x > triangle.maxX + radius ||

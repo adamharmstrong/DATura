@@ -44,7 +44,12 @@ struct State
 
 struct InputSnapshot
 {
+    bool clickToMove = false;
+    bool autoRun = false;
+    float clickTarget[3] = { 0.0f, 0.0f, 0.0f };
+    bool retail = false;
     bool fastRunning = false;
+    float cameraYaw = 0.0f;
     float turn = 0.0f;
     float forward = 0.0f;
     float vertical = 0.0f;

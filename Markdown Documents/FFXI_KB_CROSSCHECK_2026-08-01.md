@@ -1,5 +1,19 @@
 # FFXI KB <-> cexi-docs crosscheck - 2026-08-01
 
+## PS2 executable crosscheck — 2026-09-20
+
+The 2003 PS2 retail-client decompilation adds direct consumer-side evidence to this comparison. Its strongest contributions are runtime semantics rather than universal modern DAT layout:
+
+- resource types are masked to seven bits during hierarchy traversal;
+- zone model names ending in `h`, `m`, or `l` are grouped into one LOD family;
+- placed-part LOD and clipping comparisons are exact;
+- runtime placement fields include clip, environment, light, water-height, scale, and place-code data;
+- character and background weather environments are distinct and interpolated;
+- ordinary and transparent zone geometry are separate runtime groups; and
+- event, generator, animation, actor, and resource ownership can now be checked against actual client consumers.
+
+The decompilation does not automatically settle later-client layouts or server-era additions. Debug-symbol field names are high-confidence; inferred names and decompiler signatures must be corroborated by accesses and callers.
+
 Follow-up to the 2026-07-22 crosscheck. We reviewed **cexi-docs @ f330441** (published
 2026-07-28) end-to-end against our KB and ran per-claim comparisons in the areas where we
 hold first-hand byte/decompile evidence. This doc is the two-way result: corrections we can

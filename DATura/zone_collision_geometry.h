@@ -74,6 +74,8 @@ namespace ZoneCollision
     bool FindFloorAt(const std::vector<Triangle>& triangles, const SpatialIndex& index,
                      float queryRadius, float x, float z, float minY, float maxY,
                      float* outY, float outNormal[3]);
+    bool Raycast(const Mesh& mesh, const float origin[3], const float direction[3],
+                 float maxDistance, float* outPoint, float outNormal[3]);
     bool OverlapsWallAt(const std::vector<Triangle>& triangles, const SpatialIndex& index,
                         float x, float y, float z, float playerRadius,
                         float playerHeight, float stepHeight);

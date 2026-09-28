@@ -867,7 +867,7 @@ public:
 						strcpy_s(batchDebug.daturaRenderReason, "FFXI zone alpha layer: depth-biased blend with depth writes disabled");
 					else
 						strcpy_s(batchDebug.daturaRenderReason, "FFXI zone opaque base layer");
-					const char *pBlendSuffix = (shouldBlend) ?
+					const char *pBlendSuffix = (waterOnly || shouldBlend) ?
 						(backFaceCull ? CFFXITextureHandler::skpSoftBlendCullBackSuffix : CFFXITextureHandler::skpSoftBlendSuffix) :
 						(hardAlpha ?
 							(backFaceCull ? CFFXITextureHandler::skpHardAlphaCullBackSuffix : CFFXITextureHandler::skpHardAlphaSuffix) :

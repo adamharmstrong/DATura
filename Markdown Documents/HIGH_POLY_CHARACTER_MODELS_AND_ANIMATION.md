@@ -1,5 +1,18 @@
 # High-Poly Character Models and Animation Sequences
 
+## PS2 client evidence revision — 2026-09-20
+
+The PS2 character renderer confirms several architectural distinctions that should govern this document:
+
+- ordinary, environment-map, and specular display-list passes are selected independently;
+- alpha-test state is emitted per display-list group rather than inferred globally from a texture;
+- mirrored geometry, skeletal blending, cloth, and effect overlays remain separate paths; and
+- actor-level distance alpha, environment-map alpha, multitexture alpha, shadow alpha, and point-light selection are independent controls.
+
+For the original PS2 path, an alpha-tested character group uses reference `0x30` in the native `0x80 == 1.0` convention, equivalent to approximately `0.375` in conventional normalized alpha. The later-PC `69/255` threshold documented elsewhere is therefore platform-specific, not universal.
+
+The decompilation exposes a `lodz` field in the character mesh runtime, but no sufficiently clear consumer was recovered. Character LOD stream selection remains unresolved and should not be inferred from the two extra header regions alone.
+
 ## Purpose and scope
 
 This document records what is currently known about FINAL FANTASY XI's high-poly character-creation assets and DATura's implementation of them. Its primary focus is the animation system: how motion files are associated with body and head meshes, how the two observed SQLE channel formats are stored, how their channels are mapped onto the skeleton, and how DATura turns them into skinned animation.
@@ -59,7 +72,7 @@ Some search summaries incorrectly identify `ROM/0/27.DAT` as the character-creat
 | `ROM/0/26.DAT` | 4,448 bytes | `sel_` | Related, more complex selection-controller variant |
 | `ROM/0/27.DAT` | 4,960 bytes | `damv` | Damage/miss/cursor UI animation and value curves |
 | `ROM/0/28.DAT` | 9,789,456 bytes | `selp` | Sel Phiner prototype exterior |
-| `ROM/1/5.DAT` | 6,315,264 bytes | `f_ch` | Retail character-selection environment used by DATura |
+| `ROM/1/5.DAT` | 6,315,264 bytes | `f_ch` | Retail character-creation environment (confirmed by the PS2 client) |
 
 `ROM/0/27.DAT` contains named blocks such as `dam0`, `dam1`, `mis0`, `mis1`, `cur0`, and `cur1`, plus compact position, rotation, scale, and alpha-like curve names. It contains no SQLE skeletal motion or zone geometry and does not explain the stiff PB skeletal motion.
 
@@ -581,7 +594,9 @@ This fallback is an approximation, not true skinning. It does not understand the
 
 ## Placement in the character-creation zone
 
-The preview uses `ROM/1/5.DAT`, the environment reported by community reverse-engineering as the scene shown during retail character selection. It is loaded through the regular zone environment path so terrain, atmosphere, and other authored environment content render behind the character. Direct inspection finds 2,699 placed objects and 252 MapGeo segments. `ROM/0/28.DAT` remains separately available as the Sel Phiner prototype exterior; its `selp` identifier alone is not evidence that it is the retail character-selection stage.
+The preview uses `ROM/1/5.DAT`. This is now supported by the original PS2 client decompilation: `CharMakeProcess` opens map `0x85` (decimal 133), which resolves to this DAT in the installed client layout, then activates `StDancer` with the high-poly body variant and camera preset 0. `StDancer` initializes and updates a separate `StAvatar` preview renderer while the zone is open. The character is therefore not a normal collision-controlled world actor; the zone supplies the authored background, lighting, and atmosphere, while the avatar is driven by the dedicated preview system. Direct inspection of `ROM/1/5.DAT` finds 2,699 placed objects and 252 MapGeo segments. `ROM/0/28.DAT` remains separately available as the Sel Phiner prototype exterior; its `selp` identifier alone is not evidence that it is the retail character-selection stage.
+
+The `StAvatar` implementation is loaded as a separate PS2 dancer overlay and is not yet recovered in the published decompilation. Consequently, the main executable confirms the scene composition and controller boundary, but does not yet settle the PB channel sampling, root-motion, or camera-transform formulas. Those behaviors must be derived from the overlay or the DAT data itself; they should not be approximated from normal player-actor collision behavior.
 
 PB root translation supplies the authored trajectory. DATura leaves the character's altitude unchanged and searches the collision mesh for a walkable surface that intersects the soles' existing Y plane. The nearest matching point supplies only an X/Z scene-placement translation. The same X/Z translation is applied to the cinematic camera, preserving its alignment with the actor. This deliberately does not prevent later clipping as the authored trajectory crosses the currently loaded environment.
 

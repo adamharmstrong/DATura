@@ -1,5 +1,20 @@
 # Room replacement and zone LOD
 
+## PS2 client evidence revision — 2026-09-20
+
+The PS2 client makes the ordinary placed-part LOD algorithm exact. Let `lod[0]` be the high-to-medium boundary, `lod[1]` the medium-to-low boundary, and `clip_dist` the disappearance distance:
+
+```text
+if clip_dist != 0 and distance >= clip_dist: hidden
+else if a low model exists and distance > lod[1]: low
+else if a medium model exists and distance > lod[0]: medium
+else: high
+```
+
+Resource mapping groups names by removing a terminal `h`, `m`, or `l`. A missing high model falls back first to medium and then to low. A distinct grid-chip path chooses high detail when squared grid distance is below `5`, otherwise medium when available.
+
+The runtime placement structures also name `clip_id`, `env_no`, four light indices, `water_height`, `place_code`, scale, flags, and the two-float LOD field. Indoor room replacement uses `clip_id` and per-door part lists to hide or reveal placed parts. These PS2 runtime structures should be documented separately from later 96-byte placement records rather than treated as a byte-identical universal format.
+
 ## Identified fields
 
 Offsets below are relative to a decrypted 100-byte (`0x64`) MZB placement,

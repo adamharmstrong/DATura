@@ -271,6 +271,10 @@ void DrawButton(const DRAWITEMSTRUCT* draw, bool dark, HFONT font, bool accent)
     char text[96] = {};
     GetWindowTextA(draw->hwndItem, text, sizeof(text));
     RECT rc = draw->rcItem;
+    HBRUSH background = CreateSolidBrush(ControlColor(dark));
+    FillRect(draw->hDC, &rc, background);
+    DeleteObject(background);
+
     COLORREF fillColor;
     if (draw->itemState & ODS_DISABLED)
         fillColor = dark ? RGB(43, 48, 53) : RGB(224, 227, 230);

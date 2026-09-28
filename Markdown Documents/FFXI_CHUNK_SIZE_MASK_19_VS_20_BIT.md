@@ -1,5 +1,11 @@
 # FFXI DAT Chunk-Size Mask: 19-Bit versus 20-Bit Interpretations
 
+## PS2 decompilation status — 2026-09-20
+
+The 2003 PS2 client decompilation does not yet provide a clean, directly recovered expression for the outer DAT chunk-size extraction. Resource traversal code clearly masks the type to seven bits and walks mapped resources, but the decisive packed-header shift/mask is not exposed in a form strong enough to settle this document by source inspection alone.
+
+The PS2 repository therefore does **not** justify promoting either interpretation from a suggestive constant or inferred decompiler expression. Corpus bounds, cross-client parsers, and exact pointer advancement remain the controlling evidence below. Any future claim from the PS2 binary must identify the parser function and show the complete information-word dataflow through the next-resource pointer.
+
 **Created:** 2026-07-27  
 **Status:** Working decision for DATura; original-client behavior remains unverified
 

@@ -17,6 +17,7 @@ struct Context
     noesisModel_t* titleUiModel;
     const GameUiTitleConfig& config;
     POINT mouseClient;
+    int selectedButton;
     HDC overlayDc = nullptr;
 };
 

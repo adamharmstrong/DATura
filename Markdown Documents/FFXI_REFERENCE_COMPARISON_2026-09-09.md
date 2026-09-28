@@ -1,5 +1,18 @@
 # FFXI reference comparison for DATura
 
+## PS2 retail-client reference — 2026-09-20
+
+Add the 2003 PS2 client decompilation as the highest-priority behavioral reference for features present in that release. It contains approximately 11,000 recovered functions and extensive original debug-symbol type information, but it is still generated from a retail executable rather than leaked source.
+
+Its strongest coverage is original runtime behavior: resource ownership, zone placement and visibility, LOD, weather interpolation, character rendering, effects, animation, collision queries, light maps, water, and shadows. Community projects remain stronger for editable workflows, modern PC behavior, later content, and already-clean parser implementations.
+
+Reference order should now be:
+
+1. matching-generation retail-client behavior;
+2. byte-verified DAT corpus evidence;
+3. independent compatible implementations;
+4. visual reconstruction and heuristics.
+
 Source review dated 2026-09-09. Compared selected implementation files and documentation with DATura's current working tree and the earlier XI-Test-Client review. No upstream application, DLL, asset-writing command, or test suite was executed. Repository snapshots were fetched under `tmp/`; large asset trees were excluded from the source inspection.
 
 ## Reviewed revisions

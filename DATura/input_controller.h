@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+namespace ApplicationSettings { struct State; }
+
 namespace InputController
 {
 enum class DragMode
@@ -9,6 +11,7 @@ enum class DragMode
     None,
     Orbit,
     Pan,
+    LightAzimuth,
 };
 
 enum class Action
@@ -21,10 +24,16 @@ enum class Action
     UnstickPlayer,
     CycleWeather,
     ToggleCameraDebugOverlay,
+    ToggleZoneMap,
+    ToggleBumpMapping,
+    ToggleBumpMappingInversion,
+    DecreaseBumpMappingIntensity,
+    IncreaseBumpMappingIntensity,
 };
 
 struct MovementSnapshot
 {
+    bool autoRun = false;
     bool fastRunning = false;
     bool running = false;
     float right = 0.0f;
@@ -50,6 +59,8 @@ struct State
     bool fastRunning = false;
     bool altHeld = false;
     bool running = false;
+    bool autoRun = false;
+    bool autoRunToggleHeld = false;
     HWND window = nullptr;
     DragMode dragMode = DragMode::None;
     POINT lastMouse = {};
@@ -57,6 +68,7 @@ struct State
     bool wantsCursorHidden = false;
     bool cursorHidden = false;
     bool hardwareCursorEnabled = true;
+    HCURSOR customCursor = NULL;
     bool forward = false;
     bool backward = false;
     bool left = false;
@@ -66,15 +78,22 @@ struct State
     bool boost = false;
     bool slow = false;
     bool cameraDebugToggle = false;
+    bool zoneMapToggleHeld = false;
+    bool bumpMappingToggleHeld = false;
+    bool bumpMappingInversionToggleHeld = false;
     bool jumpHeld = false;
     bool jumpRequested = false;
+    const ApplicationSettings::State* settings = nullptr;
 };
 
 void Initialize(State& state, HWND window, bool hardwareCursorEnabled);
+void SetKeyBindings(State& state, const ApplicationSettings::State& settings);
 void Shutdown(State& state);
 void SetHardwareCursorEnabled(State& state, bool enabled);
+void SetCursorStyle(State& state, int style, const char* ffxiRoot);
 void BeginOrbit(State& state, int x, int y);
 void BeginPan(State& state, int x, int y);
+void BeginLightAzimuth(State& state, int x, int y);
 void EndDrag(State& state);
 void CaptureChanged(State& state, HWND newCapture);
 void FocusLost(State& state);

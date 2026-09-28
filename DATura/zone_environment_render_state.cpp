@@ -151,9 +151,10 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
                       const bool enableMipMapping, const char *weatherPath,
                       const std::vector<ff11GeneratorRecord_t> &generators,
                       const std::vector<ff11KeyframeRecord_t> &keyframes,
-                      const float cameraX, const float cameraY, const float cameraZ)
+                      const float cameraX, const float cameraY, const float cameraZ,
+                      const float opacity)
 {
-    if (!model || !device)
+    if (!model || !device || opacity <= 0.001f)
         return;
 
     ZoneModelRenderMetadata::Prepare(model, device);
@@ -225,7 +226,8 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
             controller.uvScrollU, controller.uvScrollV);
 
         const bool shaderActive = texture && D3DModelRenderState::SetFfxiTexturePixelShader(
-            device, true, expandDxt3Alpha, controller.opacity, controller.colorScale);
+            device, true, expandDxt3Alpha,
+            controller.opacity * std::clamp(opacity, 0.0f, 1.0f), controller.colorScale);
         device->SetTexture(1, shaderActive ? texture : nullptr);
         D3DModelRenderState::SetTextureStageForOptionalTexture(
             device, texture, shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);

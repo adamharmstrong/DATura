@@ -20,8 +20,11 @@ namespace OrbitCamera
     };
 
     void MoveFly(State& state, const FlyInput& input, float dt);
+    void FollowTarget(State& state, const float target[3], float dt);
+    void FollowYaw(State& state, float yaw, float dt);
     void Pan(State& state, int deltaX, int deltaY);
     void Rotate(State& state, int deltaX, int deltaY);
+    void RotateByTrackpadScroll(State& state, float horizontalSteps, float verticalSteps);
     void Zoom(State& state, float wheelSteps);
     void GetPosition(const State& state, float& outX, float& outY, float& outZ);
 }

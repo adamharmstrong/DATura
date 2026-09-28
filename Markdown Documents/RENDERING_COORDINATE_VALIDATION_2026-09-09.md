@@ -1,5 +1,13 @@
 # Rendering and coordinate validation
 
+## PS2 client evidence revision — 2026-09-20
+
+The PS2 client confirms that coordinate validation must include handedness and pass-specific state, not only transformed positions. Zone placement matrices feed separate ordinary, shadow, transparent, point-light, and animated-displacement paths. Negative-determinant transforms still require winding correction before culling decisions.
+
+Zone LOD selection uses camera distance for placed parts but grid distance for chip geometry. Consequently, a coordinate error can present as the wrong LOD, premature clipping, or a missing room even when the decoded mesh itself is valid.
+
+The source also confirms distinct character/background fog environments and a world clip range. Validation captures should therefore record the active environment, fog near/far, clip range, selected LOD, culling state, and whether the draw came from the ordinary or transparent group.
+
 Phase 2 of the reference implementation plan is implemented. It preserves DATura's
 existing rendering frame and adds regression coverage and a zone inspection tool.
 The implementations are original; upstream research informed the questions and

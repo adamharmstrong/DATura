@@ -81,6 +81,32 @@ static void Model_FF11_FindEnvironmentGenerators(
 	}
 }
 
+static bool Model_FF11_IsDoorResource(const char *name)
+{
+	if (!name)
+		return false;
+	char lower[CFFXIMapHandler::skObjectNameLength + 1] = {};
+	for (int i = 0; i < CFFXIMapHandler::skObjectNameLength && name[i]; ++i)
+		lower[i] = (char)tolower((unsigned char)name[i]);
+	return strstr(lower, "door") != NULL;
+}
+
+static void Model_FF11_FindDoorGenerators(
+	const CFFXIMapGeoHandler::SMapGeoData &mapGeoData,
+	std::vector<const ff11GeneratorRecord_t *> &matches)
+{
+	matches.clear();
+	if (!Model_FF11_IsDoorResource(mapGeoData.mpMapGeoHdr->mObjectName) ||
+		!mapGeoData.mResourceName[0])
+		return;
+
+	for (const ff11GeneratorRecord_t &generator : gFF11LastGeneratorRecords)
+		if (generator.hasStandardParticleSetup && generator.linkedResource[0] &&
+			_stricmp(generator.linkedResource, mapGeoData.mResourceName) == 0 &&
+			_stricmp(generator.directoryPath, mapGeoData.mDirectoryPath) == 0)
+			matches.push_back(&generator);
+}
+
 static RichMat43 Model_FF11_BuildEnvironmentTransform(const ff11GeneratorRecord_t &generator)
 {
 	RichMat43 transform;
@@ -105,6 +131,20 @@ static RichMat43 Model_FF11_BuildEnvironmentTransform(const ff11GeneratorRecord_
 	// Reflecting this axis turns the authored dome into a bowl under the zone.
 	transform[1] *= scale[1];
 	transform[2] *= scale[2];
+	return transform;
+}
+
+static RichMat43 Model_FF11_BuildDoorTransform(const ff11GeneratorRecord_t &generator)
+{
+	RichMat43 transform = generator.hasRotation ?
+		RichAngles(generator.rotation, true).ToMat43_XYZ() : RichMat43();
+	if (generator.hasScale)
+		for (int axis = 0; axis < 3; ++axis)
+			if (std::isfinite(generator.scale[axis]) && fabsf(generator.scale[axis]) > 0.00001f)
+				transform[axis] *= generator.scale[axis];
+	if (generator.hasSpawnPosition)
+		transform[3] = RichVec3(generator.spawnPosition[0], generator.spawnPosition[1],
+			generator.spawnPosition[2]);
 	return transform;
 }
 
@@ -354,7 +394,7 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 				}
 			}
 
-			if (gpFF11Opts && (gpFF11Opts->renderUnreferenced || gpFF11Opts->renderEnvironment))
+			if (gpFF11Opts)
 			{
 				RichMat43 unreferencedTransform;
 				//run through and manually render allowed geometry that wasn't referenced by a map object
@@ -363,6 +403,11 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 					if (generatedWater[mapGeoIndex]) continue;
 					//not particularly concerned about speed here, it's not a default option
 					const CFFXIMapGeoHandler::SMapGeoData &mapGeoData = mapGeoList[mapGeoIndex];
+					const bool doorResource =
+						Model_FF11_IsDoorResource(mapGeoData.mpMapGeoHdr->mObjectName);
+					if (!doorResource && !gpFF11Opts->renderUnreferenced &&
+						!gpFF11Opts->renderEnvironment)
+						continue;
 					bool isReferenced = false;
 					for (CFFXIMapHandler::TMapObjectList::const_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
 					{
@@ -377,12 +422,16 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 					if (!isReferenced)
 					{
 						std::vector<const ff11GeneratorRecord_t *> environmentGenerators;
-						Model_FF11_FindEnvironmentGenerators(mapGeoData, environmentGenerators);
+						if (doorResource)
+							Model_FF11_FindDoorGenerators(mapGeoData, environmentGenerators);
+						else
+							Model_FF11_FindEnvironmentGenerators(mapGeoData, environmentGenerators);
 						if (!environmentGenerators.empty())
 						{
 							for (const ff11GeneratorRecord_t *generator : environmentGenerators)
 							{
-								RichMat43 environmentTransform =
+								RichMat43 environmentTransform = doorResource ?
+									Model_FF11_BuildDoorTransform(*generator) :
 									Model_FF11_BuildEnvironmentTransform(*generator);
 								Model_FF11_AddEnvironmentDebug(mapGeoData, environmentTransform, mapGeoIndex);
 								pMapGeoHandler->RenderMapObjectGeo(pRapi, mapGeoIndex,
@@ -848,6 +897,7 @@ static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug
 	// same property.
 	float generatorVectors[64][3] = {};
 	bool generatorVectorPresent[64] = {};
+	char generatorKeyframes[64][8] = {};
 
 	for (int streamIndex = 0; streamIndex < 4; ++streamIndex)
 	{
@@ -941,6 +991,22 @@ static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug
 				generator.hasColor = true;
 				generator.colorBgra = readU32(cursor + 4);
 			}
+			else if (streamIndex == 1 && opcode == 0x58 && entrySize >= 20)
+			{
+				// YmPointLightProgElem initialization: range, power, then the
+				// additive ratios used by the retail point-light packet builder.
+				generator.hasPointLightSetup = true;
+				generator.pointLightRange = readF32(cursor + 4);
+				generator.pointLightPower = readF32(cursor + 8);
+				generator.pointLightRangeRatio = readF32(cursor + 12) + 1.0f;
+				generator.pointLightPowerRatio = readF32(cursor + 16) + 1.0f;
+			}
+			else if (streamIndex == 1 && opcode >= 0x59 && opcode <= 0x5e && entrySize >= 8)
+			{
+				const int slot = (int)((config >> 13) & 0x3f);
+				memcpy(generatorKeyframes[slot], pChunkData + cursor + 4, 4);
+				generatorKeyframes[slot][4] = 0;
+			}
 			else if (streamIndex == 1 && opcode == 0x1e && entrySize >= 8)
 			{
 				// CMoElem::PrepDX consumes this byte-sized render mode. Cloud
@@ -1004,6 +1070,15 @@ static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug
 				generator.hasLinearAcceleration = true;
 				for (int axis = 0; axis < 3; ++axis)
 					generator.linearAcceleration[axis] = readF32(cursor + 4 + axis * 4);
+			}
+			else if (streamIndex == 2 && opcode >= 0x5b && opcode <= 0x5e)
+			{
+				const int slot = (int)((config >> 13) & 0x3f);
+				char *destination = opcode == 0x5b ? generator.pointLightPowerKeyframe :
+					opcode == 0x5c ? generator.pointLightRangeKeyframe :
+					opcode == 0x5d ? generator.pointLightPowerRatioKeyframe :
+					generator.pointLightRangeRatioKeyframe;
+				strcpy_s(destination, 8, generatorKeyframes[slot]);
 			}
 
 			cursor += entrySize;

@@ -1,5 +1,18 @@
 # XI-Test-Client reuse review
 
+## PS2 client reference update — 2026-09-20
+
+The PS2 retail-client decompilation changes the role of comparison projects in this review. Reuse candidates remain valuable for workflow and tooling, but original-client runtime semantics can now be checked directly for zone LOD, room visibility, weather interpolation, alpha state, resource ownership, animation, effects, light maps, and shadows.
+
+Recommended policy:
+
+1. Use the PS2 client as the primary behavioral reference for features present in 2003.
+2. Use later clients and community projects for later-era additions and platform-specific behavior.
+3. Reuse external code only after its behavior agrees with the relevant client generation.
+4. Keep debug-symbol-backed names separate from inferred decompiler names.
+
+This raises the value of event and generator inspection while reducing the need to infer original rendering behavior from another viewer's output.
+
 Reviewed 2026-09-09 against XI-Test-Client commit `5226432a14d176c697e53f161728f2b3539eaca8` and DATura's current working tree, including its uncommitted changes. This was source inspection; neither application was built or run for this review. Existing DATura implementation files were not changed.
 
 ## Recommendation

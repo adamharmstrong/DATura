@@ -1,5 +1,22 @@
 # FFXI Rendering and DAT Structures — Adjudicated Findings
 
+## PS2 client adjudication update — 2026-09-20
+
+The 2003 PS2 retail executable adds a primary client-side evidence tier to this adjudication. Debug-symbol names are authoritative where present; inferred identifiers remain lower confidence, and decompiler-generated signatures require validation from their callers.
+
+The new evidence resolves or refines these findings:
+
+- zone hard alpha is selected by low-byte identifier `0x5F` (`_`);
+- PS2 zone alpha reference `0x60` equals `0.375` in conventional normalized alpha;
+- PS2 character alpha reference `0x30` also maps to approximately `0.375`; `69/255` is later-PC behavior;
+- ordinary and transparent zone records live in separate runtime group arrays and are submitted under different test/blend state;
+- placed-part LOD uses exact high/medium/low inequalities plus clipping and fallbacks;
+- character and background weather environments are separate and interpolated independently;
+- directional environment vectors use normalized quaternion interpolation; and
+- the PS2 client has explicit background light-map, character environment-map, and character specular paths.
+
+Where later sections say “retail-exact,” they must identify the client generation when PS2 and later PC state differ.
+
 **Created:** 2026-07-27  
 **Purpose:** Consolidate and reconcile:
 
@@ -41,7 +58,7 @@ Evidence labels used below:
 | Subject | Earlier disagreement | Adjudicated result | Reason |
 |---|---|---|---|
 | Chunk size mask | DATura `0x7FFFF0` versus xim `0xFFFFF0` | **Open; retain current behavior pending a discriminating case** | The 19-bit choice is supported by a reported disassembly excerpt; the 20-bit choice is implemented by xim. We have not independently verified original-client behavior. |
-| Character alpha threshold | DATura `0.5`, xim `69/255` | **Working choice: `69/255`, comparison `GREATER`** | xim and the collaborator's reported render-state enumeration agree. |
+| Character alpha threshold | Generic `0.5` versus later-PC `69/255` | **Client-specific: later PC `69/255`; 2003 PS2 approximately `0.375` on a conventional normalized-alpha scale** | The later-PC state enumeration and PS2 character-group setup describe different constants. |
 | Zone alpha threshold | Approximate `0.375` | **Working choice: `96/255`, comparison `GREATER`** | DATura's visual/corpus work and the collaborator's reported state trace agree closely. |
 | Zone fragment equation | Empirical DXT3 expansion versus fixed-function ×4 alpha | **Corroborated model: `MODULATE2X` RGB and `MODULATE4X` alpha** | The reported state block and xim shader agree, but DATura has not independently traced the original client. |
 | Post-texture MMB dword | `u16 count + u16 blendFlags` and “multiplier nibble” | **Corroborated working model: low 28-bit count + four high flags** | The contributed loader trace identifies `VerticeCountAndFlags`, and xim provides independent reimplementation support. |
@@ -205,7 +222,7 @@ The contributed renderer trace reports that `D3DRS_ALPHAREF` is not sourced from
 | Pass | Reference | Function |
 |---|---:|---|
 | Zone | `0x60` (96) | `GREATER` |
-| Character / actor | `0x45` (69) | `GREATER` |
+| Character / actor (later PC client) | `0x45` (69) | `GREATER` |
 | Particle / effect | `0x7F` (127) | `GREATER` |
 | UI / second renderer | parameter (`0x7F` observed) | `GREATEREQUAL` |
 | Minimap | `0x10` | `GREATER` |
@@ -219,7 +236,7 @@ Zone geometry has an enable/addressing selector:
 | `1` | On | Wrap |
 | `2` | Off | Clamp |
 
-**Correction:** DATura's generic character `0.5` threshold is wrong. Use `69/255`.
+**Correction:** A generic character `0.5` threshold is wrong. Use `69/255` when reproducing the traced later PC client. The 2003 PS2 character path uses AREF `0x30`, which maps to approximately `0.375` on a conventional normalized-alpha scale after accounting for that renderer's half-range alpha convention.
 
 ### 5.2 Fragment equation
 
@@ -714,7 +731,7 @@ Treat the following as superseded:
 
 ### Highest-value corrections
 
-1. Use character alpha reference `69/255`.
+1. Select the character alpha reference by target client generation: `69/255` for the traced later PC path, or the PS2-equivalent approximately `0.375` conventional normalized alpha for the traced 2003 PS2 path.
 2. Decode topology and 48-byte vertex blending as independent config bits.
 3. Animate 48-byte zone vertices using their second position and wind factor.
 4. Replace empirical DXT3 alpha expansion with the correct pass-specific fixed-function equation.

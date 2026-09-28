@@ -1,5 +1,19 @@
 # DAT replacement resolver
 
+## Original-client resource semantics — 2026-09-20
+
+The PS2 client confirms that loaded resource files preserve a directory hierarchy and that consumers search for typed resources beneath a containing resource. Resource types are compared through their low seven bits, and model mapping may group multiple named resources into one high/medium/low family.
+
+A replacement resolver must therefore preserve more than a final file path:
+
+- containing-resource hierarchy;
+- low-seven-bit resource type;
+- fixed resource identity/name;
+- sibling relationships used for LOD grouping; and
+- activation/lifetime behavior expected by consumers.
+
+The PS2 client has no user-facing replacement layer equivalent to this project feature, so replacement precedence remains application policy. Original-client traversal semantics should constrain the resolved result, not dictate package precedence.
+
 Phase 3 adds a shared read policy for previewing modified DATs without overwriting
 the retail installation. The implementation follows the replacement-root idea
 reviewed in XI-Test-Client, with original DATura code and one policy shared across

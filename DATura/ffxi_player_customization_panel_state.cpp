@@ -35,54 +35,54 @@ void CreateControls(const HWND panel)
         panel, "BUTTON", "Character", BS_GROUPBOX, -1, 8, 8, 448, 94);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Race:", 0, -1, 18, 36, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_RACE, 98, 32, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_RACE, 98, 32, 390);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Face:", 0, -1, 18, 68, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_FACE, 98, 64, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_FACE, 98, 64, 390);
 
     Win32PanelControls::AddPanelControl(
         panel, "BUTTON", "Weapons", BS_GROUPBOX, -1, 8, 110, 448, 158);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Main:", 0, -1, 18, 138, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_MAIN_TYPE, 18, 156, 68);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_MAIN_ITEM, 98, 156, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_MAIN_TYPE, 18, 156, 100);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_MAIN_ITEM, 126, 156, 362);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Sub:", 0, -1, 18, 184, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_SUB_TYPE, 18, 202, 68);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_SUB_ITEM, 98, 202, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_SUB_TYPE, 18, 202, 100);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_SUB_ITEM, 126, 202, 362);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Ranged:", 0, -1, 18, 230, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_RANGE_TYPE, 18, 248, 68);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_RANGE_ITEM, 98, 248, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_RANGE_TYPE, 18, 248, 100);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_RANGE_ITEM, 126, 248, 362);
 
     Win32PanelControls::AddPanelControl(
         panel, "BUTTON", "Armor", BS_GROUPBOX, -1, 8, 276, 448, 176);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Head:", 0, -1, 18, 304, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_HEAD, 98, 300, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_HEAD, 98, 300, 390);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Body:", 0, -1, 18, 332, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_BODY, 98, 328, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_BODY, 98, 328, 390);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Hands:", 0, -1, 18, 360, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_HANDS, 98, 356, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_HANDS, 98, 356, 390);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Legs:", 0, -1, 18, 388, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_LEGS, 98, 384, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_LEGS, 98, 384, 390);
     Win32PanelControls::AddPanelControl(
         panel, "STATIC", "Feet:", 0, -1, 18, 416, 66, 18);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_FEET, 98, 412, 350);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_FEET, 98, 412, 390);
 
     Win32PanelControls::AddPanelControl(
         panel, "BUTTON", "Action", BS_GROUPBOX, -1, 8, 460, 448, 82);
     Win32PanelControls::AddPanelCombo(panel, IDC_LP_ANIM_MODE, 18, 488, 100);
-    Win32PanelControls::AddPanelCombo(panel, IDC_LP_ANIM_BANK, 126, 488, 222);
+    Win32PanelControls::AddPanelCombo(panel, IDC_LP_ANIM_BANK, 126, 488, 262);
     Win32PanelControls::AddPanelControl(
-        panel, "BUTTON", "Play", BS_PUSHBUTTON, IDC_LP_PLAY, 356, 488, 92, 24);
+        panel, "BUTTON", "Play", BS_PUSHBUTTON, IDC_LP_PLAY, 396, 488, 92, 24);
     Win32PanelControls::AddPanelControl(
-        panel, "BUTTON", "Stop", BS_PUSHBUTTON, IDC_LP_STOP, 356, 516, 44, 24);
+        panel, "BUTTON", "Stop", BS_PUSHBUTTON, IDC_LP_STOP, 396, 516, 44, 24);
     Win32PanelControls::AddPanelControl(
-        panel, "BUTTON", "Reset", BS_PUSHBUTTON, IDC_LP_RESET, 404, 516, 44, 24);
+        panel, "BUTTON", "Reset", BS_PUSHBUTTON, IDC_LP_RESET, 444, 516, 44, 24);
 
     Win32PanelControls::AddPanelControl(
         panel, "BUTTON", "Randomize", BS_GROUPBOX, -1, 8, 550, 448, 54);
@@ -105,9 +105,9 @@ void CreateControls(const HWND panel)
     Win32PanelControls::AddPanelControl(
         panel, "BUTTON", "Preset", BS_GROUPBOX, -1, 8, 612, 448, 54);
     Win32PanelControls::AddPanelControl(
-        panel, "BUTTON", "Load", BS_PUSHBUTTON, IDC_LP_LOAD, 304, 634, 68, 24);
+        panel, "BUTTON", "Load", BS_PUSHBUTTON, IDC_LP_LOAD, 344, 634, 68, 24);
     Win32PanelControls::AddPanelControl(
-        panel, "BUTTON", "Save", BS_PUSHBUTTON, IDC_LP_SAVE, 380, 634, 68, 24);
+        panel, "BUTTON", "Save", BS_PUSHBUTTON, IDC_LP_SAVE, 420, 634, 68, 24);
 }
 
 void SyncControls(const HWND panel, PlayerEquipState& equipment, int& faceVariant)

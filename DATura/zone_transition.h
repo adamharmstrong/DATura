@@ -2,10 +2,31 @@
 
 #include "ffxi_coordinate_frame.h"
 #include <cmath>
+#include <cstdint>
 
 namespace ZoneTransition
 {
 using Point = FFXICoordinateFrame::Vector;
+
+inline constexpr float kHeadingTurn = 6.28318530717958647692f;
+
+// The PS2 client serializes direction as one unsigned byte: radians * 256 / tau.
+// Route data is authored in radians, so round it to the nearest representable
+// packet heading instead of allowing decimal approximations to fall one step low.
+inline constexpr std::uint8_t EncodeHeading(float radians)
+{
+    while (radians < 0.0f) radians += kHeadingTurn;
+    while (radians >= kHeadingTurn) radians -= kHeadingTurn;
+    const unsigned int value = static_cast<unsigned int>(
+        radians * (256.0f / kHeadingTurn) + 0.5f);
+    return static_cast<std::uint8_t>(value & 0xffu);
+}
+
+inline constexpr float DecodeHeading(const std::uint8_t heading)
+{
+    return kHeadingTurn * static_cast<float>(heading) / 256.0f;
+}
+
 struct Line
 {
     const char* token;
@@ -14,7 +35,17 @@ struct Line
     Point outward;
     float halfWidth;
     Point arrival;
-    float heading;
+    std::uint8_t heading;
+
+    constexpr Line(const char* tokenValue, const int from, const int to,
+                   const Point& thresholdValue, const Point& outwardValue,
+                   const float width, const Point& arrivalValue,
+                   const float headingRadians)
+        : token(tokenValue), fromZone(from), toZone(to), threshold(thresholdValue),
+          outward(outwardValue), halfWidth(width), arrival(arrivalValue),
+          heading(EncodeHeading(headingRadians))
+    {
+    }
 };
 
 // Native DAT coordinates. Source positions and arrivals: LandSandBoat
@@ -428,6 +459,7 @@ inline const Line* Crossed(int zone, const Point& sceneStart, const Point& scene
 
 inline float ArrivalYaw(const Line& line, bool mirrorX)
 {
-    return FFXICoordinateFrame::NativeDatHeadingToScene(line.heading, mirrorX) - 1.57079632679f;
+    return FFXICoordinateFrame::NativeDatHeadingToScene(
+        DecodeHeading(line.heading), mirrorX) - 1.57079632679f;
 }
 }

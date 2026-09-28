@@ -6,10 +6,11 @@
 
 namespace ZoneObjectHighlightRenderer
 {
-void Draw(IDirect3DDevice9 *device, noesisModel_t *model, const std::string& highlightedObject,
+void Draw(IDirect3DDevice9 *device, noesisModel_t *model,
+          const std::set<std::string>& highlightedObjects,
           const std::map<std::string, ZoneObjectTransform::DebugTransform>& overrides)
 {
-    if (!device || !model || highlightedObject.empty())
+    if (!device || !model || highlightedObjects.empty())
         return;
 
     D3DMATRIX baseWorld = {};
@@ -32,7 +33,7 @@ void Draw(IDirect3DDevice9 *device, noesisModel_t *model, const std::string& hig
 
     for (const noesisModel_t::Submesh& submesh : model->submeshes)
     {
-        if (submesh.objectName != highlightedObject ||
+        if (highlightedObjects.find(submesh.objectName) == highlightedObjects.end() ||
             !D3DModelBuffers::HasDrawBuffers(model, submesh))
         {
             continue;

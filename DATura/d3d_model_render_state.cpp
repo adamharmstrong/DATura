@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "d3d_model_render_state.h"
 
+#include "d3d_bump_mapping.h"
+#include "custom_texture_assets.h"
 #include "d3d_math.h"
 #include "noesis_rapi.h"
 
@@ -11,65 +13,8 @@ namespace D3DModelRenderState
 {
 namespace
 {
-IDirect3DPixelShader9 *g_texturePixelShader = nullptr;
-bool g_texturePixelShaderTried = false;
 IDirect3DPixelShader9 *g_uiPixelShader = nullptr;
 bool g_uiPixelShaderTried = false;
-
-bool EnsureFfxiTexturePixelShader(IDirect3DDevice9 *device)
-{
-    if (g_texturePixelShader)
-        return true;
-    if (g_texturePixelShaderTried || !device)
-        return false;
-
-    g_texturePixelShaderTried = true;
-    static const char kShaderSource[] =
-        "sampler2D BaseTexture : register(s0);\n"
-        "sampler2D NormalTexture : register(s1);\n"
-        "float4 AlphaParams : register(c0);\n"
-        "float4 ColorScale : register(c1);\n"
-        "float4 BumpParams : register(c2);\n"
-        "float4 main(float4 diffuse : COLOR0, float2 uv : TEXCOORD0) : COLOR0\n"
-        "{\n"
-        "    float4 texel = lerp(tex2D(BaseTexture, uv), float4(1,1,1,1), AlphaParams.w);\n"
-        "    float3 bumpNormal = tex2D(NormalTexture, uv).xyz * 2.0 - 1.0;\n"
-        "    float bumpLight = saturate(dot(normalize(bumpNormal), normalize(BumpParams.xyz)));\n"
-        "    float bumpScale = lerp(1.0, 0.65 + bumpLight * 0.70, BumpParams.w);\n"
-        "    float textureAlpha = (AlphaParams.y > 0.5) ? saturate(texel.a * 1.875) : texel.a;\n"
-        "    float vertexAlpha = saturate(diffuse.a * 2.0);\n"
-        "    float alpha = ((AlphaParams.x > 0.5) ? textureAlpha * vertexAlpha : 1.0) * AlphaParams.z;\n"
-        "    return float4(saturate(2.0 * texel.rgb * diffuse.rgb * ColorScale.rgb * bumpScale), saturate(alpha));\n"
-        "}\n";
-
-    ID3DBlob *byteCode = nullptr;
-    ID3DBlob *errors = nullptr;
-    const HRESULT compileHr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1,
-        "DATuraFfxiTexture", nullptr, nullptr, "main", "ps_2_0",
-        // ps_2_0 uses legacy sampler2D/tex2D syntax, rejected by strict mode.
-        0, 0, &byteCode, &errors);
-    if (FAILED(compileHr))
-    {
-        if (errors)
-            OutputDebugStringA(static_cast<const char *>(errors->GetBufferPointer()));
-        if (errors)
-            errors->Release();
-        return false;
-    }
-
-    const HRESULT shaderHr = device->CreatePixelShader(
-        static_cast<const DWORD *>(byteCode->GetBufferPointer()), &g_texturePixelShader);
-    byteCode->Release();
-    if (errors)
-        errors->Release();
-    if (FAILED(shaderHr))
-    {
-        g_texturePixelShader = nullptr;
-        OutputDebugStringA("WARNING: Unable to create FFXI DXT texture pixel shader.\n");
-        return false;
-    }
-    return true;
-}
 
 bool EnsureFfxiUiPixelShader(IDirect3DDevice9 *device)
 {
@@ -122,7 +67,8 @@ void MaterialBindingCache::Invalidate()
 {
     material = nullptr;
     texture = nullptr;
-    normalTexture = nullptr;
+    bumpMappingEnabled = false;
+    bumpMappingIntensity = 1.0f;
     valid = false;
 }
 
@@ -170,8 +116,47 @@ void ApplyFixedFunctionModelState(IDirect3DDevice9 *device, const bool enableMip
                             enableMipMapping ? D3DTEXF_LINEAR : D3DTEXF_NONE);
 }
 
+void CalculateDirectionalLight(const int minuteOfDay, const bool automatic,
+                               const float azimuthDegrees, const float elevationDegrees,
+                               float outDirection[3])
+{
+    if (!outDirection)
+        return;
+
+    constexpr float kRadiansPerDegree = 0.01745329252f;
+    if (automatic)
+    {
+        // XiArea::SetSunMoonTime rotates the retail light through one complete
+        // vertical orbit per Vana'diel day. At night the main light passes
+        // below the horizon and the inverse secondary light illuminates the scene.
+        const float orbit =
+            (static_cast<float>((minuteOfDay % 1440 + 1440) % 1440) / 1440.0f) *
+            6.2831853f + elevationDegrees * kRadiansPerDegree;
+        const float horizontal = sinf(orbit);
+        const float compass = azimuthDegrees * kRadiansPerDegree;
+        outDirection[0] = horizontal * cosf(compass);
+        outDirection[1] = cosf(orbit);
+        outDirection[2] = horizontal * sinf(compass);
+        return;
+    }
+
+    const float azimuth = azimuthDegrees * kRadiansPerDegree;
+    float elevation = elevationDegrees * kRadiansPerDegree;
+    elevation = fmaxf(-1.3962634f, fminf(1.5533430f, elevation));
+
+    const float horizontal = cosf(elevation);
+    outDirection[0] = -horizontal * cosf(azimuth);
+    outDirection[1] = -sinf(elevation);
+    outDirection[2] = horizontal * sinf(azimuth);
+}
+
 void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const int minuteOfDay,
-                          const bool indoor)
+                          const bool indoor, const bool automaticDirection,
+                          const float azimuthDegrees, const float elevationDegrees,
+                          const bool useAuthoredColor, const D3DCOLOR authoredMainColor,
+                          const D3DCOLOR authoredSecondaryColor,
+                          const D3DCOLOR authoredAmbientColor, const float authoredLightPower,
+                          const bool useAuthoredDirection, const float authoredDirection[3])
 {
     if (!device)
         return;
@@ -180,6 +165,7 @@ void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const int
     {
         device->SetRenderState(D3DRS_LIGHTING, FALSE);
         device->LightEnable(0, FALSE);
+        device->LightEnable(1, FALSE);
         return;
     }
 
@@ -192,15 +178,63 @@ void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const int
 
     D3DLIGHT9 sun = {};
     sun.Type = D3DLIGHT_DIRECTIONAL;
-    sun.Diffuse = { 1.0f, 0.88f + 0.12f * daylight, 0.72f + 0.28f * daylight, 1.0f };
-    sun.Direction = { -0.45f * cosf(dayAngle), -0.35f - 0.65f * fmaxf(altitude, 0.15f),
-                      0.45f * sinf(dayAngle) };
+    if (useAuthoredColor)
+    {
+        const float power = std::isfinite(authoredLightPower)
+            ? fmaxf(authoredLightPower, 0.0f) : 1.0f;
+        sun.Diffuse = {
+            (static_cast<float>((authoredMainColor >> 16) & 0xff) / 255.0f) * power,
+            (static_cast<float>((authoredMainColor >> 8) & 0xff) / 255.0f) * power,
+            (static_cast<float>(authoredMainColor & 0xff) / 255.0f) * power,
+            1.0f
+        };
+    }
+    else
+    {
+        sun.Diffuse = { 1.0f, 0.88f + 0.12f * daylight,
+                        0.72f + 0.28f * daylight, 1.0f };
+    }
+    float direction[3] = {};
+    if (automaticDirection && useAuthoredDirection && authoredDirection)
+    {
+        direction[0] = authoredDirection[0];
+        direction[1] = authoredDirection[1];
+        direction[2] = authoredDirection[2];
+    }
+    else
+    {
+        CalculateDirectionalLight(minuteOfDay, automaticDirection, azimuthDegrees,
+                                  elevationDegrees, direction);
+    }
+    sun.Direction = { direction[0], direction[1], direction[2] };
     sun.Attenuation0 = 1.0f;
     device->SetLight(0, &sun);
     device->LightEnable(0, TRUE);
+    if (useAuthoredColor && !useAuthoredDirection)
+    {
+        const float power = std::isfinite(authoredLightPower)
+            ? fmaxf(authoredLightPower, 0.0f) : 1.0f;
+        D3DLIGHT9 fill = {};
+        fill.Type = D3DLIGHT_DIRECTIONAL;
+        fill.Diffuse = {
+            (static_cast<float>((authoredSecondaryColor >> 16) & 0xff) / 255.0f) * power,
+            (static_cast<float>((authoredSecondaryColor >> 8) & 0xff) / 255.0f) * power,
+            (static_cast<float>(authoredSecondaryColor & 0xff) / 255.0f) * power,
+            1.0f
+        };
+        fill.Direction = { -direction[0], -direction[1], -direction[2] };
+        fill.Attenuation0 = 1.0f;
+        device->SetLight(1, &fill);
+        device->LightEnable(1, TRUE);
+    }
+    else
+    {
+        device->LightEnable(1, FALSE);
+    }
     device->SetRenderState(D3DRS_LIGHTING, TRUE);
-    device->SetRenderState(D3DRS_AMBIENT, D3DCOLOR_COLORVALUE(
-        ambient * 0.82f, ambient * 0.88f, ambient, 1.0f));
+    device->SetRenderState(D3DRS_AMBIENT, useAuthoredColor
+        ? authoredAmbientColor
+        : D3DCOLOR_COLORVALUE(ambient * 0.82f, ambient * 0.88f, ambient, 1.0f));
     device->SetRenderState(D3DRS_SPECULARENABLE, FALSE);
 }
 
@@ -257,43 +291,14 @@ DWORD FloatBits(const float value)
 bool SetFfxiTexturePixelShader(IDirect3DDevice9 *device, const bool useAuthoredAlpha,
                                const bool expandDxt3Alpha, const float opacityScale,
                                const float *colorScale, const bool hasTexture,
-                               const bool hasNormalTexture)
+                               const bool enableBumpMapping,
+                               const float bumpMappingIntensity,
+                               const float baseTextureWidth, const float baseTextureHeight)
 {
-    if (!EnsureFfxiTexturePixelShader(device))
-    {
-        if (device)
-            device->SetPixelShader(nullptr);
-        return false;
-    }
-
-    const float alphaParams[4] =
-    {
-        useAuthoredAlpha ? 1.0f : 0.0f,
-        expandDxt3Alpha ? 1.0f : 0.0f,
-        opacityScale,
-        hasTexture ? 0.0f : 1.0f
-    };
-    const float defaultColorScale[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    float authoredColorScale[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    if (colorScale)
-    {
-        authoredColorScale[0] = colorScale[0];
-        authoredColorScale[1] = colorScale[1];
-        authoredColorScale[2] = colorScale[2];
-    }
-    device->SetPixelShader(g_texturePixelShader);
-    device->SetPixelShaderConstantF(0, alphaParams, 1);
-    device->SetPixelShaderConstantF(1,
-        colorScale ? authoredColorScale : defaultColorScale, 1);
-    const float bumpParams[4] =
-    {
-        0.35f,
-        -0.45f,
-        0.82f,
-        hasNormalTexture ? 1.0f : 0.0f
-    };
-    device->SetPixelShaderConstantF(2, bumpParams, 1);
-    return true;
+    return D3DBumpMapping::ApplyTextureShader(
+        device, useAuthoredAlpha, expandDxt3Alpha, opacityScale, colorScale,
+        hasTexture, enableBumpMapping, bumpMappingIntensity,
+        baseTextureWidth, baseTextureHeight);
 }
 
 bool SetFfxiUiPixelShader(IDirect3DDevice9 *device, const bool expandDxt3Alpha,
@@ -320,20 +325,23 @@ bool SetFfxiUiPixelShader(IDirect3DDevice9 *device, const bool expandDxt3Alpha,
 
 void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
                          const noesisMaterial_t *material, const noesisTex_t *texture,
-                         const noesisTex_t *normalTexture)
+                         const bool enableBumpMapping, const float bumpMappingIntensity)
 {
     if (!device || (cache.valid && material == cache.material && texture == cache.texture &&
-        normalTexture == cache.normalTexture))
+        enableBumpMapping == cache.bumpMappingEnabled &&
+        bumpMappingIntensity == cache.bumpMappingIntensity))
         return;
 
     cache.valid = true;
     cache.material = material;
     cache.texture = texture;
-    cache.normalTexture = normalTexture;
+    cache.bumpMappingEnabled = enableBumpMapping;
+    cache.bumpMappingIntensity = bumpMappingIntensity;
     const bool twoSided = !material || (material->flags & NMATFLAG_TWOSIDED) != 0;
     const float alphaRef = material ? material->alphaTest : 0.0f;
-    IDirect3DTexture9 *d3dTexture = texture ? texture->pD3DTex : nullptr;
-    IDirect3DTexture9 *d3dNormalTexture = normalTexture ? normalTexture->pD3DTex : nullptr;
+    const CustomTextureAssets::Texture customTexture = CustomTextureAssets::ResolveBase(texture);
+    IDirect3DTexture9 *d3dTexture = customTexture.texture ? customTexture.texture :
+        (texture ? texture->pD3DTex : nullptr);
     const bool expandDxt3Alpha = texture && texture->texType == NOESISTEX_DXT3;
     device->SetRenderState(D3DRS_CULLMODE, twoSided ? D3DCULL_NONE : D3DCULL_CW);
     device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaRef > 0.0f ? TRUE : FALSE);
@@ -342,12 +350,18 @@ void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
         device->SetRenderState(D3DRS_ALPHAREF, (DWORD)(alphaRef * 255.0f));
         device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
     }
-    const bool shaderActive = d3dTexture && SetFfxiTexturePixelShader(
+    const bool pbrActive = d3dTexture && CustomTextureAssets::ApplyPbrShader(
+        device, texture, d3dTexture, alphaRef > 0.0f, expandDxt3Alpha, 1.0f);
+    const bool shaderActive = pbrActive || (d3dTexture && SetFfxiTexturePixelShader(
         device, alphaRef > 0.0f, expandDxt3Alpha, 1.0f, nullptr, true,
-        d3dNormalTexture != nullptr);
+        enableBumpMapping, bumpMappingIntensity,
+        customTexture.texture ? static_cast<float>(customTexture.width) :
+            (texture ? static_cast<float>(texture->w) : 0.0f),
+        customTexture.texture ? static_cast<float>(customTexture.height) :
+            (texture ? static_cast<float>(texture->h) : 0.0f)));
     if (!d3dTexture)
         device->SetPixelShader(nullptr); // Untextured materials use fixed-function vertex color.
-    device->SetTexture(1, shaderActive ? d3dNormalTexture : nullptr);
+    if (!pbrActive) { device->SetTexture(1, nullptr); device->SetTexture(2, nullptr); device->SetTexture(3, nullptr); }
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 :
         (alphaRef > 0.0f ? D3DTOP_MODULATE4X : D3DTOP_MODULATE2X));
@@ -355,39 +369,44 @@ void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
 
 void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
                               const noesisMaterial_t *material, const noesisTex_t *texture,
-                              const noesisTex_t *normalTexture)
+                              const bool enableBumpMapping, const float bumpMappingIntensity)
 {
     if (!device || (cache.valid && material == cache.material && texture == cache.texture &&
-        normalTexture == cache.normalTexture))
+        enableBumpMapping == cache.bumpMappingEnabled &&
+        bumpMappingIntensity == cache.bumpMappingIntensity))
         return;
 
     cache.valid = true;
     cache.material = material;
     cache.texture = texture;
-    cache.normalTexture = normalTexture;
+    cache.bumpMappingEnabled = enableBumpMapping;
+    cache.bumpMappingIntensity = bumpMappingIntensity;
     const bool twoSided = !material || (material->flags & NMATFLAG_TWOSIDED) != 0;
-    IDirect3DTexture9 *d3dTexture = texture ? texture->pD3DTex : nullptr;
-    IDirect3DTexture9 *d3dNormalTexture = normalTexture ? normalTexture->pD3DTex : nullptr;
+    const CustomTextureAssets::Texture customTexture = CustomTextureAssets::ResolveBase(texture);
+    IDirect3DTexture9 *d3dTexture = customTexture.texture ? customTexture.texture :
+        (texture ? texture->pD3DTex : nullptr);
     const bool expandDxt3Alpha = texture && texture->texType == NOESISTEX_DXT3;
     device->SetRenderState(D3DRS_CULLMODE, twoSided ? D3DCULL_NONE : D3DCULL_CW);
-    const bool shaderActive = d3dTexture && SetFfxiTexturePixelShader(
+    const bool pbrActive = d3dTexture && CustomTextureAssets::ApplyPbrShader(
+        device, texture, d3dTexture, true, expandDxt3Alpha, 1.0f);
+    const bool shaderActive = pbrActive || (d3dTexture && SetFfxiTexturePixelShader(
         device, true, expandDxt3Alpha, 1.0f, nullptr, true,
-        d3dNormalTexture != nullptr);
+        enableBumpMapping, bumpMappingIntensity,
+        customTexture.texture ? static_cast<float>(customTexture.width) :
+            (texture ? static_cast<float>(texture->w) : 0.0f),
+        customTexture.texture ? static_cast<float>(customTexture.height) :
+            (texture ? static_cast<float>(texture->h) : 0.0f)));
     if (!d3dTexture)
         device->SetPixelShader(nullptr);
-    device->SetTexture(1, shaderActive ? d3dNormalTexture : nullptr);
+    if (!pbrActive) { device->SetTexture(1, nullptr); device->SetTexture(2, nullptr); device->SetTexture(3, nullptr); }
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
 }
 
 void ReleaseFfxiPixelShaders()
 {
-    if (g_texturePixelShader)
-    {
-        g_texturePixelShader->Release();
-        g_texturePixelShader = nullptr;
-    }
-    g_texturePixelShaderTried = false;
+    D3DBumpMapping::Release();
+    CustomTextureAssets::Release();
     if (g_uiPixelShader)
     {
         g_uiPixelShader->Release();

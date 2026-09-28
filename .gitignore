@@ -25,9 +25,16 @@ Release/
 # Logs
 *.log
 
+# Document rendering and visual QA artifacts
+/_lo_*/
+/_qa_*/
+/_render_*/
+/_inspect_*/
+
 # Generated renderer smoke-test output
 /artifacts/renderer-smoke-Debug/
 /artifacts/renderer-smoke-Release/
+/artifacts/docker-build/
 
 # Local agent/research workspaces
 .agents/

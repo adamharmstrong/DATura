@@ -1,0 +1,6 @@
+# The image contains only the build toolchain and its entry script. Repository
+# source is supplied later as a read-only bind mount.
+*
+!Dockerfile.build
+!docker/
+!docker/**

@@ -46,7 +46,8 @@ struct Surface
     float colorScale[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
     Curve colorCurves[4];
     float uvVelocity[2] = {};
-    unsigned short blendMode = 0x44;
+    // YmElem defaults to GS ALPHA 0x48; opcode 0x1e overrides it when authored.
+    unsigned short blendMode = 0x48;
     bool twoSided = false; // a collapsed axis has no reliable determinant winding
     float cullDistance = 0.0f;
 };

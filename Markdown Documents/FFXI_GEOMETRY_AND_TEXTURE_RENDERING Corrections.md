@@ -1,5 +1,19 @@
 # FFXI_GEOMETRY_AND_TEXTURE_RENDERING.md — Corrections from cexi-tools / xim
 
+## PS2 client follow-up — 2026-09-20
+
+The original PS2 retail client decompilation confirms most corrections below but adds platform distinctions:
+
+- the leading-underscore hard-alpha test is direct client behavior;
+- PS2 zone alpha reference `0x60` converts to the documented `0.375` threshold;
+- PS2 character alpha reference `0x30` also converts to approximately `0.375`, while `69/255` applies to a later PC path;
+- zone resources are natively split into ordinary and transparent group arrays;
+- placed-part LOD boundaries and missing-resource fallbacks are now exact;
+- character ordinary, environment-map, and specular passes are independently selected on PS2; and
+- PS2 has a separate framebuffer-derived background light-map path.
+
+This file remains an historical correction ledger. The self-contained rendering reference is the consolidated specification.
+
 Sources: `thirdparty/xim` (faithful Kotlin client reimplementation), `cexi` parsers
 (verified byte-exact against retail DATs). File references are to the cexi-tools repo.
 

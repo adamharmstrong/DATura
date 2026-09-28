@@ -33,6 +33,7 @@
 #include "d3d_ui_renderer.h"
 #include "d3d_math.h"
 #include "d3d_model_render_state.h"
+#include "custom_texture_assets.h"
 #include "model_renderer.h"
 #include "zone_model_transform.h"
 #include "zone_model_render_metadata.h"
@@ -42,11 +43,11 @@
 #include "zone_weather_particles.h"
 #include "zone_sky_dome.h"
 #include "zone_environment_state.h"
-#include "zone_environment_fog.h"
 #include "zone_object_transform.h"
 #include "zone_object_highlight_renderer.h"
 #include "zone_object_transform_editor.h"
 #include "zone_object_list_selection.h"
+#include "zone_object_picker.h"
 #include "zone_object_panel.h"
 #include "zone_object_tree_population.h"
 #include "zone_object_visibility.h"
@@ -91,12 +92,15 @@
 #include "zone_collision_geometry.h"
 #include "zone_door_interaction.h"
 #include "zone_elevator.h"
+#include "zone_elevator_audio.h"
+#include "zone_entry_message.h"
 #include "orbit_camera.h"
 #include "player_controller.h"
 #include "player_model_loader.h"
 #include "bgw_player.h"
 #include "audio_player.h"
 #include "home_point_effect.h"
+#include "character_save_data.h"
 #include "texture_viewer.h"
 #include "game_ui_config.h"
 #include "npc_placement.h"
@@ -105,6 +109,7 @@
 #include "ffxi_lore_zone_dat_crossref.h"
 #include "resource.h"
 #include <commctrl.h>
+#include <shellapi.h>
 #include <windowsx.h>
 #include <cmath>
 #include <cstdio>
@@ -116,6 +121,7 @@
 #include <string>
 #include <map>
 #include <algorithm>
+#include <random>
 #include <cctype>
 
 // Keep the newly introduced developer-clock API visible even when Visual
@@ -147,8 +153,34 @@ static RendererBackend::Runtime g_graphicsRuntime;
 
 static const int  kDefaultWidth     = 1280;
 static const int  kDefaultHeight    = 720;
+static const int  kCompanionViewerWidth = 720;
+static const int  kCompanionViewerHeight = 540;
 static const wchar_t kWindowClassName[] = L"FFXIViewerWndClass";
 static const wchar_t kWindowTitle[]     = L"DATura - FFXI Model Viewer";
+static const wchar_t kCompanionViewerTitle[] = L"DATura - Model Viewer";
+static const wchar_t kCompanionViewerMutexName[] = L"Local\\DATuraModelViewer";
+static const char kCompanionViewerArg[] = "--companion-viewer";
+static const char kCompanionModelArg[] = "--model";
+static const char kCompanionLabelArg[] = "--label";
+static const char kCompanionOwnerPidArg[] = "--owner-pid";
+static const char kPlayerRaceArg[] = "--player-race";
+static const char kPlayerCustomizationArg[] = "--player-customization";
+static const char kCreationModelArg[] = "--creation-model";
+static const ULONG_PTR kCompanionModelCopyDataId = 0x44544343; // DTCC
+static const ULONG_PTR kPlayerRaceCopyDataId = 0x44545052; // DTPR
+static const ULONG_PTR kCreationModelCopyDataId = 0x4454434D; // DTCM
+static bool g_companionViewerMode = false;
+static std::string g_startupModelDat;
+static std::string g_startupModelLabel;
+static std::string g_startupPlayerCustomization;
+static int g_startupPlayerRace = -1;
+static int g_startupCreationModel = -1;
+static float g_modelViewerLightAzimuthDegrees = 150.0f;
+static float g_modelViewerLightElevationDegrees = 45.0f;
+static int g_modelViewerLightOverlayCorner = 0;
+static DWORD g_companionOwnerPid = 0;
+static HANDLE g_companionOwnerProcess = NULL;
+static HANDLE g_companionViewerMutex = NULL;
 
 // Loaded model state. Each asset owns its model together with the parser
 // context that backs the model's allocations and textures.
@@ -185,6 +217,7 @@ struct NpcEventRuntime
     std::uint32_t pendingMessage = 0xffffffffu;
     std::uint32_t pendingChoiceMessage = 0xffffffffu;
     std::uint32_t defaultChoice = 0;
+    std::uint32_t hiddenChoiceMask = 0;
     bool messageOpen = false;
     bool waitingChoice = false;
     bool finished = false;
@@ -201,13 +234,24 @@ struct NpcConversationState
     NpcEventRuntime runtime;
     std::string choicePrompt;
     std::vector<std::string> choiceOptions;
+    std::vector<std::uint32_t> choiceValues;
     int choiceSelected = 0;
+};
+
+struct HomePointTeleportState
+{
+    bool active = false;
+    CharacterSaveData::HomePoint source;
+    std::vector<CharacterSaveData::HomePoint> destinations;
 };
 
 static std::vector<NpcRenderAsset> g_npcRenderAssets;
 static std::vector<NpcRenderInstance> g_npcRenderInstances;
 static NpcConversationState g_npcConversation;
+static HomePointTeleportState g_homePointTeleport;
 static double g_homePointSeconds = 0.0;
+
+static bool CompleteHomePointTeleport(HWND owner);
 
 static std::vector<NpcNameplateRenderer::DrawItem> g_npcNameplates;
 static NpcInteraction::State g_npcInteraction;
@@ -230,7 +274,7 @@ static Win32Theme::State g_themeState = {};
 // Leave that correction enabled when this option is off; checking the option
 // deliberately displays the raw, mirrored orientation instead.
 static std::vector<std::string> g_hiddenZoneObjects;
-static std::string    g_highlightedZoneObject;
+static std::set<std::string> g_highlightedZoneObjects;
 static ZoneEnvironmentState::Data g_zoneEnvironment = {};
 static int g_zoneWeatherIndex = 0;
 static ZoneEnvironmentState::Cache g_zoneEnvironmentCache;
@@ -246,6 +290,7 @@ static std::map<std::string, DebugTransform> g_zoneObjectOverrides;
 static std::map<std::string, DebugTransform> g_zoneRuntimeOverrides;
 static ZoneDoorInteraction::State g_doors;
 static ZoneElevator::State g_metalworksElevator;
+static ZoneElevator::Audio g_metalworksElevatorAudio;
 static bool g_doorPhysicsUpdated = false;
 static D3DMATRIX g_pickView = {}, g_pickProjection = {};
 static int g_pickWidth = 0, g_pickHeight = 0;
@@ -257,6 +302,10 @@ static float& g_camPitch = g_orbitCamera.pitch;
 static float& g_camDist = g_orbitCamera.distance;
 static float (&g_camTarget)[3] = g_orbitCamera.target;
 static bool g_cameraDebugOverlayVisible = false;
+static bool g_zoneMapVisible = false;
+static bool g_uiVisible = true;
+static bool g_clickMoveActive = false;
+static float g_clickMoveTarget[3] = {};
 static bool g_developerConsoleOpen = false;
 static std::string g_developerConsoleInput;
 static std::vector<std::string> g_developerConsoleLog;
@@ -413,12 +462,48 @@ static void UpdateAdaptivePlayDrawDistance(const float deltaSeconds,
 static const char kAppRegKey[]   = "Software\\FFXIViewer";
 static const char kAppPathValue[]= "FFXIPath";
 static const char kAppThemeValue[] = "ColorTheme";
+static const char kAppTitleBackgroundModeValue[] = "TitleBackgroundMode";
+static const char kAppTitleBackgroundZoneValue[] = "TitleBackgroundZone";
+static const char kAppTitleMusicModeValue[] = "TitleMusicMode";
+static const char kAppTitleMusicValue[] = "TitleMusic";
+static const char kAppShowTitleUiValue[] = "ShowTitleUi";
+static const char kAppEnableHdTexturesValue[] = "EnableHdTextures";
+static const char kAppHdTextureFolderValue[] = "HdTextureFolder";
+static const char kAppEnablePbrValue[] = "EnablePbr";
+static const char kAppPbrTextureFolderValue[] = "PbrTextureFolder";
+static const char kAppRenderingResolutionValue[] = "RenderingResolutionScale";
+static const char kAppMapTextureCompressionValue[] = "MapTextureCompression";
+static const char kAppWeatherEffectsValue[] = "WeatherEffects";
+static const char kAppInvertBumpMappingValue[] = "InvertBumpMapping";
+static const char kAppAntiAliasingValue[] = "AntiAliasing";
+static const char kAppPostProcessAntiAliasingValue[] = "PostProcessAntiAliasing";
+static const char kAppShadowPlayerValue[] = "ShadowPlayer";
+static const char kAppShadowNpcsValue[] = "ShadowNpcs";
+static const char kAppShadowObjectsValue[] = "ShadowObjects";
+static const char kAppShadowGroundValue[] = "ShadowGroundLikeObjects";
+static const char kAppShadowAlphaValue[] = "ShadowAlphaTestedObjects";
+static const char kAppShadowDistanceValue[] = "ShadowMaxDistance";
+static const char kAppShadowNpcLimitValue[] = "ShadowNpcLimit";
+static const char kAppShadowObjectLimitValue[] = "ShadowObjectLimit";
+static const char kAppShadowMinSizeValue[] = "ShadowMinimumSizePercent";
+static const char kAppShadowMaxSizeValue[] = "ShadowMaximumSize";
+static const char kAppShadowUpdateFramesValue[] = "ShadowReceiverUpdateFrames";
+static const char kAppShadowReceiverQualityValue[] = "ShadowReceiverQuality";
+static const char kAppShadowLengthValue[] = "ShadowMaximumLength";
+static const char kAppShadowOpacityValue[] = "ShadowOpacityPercent";
+static const char kAppShadowDebugValue[] = "ShadowDebugVisualization";
+static const char kAppShadowCountersValue[] = "ShadowPerformanceCounters";
+static const char* const kAppKeyBindingValues[] =
+{
+    "KeyForward", "KeyBackward", "KeyLeft", "KeyRight", "KeyJump",
+    "KeyAutoRun", "KeyRunToggle", "KeyGameMode", "KeyZoneMap",
+    "KeyUnstick", "KeyCycleWeather", "KeyCameraDebug", "KeyBumpMapping",
+    "KeyMainMenu"
+};
 
 // Hard-coded default FFXI installation path.
 static const char kDefaultFFXIPath[] =
     "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\";
-static const char kTitleScreenZoneDat[] = "ROM/0/90.DAT"; // Konschtat Highlands
-static const int  kTitleScreenMusicId = 108;              // Vana'diel March
 // Authored title presentation. Keep these separate from the regular-zone
 // camera defaults: the title backdrop is loaded through the normal zone path,
 // but its opening composition is intentionally cinematic and deterministic.
@@ -431,10 +516,389 @@ static constexpr float kTitleScreenCameraPitch = 0.1900f;
 static constexpr float kTitleScreenCameraDistance = 260.0f;
 static const char kTitleScreenWeatherToken[] = "/suny";
 
-// Active FFXI root path used to seed file browsers.
-// Starts as the hard-coded default; user may override via Settings menu.
+struct TitleCameraRailKey
+{
+    float targetOffset[3];
+    float yawOffset;
+    float pitch;
+    float distance;
+};
+
+// The retail zones use the authored cameras recovered from ROM/0/23.DAT.
+// Konschtat is DATura's twentieth, non-retail scene, so these conservative
+// control points remain its custom slow looping rail (and the fallback for a
+// damaged or incomplete retail title DAT).
+static constexpr TitleCameraRailKey kTitleCameraRail[] =
+{
+    { {  0.0f,  0.0f,   0.0f }, -0.035f, 0.185f, 266.0f },
+    { { -5.0f,  1.5f,   7.0f }, -0.010f, 0.178f, 258.0f },
+    { { -9.0f,  2.5f,  12.0f },  0.025f, 0.172f, 250.0f },
+    { { -4.0f,  1.0f,   6.0f },  0.055f, 0.182f, 255.0f },
+    { {  4.0f, -1.0f,  -5.0f },  0.030f, 0.195f, 265.0f },
+    { {  6.0f, -1.5f, -10.0f }, -0.010f, 0.198f, 272.0f },
+};
+static constexpr float kTitleCameraRailSeconds = 48.0f;
+static float g_titleCameraRailTime = 0.0f;
+static float g_titleCameraBaseTarget[3] =
+{
+    kTitleScreenCameraTarget[0], kTitleScreenCameraTarget[1], kTitleScreenCameraTarget[2]
+};
+static float g_titleCameraBaseYaw = kTitleScreenCameraYaw;
+static float g_titleCameraBasePitch = kTitleScreenCameraPitch;
+static float g_titleCameraBaseDistance = kTitleScreenCameraDistance;
+static int g_titleBackgroundIndex = -1;
+static int g_titleCycleIndex = -1;
+static int g_titleMusicIndex = -1;
+static int g_titleMusicCycleIndex = -1;
 static char g_ffxiPath[MAX_PATH] = {};
+
+struct RetailTitleCameraKey
+{
+    std::array<float, 3> eye = {};
+    std::array<float, 3> at = {};
+};
+
+struct RetailTitleCamera
+{
+    unsigned int easing = 0;
+    std::vector<RetailTitleCameraKey> keys;
+};
+
+struct RetailTitleShot
+{
+    const RetailTitleCamera* camera = nullptr;
+    float startSeconds = 0.0f;
+    float durationSeconds = 0.0f;
+};
+
+struct RetailTitleCameraPlayer
+{
+    std::map<std::string, RetailTitleCamera> cameras;
+    std::vector<RetailTitleShot> shots;
+    float durationSeconds = 0.0f;
+    bool active = false;
+};
+
+static RetailTitleCameraPlayer g_retailTitleCamera;
+
+template<typename T>
+static bool ReadTitleDatValue(const BYTE* data, const size_t size,
+                              const size_t offset, T* value)
+{
+    if (!data || !value || offset > size || sizeof(T) > size - offset)
+        return false;
+    memcpy(value, data + offset, sizeof(T));
+    return true;
+}
+
+static std::string ReadTitleDatTag(const BYTE* data, const size_t size,
+                                   const size_t offset)
+{
+    if (!data || offset > size || 4 > size - offset)
+        return {};
+    char tag[5] = {};
+    memcpy(tag, data + offset, 4);
+    return std::string(tag, strnlen_s(tag, 4));
+}
+
+static const char* RetailTitleScheduleForBackground(const int backgroundIndex)
+{
+    // Each retail scheduler identifies its zone with opcode 0x7b. Map those
+    // zone-specific sequences into DATura's configured background order.
+    // Index 8 is DATura's additional Konschtat scene and has no retail entry.
+    static constexpr const char* schedules[] =
+    {
+        "mov1", "mov2", "mov5", "mov3", "mov4", "mov8", "mov6", "mov7",
+        nullptr,
+        "ex1c", "ex1a", "ex1b",
+        "ex2c", "ex2a", "ex2d", "ex2b",
+        "ex3a", "ex3d", "ex3c", "ex3e",
+    };
+    return backgroundIndex >= 0 && backgroundIndex < static_cast<int>(_countof(schedules))
+        ? schedules[backgroundIndex] : nullptr;
+}
+
+static bool LoadRetailTitleCamera(const char* scheduleName)
+{
+    g_retailTitleCamera = {};
+    if (!scheduleName || !scheduleName[0])
+        return false;
+
+    char path[MAX_PATH] = {};
+    strcpy_s(path, g_ffxiPath);
+    const size_t length = strlen(path);
+    if (length && path[length - 1] != '\\' && path[length - 1] != '/')
+        strcat_s(path, "\\");
+    strcat_s(path, "ROM\\0\\23.DAT");
+
+    BYTE* bytes = nullptr;
+    DWORD byteCount = 0;
+    if (!FFXIFileIO::ReadWholeFile(path, &bytes, &byteCount))
+        return false;
+    std::unique_ptr<BYTE[]> owned(bytes);
+
+    struct SchedulePayload { const BYTE* data = nullptr; size_t size = 0; } schedule;
+    for (size_t offset = 0; offset + 16 <= byteCount;)
+    {
+        unsigned int info = 0;
+        if (!ReadTitleDatValue(bytes, byteCount, offset + 4, &info))
+            return false;
+        const size_t chunkSize = (info >> 3) & 0x7ffff0;
+        const unsigned int type = info & 0x7f;
+        if (chunkSize < 16 || chunkSize > byteCount - offset)
+            return false;
+        const std::string name = ReadTitleDatTag(bytes, byteCount, offset);
+        const BYTE* payload = bytes + offset + 16;
+        const size_t payloadSize = chunkSize - 16;
+
+        if (type == 6 && payloadSize >= 32)
+        {
+            unsigned int mode = 0;
+            // The first 16 payload bytes are the serialized resource base.
+            // YmCamera's key/spline fields begin at payload offset 0x10.
+            ReadTitleDatValue(payload, payloadSize, 16, &mode);
+            const unsigned int keyCount = mode & 0xff;
+            if (keyCount > 0 && keyCount <= 64 &&
+                32 + static_cast<size_t>(keyCount) * 48 <= payloadSize)
+            {
+                RetailTitleCamera camera;
+                ReadTitleDatValue(payload, payloadSize, 20, &camera.easing);
+                for (unsigned int key = 0; key < keyCount; ++key)
+                {
+                    const size_t keyOffset = 32 + static_cast<size_t>(key) * 48;
+                    RetailTitleCameraKey parsed;
+                    memcpy(parsed.eye.data(), payload + keyOffset, sizeof(float) * 3);
+                    memcpy(parsed.at.data(), payload + keyOffset + 16, sizeof(float) * 3);
+                    camera.keys.push_back(parsed);
+                }
+                g_retailTitleCamera.cameras[name] = std::move(camera);
+            }
+        }
+        else if (type == 7 && name == scheduleName)
+        {
+            schedule = { payload, payloadSize };
+        }
+        offset += chunkSize;
+    }
+
+    if (!schedule.data || schedule.size < 0x20)
+        return false;
+    unsigned int begin = 0, end = 0;
+    if (!ReadTitleDatValue(schedule.data, schedule.size, 0x14, &begin) ||
+        !ReadTitleDatValue(schedule.data, schedule.size, 0x18, &end) ||
+        begin < 16 || end < begin || end - 16 > schedule.size)
+        return false;
+
+    float timelineFrames = 0.0f;
+    for (size_t cursor = begin - 16; cursor + 4 <= end - 16;)
+    {
+        const BYTE opcode = schedule.data[cursor];
+        const size_t commandSize = (std::max)(1, static_cast<int>(schedule.data[cursor + 1])) * 4;
+        if (commandSize > end - 16 - cursor)
+            return false;
+        unsigned short waitFrames = 0;
+        ReadTitleDatValue(schedule.data, schedule.size, cursor + 4, &waitFrames);
+        if (opcode == 4 && commandSize >= 12)
+        {
+            unsigned short durationFrames = 0;
+            ReadTitleDatValue(schedule.data, schedule.size, cursor + 6, &durationFrames);
+            const std::string cameraName = ReadTitleDatTag(
+                schedule.data, schedule.size, cursor + 8);
+            const auto found = g_retailTitleCamera.cameras.find(cameraName);
+            if (found != g_retailTitleCamera.cameras.end() && durationFrames > 0)
+            {
+                g_retailTitleCamera.shots.push_back({
+                    &found->second, timelineFrames / 60.0f,
+                    static_cast<float>(durationFrames) / 60.0f });
+            }
+        }
+        // Scheduler waits occur after the current command has been launched.
+        timelineFrames += static_cast<float>(waitFrames);
+        cursor += commandSize;
+    }
+    g_retailTitleCamera.durationSeconds = timelineFrames / 60.0f;
+    g_retailTitleCamera.active = !g_retailTitleCamera.shots.empty() &&
+        g_retailTitleCamera.durationSeconds > 0.0f;
+    return g_retailTitleCamera.active;
+}
+
+static float CatmullRom(const float p0, const float p1, const float p2,
+                        const float p3, const float t)
+{
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    return 0.5f * ((2.0f * p1) + (-p0 + p2) * t +
+        (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+        (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
+}
+
+static float ApplyRetailCameraEasing(float t, const unsigned int mode)
+{
+    constexpr float halfPi = 1.5707963267948966f;
+    constexpr float pi = 3.1415926535897932f;
+    t = std::clamp(t, 0.0f, 1.0f);
+    switch (mode)
+    {
+    case 1: return std::sin(t * halfPi);             // fast start, soft finish
+    case 2: return 1.0f - std::cos(t * halfPi);      // soft start, fast finish
+    case 3:
+    case 4: return 0.5f - 0.5f * std::cos(t * pi);  // soft at both ends
+    default: return t;
+    }
+}
+
+static std::array<float, 3> SampleRetailCameraSpline(
+    const RetailTitleCamera& camera, const bool eye, const float normalizedTime)
+{
+    const size_t count = camera.keys.size();
+    if (count == 0)
+        return {};
+    const auto point = [&](const size_t index) -> const std::array<float, 3>&
+    {
+        return eye ? camera.keys[index].eye : camera.keys[index].at;
+    };
+    if (count == 1)
+        return point(0);
+
+    // YmSpline::MakeTable2 parameterizes eye and look-at curves by their
+    // three-dimensional chord length. Reproduce that parameterization and a
+    // natural cubic spline for each component.
+    std::vector<float> parameter(count, 0.0f);
+    for (size_t i = 1; i < count; ++i)
+    {
+        float lengthSquared = 0.0f;
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            const float difference = point(i)[axis] - point(i - 1)[axis];
+            lengthSquared += difference * difference;
+        }
+        parameter[i] = parameter[i - 1] + std::sqrt(lengthSquared);
+    }
+    const float totalLength = parameter.back();
+    if (totalLength <= 0.000001f)
+        return point(0);
+    for (float& value : parameter)
+        value /= totalLength;
+
+    const float t = std::clamp(normalizedTime, 0.0f, 1.0f);
+    size_t segment = 0;
+    while (segment + 2 < count && parameter[segment + 1] < t)
+        ++segment;
+    const float h = (std::max)(0.000001f,
+        parameter[segment + 1] - parameter[segment]);
+    const float a = (parameter[segment + 1] - t) / h;
+    const float b = (t - parameter[segment]) / h;
+
+    std::array<float, 3> result = {};
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        std::vector<float> second(count, 0.0f);
+        if (count > 2)
+        {
+            std::vector<float> lower(count, 0.0f), diagonal(count, 0.0f);
+            std::vector<float> upper(count, 0.0f), rhs(count, 0.0f);
+            diagonal[0] = diagonal[count - 1] = 1.0f;
+            for (size_t i = 1; i + 1 < count; ++i)
+            {
+                const float left = parameter[i] - parameter[i - 1];
+                const float right = parameter[i + 1] - parameter[i];
+                lower[i] = left;
+                diagonal[i] = 2.0f * (left + right);
+                upper[i] = right;
+                rhs[i] = 6.0f * ((point(i + 1)[axis] - point(i)[axis]) / right -
+                    (point(i)[axis] - point(i - 1)[axis]) / left);
+            }
+            for (size_t i = 1; i < count; ++i)
+            {
+                const float factor = lower[i] / diagonal[i - 1];
+                diagonal[i] -= factor * upper[i - 1];
+                rhs[i] -= factor * rhs[i - 1];
+            }
+            for (size_t i = count; i-- > 0;)
+            {
+                second[i] = (rhs[i] - (i + 1 < count ? upper[i] * second[i + 1] : 0.0f)) /
+                    diagonal[i];
+            }
+        }
+        result[axis] = a * point(segment)[axis] + b * point(segment + 1)[axis] +
+            ((a * a * a - a) * second[segment] +
+             (b * b * b - b) * second[segment + 1]) * h * h / 6.0f;
+    }
+    return result;
+}
+
+static bool SampleRetailTitleCamera()
+{
+    if (!g_retailTitleCamera.active || g_retailTitleCamera.shots.empty())
+        return false;
+    const float time = std::fmod((std::max)(0.0f, g_titleCameraRailTime),
+        g_retailTitleCamera.durationSeconds);
+    const RetailTitleShot* shot = &g_retailTitleCamera.shots.front();
+    for (const RetailTitleShot& candidate : g_retailTitleCamera.shots)
+    {
+        if (candidate.startSeconds > time)
+            break;
+        shot = &candidate;
+    }
+    const float progress = shot->durationSeconds > 0.0f
+        ? std::clamp((time - shot->startSeconds) / shot->durationSeconds, 0.0f, 1.0f)
+        : 1.0f;
+    const float eased = ApplyRetailCameraEasing(progress, shot->camera->easing);
+    auto eye = SampleRetailCameraSpline(*shot->camera, true, eased);
+    auto at = SampleRetailCameraSpline(*shot->camera, false, eased);
+    const bool mirrorX = !g_applicationSettings.mirrorWorldZones;
+    eye = FFXICoordinateFrame::NativeDatToScene(eye, mirrorX);
+    at = FFXICoordinateFrame::NativeDatToScene(at, mirrorX);
+
+    const float dx = eye[0] - at[0];
+    const float dy = eye[1] - at[1];
+    const float dz = eye[2] - at[2];
+    const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (!std::isfinite(distance) || distance <= 0.0001f)
+        return false;
+    memcpy(g_camTarget, at.data(), sizeof(float) * 3);
+    g_camDist = distance;
+    g_camYaw = std::atan2(dx, dz);
+    g_camPitch = std::asin(std::clamp(dy / distance, -1.0f, 1.0f));
+    return true;
+}
+
+static void SampleTitleCameraRail()
+{
+    constexpr int count = static_cast<int>(_countof(kTitleCameraRail));
+    const float wrapped = std::fmod(
+        std::max(0.0f, g_titleCameraRailTime), kTitleCameraRailSeconds);
+    const float position = wrapped * static_cast<float>(count) /
+        kTitleCameraRailSeconds;
+    const int key1 = static_cast<int>(position) % count;
+    const int key0 = (key1 + count - 1) % count;
+    const int key2 = (key1 + 1) % count;
+    const int key3 = (key1 + 2) % count;
+    const float blend = position - std::floor(position);
+
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        g_camTarget[axis] = g_titleCameraBaseTarget[axis] + CatmullRom(
+            kTitleCameraRail[key0].targetOffset[axis],
+            kTitleCameraRail[key1].targetOffset[axis],
+            kTitleCameraRail[key2].targetOffset[axis],
+            kTitleCameraRail[key3].targetOffset[axis], blend);
+    }
+    g_camYaw = g_titleCameraBaseYaw + CatmullRom(
+        kTitleCameraRail[key0].yawOffset, kTitleCameraRail[key1].yawOffset,
+        kTitleCameraRail[key2].yawOffset, kTitleCameraRail[key3].yawOffset, blend);
+    g_camPitch = g_titleCameraBasePitch - kTitleScreenCameraPitch + CatmullRom(
+        kTitleCameraRail[key0].pitch, kTitleCameraRail[key1].pitch,
+        kTitleCameraRail[key2].pitch, kTitleCameraRail[key3].pitch, blend);
+    g_camDist = g_titleCameraBaseDistance - kTitleScreenCameraDistance + CatmullRom(
+        kTitleCameraRail[key0].distance, kTitleCameraRail[key1].distance,
+        kTitleCameraRail[key2].distance, kTitleCameraRail[key3].distance, blend);
+}
+
+// Active FFXI root path used to seed file browsers is declared with the title
+// camera state above because the retail camera loader consumes it directly.
 static bool g_titleScreenActive = false;
+static int g_titleMenuSelection = 0;
 static bool g_highPolyCreationActive = false;
 static bool g_nationSelectActive = false;
 static bool g_characterSelectActive = false;
@@ -445,9 +909,13 @@ struct SavedCharacterPreview
 {
     FFXIModelLifetime::OwnedModel asset;
     std::string name;
+    std::string dataPath;
 };
 static std::vector<SavedCharacterPreview> g_savedCharacterPreviews;
 static int g_selectedCharacterPreview = 0;
+static std::string g_activeCharacterDataPath;
+static int g_activeCharacterHomeNationIndex = 0;
+static std::string g_lastSavedCharacterDataPath;
 
 static FFXICreationSelection g_creationSelection = {};
 static int g_creationAnimationIndex = 2;
@@ -476,6 +944,7 @@ static PlayerEquipState g_playerEquip =
 static const int kWeaponVariantCount = 128;
 
 static void LoadPlayerRaceModel(int raceIndex);
+static void LoadPlayerRaceInModelViewer(int raceIndex);
 static void ReloadPlayerModelFromControls();
 static void ShowLowPolyControlPanel();
 static void ShowHighPolyCreationPanel();
@@ -515,6 +984,140 @@ static void HandleConfigDialogEvent(void* context, const ConfigDialog::Event& ev
 static bool ConfigDialogIsGameMode(void* context);
 static std::string NpcDialogueText(const FFXINpcPlacement::Placement& placement);
 
+static std::string WideToUtf8(const wchar_t* const text)
+{
+    if (!text)
+        return std::string();
+
+    const int length = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+    if (length <= 1)
+        return std::string();
+
+    std::string result(static_cast<size_t>(length - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text, -1, &result[0], length, nullptr, nullptr);
+    return result;
+}
+
+static std::string QuoteCommandLineArgument(const char* const argument)
+{
+    std::string quoted = "\"";
+    unsigned int backslashCount = 0;
+    for (const char* cursor = argument ? argument : ""; *cursor; ++cursor)
+    {
+        if (*cursor == '\\')
+        {
+            ++backslashCount;
+            continue;
+        }
+
+        if (*cursor == '"')
+        {
+            quoted.append(backslashCount * 2 + 1, '\\');
+            quoted.push_back('"');
+            backslashCount = 0;
+            continue;
+        }
+
+        quoted.append(backslashCount, '\\');
+        backslashCount = 0;
+        quoted.push_back(*cursor);
+    }
+
+    quoted.append(backslashCount * 2, '\\');
+    quoted.push_back('"');
+    return quoted;
+}
+
+struct PlayerViewerRequest
+{
+    PlayerEquipState equipment;
+    int faceVariant;
+};
+
+static std::string SerializePlayerViewerRequest(const PlayerViewerRequest& request)
+{
+    char text[256] = {};
+    const PlayerEquipState& e = request.equipment;
+    sprintf_s(text, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+        e.raceIndex, e.mainType, e.mainItem, e.subType, e.subItem,
+        e.rangedType, e.rangedItem, e.headItem, e.bodyItem, e.handsItem,
+        e.legsItem, e.feetItem, e.animationBank, e.animationMode,
+        e.animationPlaying ? 1 : 0, request.faceVariant);
+    return text;
+}
+
+static bool DeserializePlayerViewerRequest(const char* text, PlayerViewerRequest& request)
+{
+    int animationPlaying = 0;
+    PlayerEquipState& e = request.equipment;
+    const int count = sscanf_s(text ? text : "",
+        "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+        &e.raceIndex, &e.mainType, &e.mainItem, &e.subType, &e.subItem,
+        &e.rangedType, &e.rangedItem, &e.headItem, &e.bodyItem, &e.handsItem,
+        &e.legsItem, &e.feetItem, &e.animationBank, &e.animationMode,
+        &animationPlaying, &request.faceVariant);
+    e.animationPlaying = animationPlaying != 0;
+    return count == 16;
+}
+
+static void ParseStartupArguments()
+{
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv)
+        return;
+
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string argument = WideToUtf8(argv[i]);
+        if (argument == kCompanionViewerArg)
+        {
+            g_companionViewerMode = true;
+        }
+        else if (argument == kCompanionModelArg && i + 1 < argc)
+        {
+            g_startupModelDat = WideToUtf8(argv[++i]);
+        }
+        else if (argument == kCompanionLabelArg && i + 1 < argc)
+        {
+            g_startupModelLabel = WideToUtf8(argv[++i]);
+        }
+        else if (argument == kCompanionOwnerPidArg && i + 1 < argc)
+        {
+            g_companionOwnerPid = wcstoul(argv[++i], nullptr, 10);
+        }
+        else if (argument == kPlayerRaceArg && i + 1 < argc)
+        {
+            g_startupPlayerRace = static_cast<int>(wcstol(argv[++i], nullptr, 10));
+        }
+        else if (argument == kPlayerCustomizationArg && i + 1 < argc)
+        {
+            g_startupPlayerCustomization = WideToUtf8(argv[++i]);
+        }
+        else if (argument == kCreationModelArg && i + 1 < argc)
+        {
+            g_startupCreationModel = static_cast<int>(wcstol(argv[++i], nullptr, 10));
+        }
+    }
+
+    LocalFree(argv);
+}
+
+static void SetCompanionViewerOwner(const DWORD processId)
+{
+    if (!g_companionViewerMode || processId == 0 || processId == GetCurrentProcessId())
+        return;
+
+    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, processId);
+    if (!process)
+        return;
+
+    if (g_companionOwnerProcess)
+        CloseHandle(g_companionOwnerProcess);
+    g_companionOwnerProcess = process;
+    g_companionOwnerPid = processId;
+}
+
 //========================================================================================
 // FFXI path management
 //========================================================================================
@@ -553,6 +1156,223 @@ static void InitFFXIPath()
     DatReplacementDialog::Initialize(g_ffxiPath,kAppRegKey);
 }
 
+static DWORD ReadApplicationDword(const char* valueName, const DWORD fallback)
+{
+    HKEY key = nullptr;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, KEY_READ, &key) != ERROR_SUCCESS)
+        return fallback;
+    DWORD value = fallback;
+    DWORD type = 0;
+    DWORD size = sizeof(value);
+    if (RegQueryValueExA(key, valueName, nullptr, &type,
+            reinterpret_cast<BYTE*>(&value), &size) != ERROR_SUCCESS ||
+        type != REG_DWORD || size != sizeof(value))
+        value = fallback;
+    RegCloseKey(key);
+    return value;
+}
+
+static void WriteApplicationDword(const char* valueName, const DWORD value)
+{
+    HKEY key = nullptr;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, nullptr, 0,
+            KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS)
+    {
+        RegSetValueExA(key, valueName, 0, REG_DWORD,
+            reinterpret_cast<const BYTE*>(&value), sizeof(value));
+        RegCloseKey(key);
+    }
+}
+
+static std::string ReadApplicationString(const char* valueName)
+{
+    HKEY key = nullptr;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, KEY_READ, &key) != ERROR_SUCCESS)
+        return {};
+    char value[4096] = {};
+    DWORD type = 0;
+    DWORD size = sizeof(value);
+    const LONG result = RegQueryValueExA(key, valueName, nullptr, &type,
+        reinterpret_cast<BYTE*>(value), &size);
+    RegCloseKey(key);
+    return result == ERROR_SUCCESS && type == REG_SZ ? std::string(value) : std::string();
+}
+
+static void WriteApplicationString(const char* valueName, const std::string& value)
+{
+    HKEY key = nullptr;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, nullptr, 0,
+            KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS)
+    {
+        RegSetValueExA(key, valueName, 0, REG_SZ,
+            reinterpret_cast<const BYTE*>(value.c_str()),
+            static_cast<DWORD>(value.size() + 1));
+        RegCloseKey(key);
+    }
+}
+
+static void InitCustomTextureSettings()
+{
+    g_applicationSettings.enableHdTextures =
+        ReadApplicationDword(kAppEnableHdTexturesValue, 0) != 0;
+    g_applicationSettings.hdTextureFolder = ReadApplicationString(kAppHdTextureFolderValue);
+    g_applicationSettings.enablePbr = ReadApplicationDword(kAppEnablePbrValue, 0) != 0;
+    g_applicationSettings.pbrTextureFolder = ReadApplicationString(kAppPbrTextureFolderValue);
+}
+
+static void SaveCustomTextureSettings()
+{
+    WriteApplicationDword(kAppEnableHdTexturesValue,
+        g_applicationSettings.enableHdTextures ? 1u : 0u);
+    WriteApplicationString(kAppHdTextureFolderValue, g_applicationSettings.hdTextureFolder);
+    WriteApplicationDword(kAppEnablePbrValue, g_applicationSettings.enablePbr ? 1u : 0u);
+    WriteApplicationString(kAppPbrTextureFolderValue, g_applicationSettings.pbrTextureFolder);
+}
+
+static void InitExtendedGraphicsSettings()
+{
+    g_applicationSettings.renderingResolutionScaleIndex =
+        ApplicationSettings::ClampRenderingResolutionScaleIndex(static_cast<int>(
+            ReadApplicationDword(kAppRenderingResolutionValue, 2)));
+    g_applicationSettings.enableMapTextureCompression =
+        ReadApplicationDword(kAppMapTextureCompressionValue, 1) != 0;
+    g_applicationSettings.enableWeatherEffects =
+        ReadApplicationDword(kAppWeatherEffectsValue, 1) != 0;
+    g_applicationSettings.invertBumpMapping =
+        ReadApplicationDword(kAppInvertBumpMappingValue, 0) != 0;
+    g_applicationSettings.antiAliasingIndex = ApplicationSettings::ClampAntiAliasingIndex(
+        static_cast<int>(ReadApplicationDword(kAppAntiAliasingValue, 0)));
+    g_applicationSettings.postProcessAntiAliasingMode =
+        ApplicationSettings::ClampPostProcessAntiAliasingMode(static_cast<int>(
+            ReadApplicationDword(kAppPostProcessAntiAliasingValue, 0)));
+    g_applicationSettings.shadowPlayer = ReadApplicationDword(kAppShadowPlayerValue, 1) != 0;
+    g_applicationSettings.shadowNpcs = ReadApplicationDword(kAppShadowNpcsValue, 1) != 0;
+    g_applicationSettings.shadowObjects = ReadApplicationDword(kAppShadowObjectsValue, 1) != 0;
+    g_applicationSettings.shadowGroundLikeObjects = ReadApplicationDword(kAppShadowGroundValue, 0) != 0;
+    g_applicationSettings.shadowAlphaTestedObjects = ReadApplicationDword(kAppShadowAlphaValue, 0) != 0;
+    g_applicationSettings.shadowMaxDistance = static_cast<int>(ReadApplicationDword(kAppShadowDistanceValue, 80));
+    g_applicationSettings.shadowNpcLimit = static_cast<int>(ReadApplicationDword(kAppShadowNpcLimitValue, 16));
+    g_applicationSettings.shadowObjectLimit = static_cast<int>(ReadApplicationDword(kAppShadowObjectLimitValue, 64));
+    g_applicationSettings.shadowMinimumSizePercent = static_cast<int>(ReadApplicationDword(kAppShadowMinSizeValue, 25));
+    g_applicationSettings.shadowMaximumSize = static_cast<int>(ReadApplicationDword(kAppShadowMaxSizeValue, 40));
+    g_applicationSettings.shadowReceiverUpdateFrames = static_cast<int>(ReadApplicationDword(kAppShadowUpdateFramesValue, 4));
+    g_applicationSettings.shadowReceiverQuality = static_cast<int>(ReadApplicationDword(kAppShadowReceiverQualityValue, 1));
+    g_applicationSettings.shadowMaximumLength = static_cast<int>(ReadApplicationDword(kAppShadowLengthValue, 30));
+    g_applicationSettings.shadowOpacityPercent = static_cast<int>(ReadApplicationDword(kAppShadowOpacityValue, 32));
+    g_applicationSettings.shadowDebugVisualization = ReadApplicationDword(kAppShadowDebugValue, 0) != 0;
+    g_applicationSettings.shadowPerformanceCounters = ReadApplicationDword(kAppShadowCountersValue, 0) != 0;
+}
+
+static void SaveExtendedGraphicsSettings()
+{
+    WriteApplicationDword(kAppRenderingResolutionValue, static_cast<DWORD>(
+        ApplicationSettings::ClampRenderingResolutionScaleIndex(
+            g_applicationSettings.renderingResolutionScaleIndex)));
+    WriteApplicationDword(kAppMapTextureCompressionValue,
+        g_applicationSettings.enableMapTextureCompression ? 1u : 0u);
+    WriteApplicationDword(kAppWeatherEffectsValue,
+        g_applicationSettings.enableWeatherEffects ? 1u : 0u);
+    WriteApplicationDword(kAppInvertBumpMappingValue,
+        g_applicationSettings.invertBumpMapping ? 1u : 0u);
+    WriteApplicationDword(kAppAntiAliasingValue, static_cast<DWORD>(
+        ApplicationSettings::ClampAntiAliasingIndex(g_applicationSettings.antiAliasingIndex)));
+    WriteApplicationDword(kAppPostProcessAntiAliasingValue, static_cast<DWORD>(
+        ApplicationSettings::ClampPostProcessAntiAliasingMode(
+            g_applicationSettings.postProcessAntiAliasingMode)));
+    WriteApplicationDword(kAppShadowPlayerValue, g_applicationSettings.shadowPlayer);
+    WriteApplicationDword(kAppShadowNpcsValue, g_applicationSettings.shadowNpcs);
+    WriteApplicationDword(kAppShadowObjectsValue, g_applicationSettings.shadowObjects);
+    WriteApplicationDword(kAppShadowGroundValue, g_applicationSettings.shadowGroundLikeObjects);
+    WriteApplicationDword(kAppShadowAlphaValue, g_applicationSettings.shadowAlphaTestedObjects);
+    WriteApplicationDword(kAppShadowDistanceValue, g_applicationSettings.shadowMaxDistance);
+    WriteApplicationDword(kAppShadowNpcLimitValue, g_applicationSettings.shadowNpcLimit);
+    WriteApplicationDword(kAppShadowObjectLimitValue, g_applicationSettings.shadowObjectLimit);
+    WriteApplicationDword(kAppShadowMinSizeValue, g_applicationSettings.shadowMinimumSizePercent);
+    WriteApplicationDword(kAppShadowMaxSizeValue, g_applicationSettings.shadowMaximumSize);
+    WriteApplicationDword(kAppShadowUpdateFramesValue, g_applicationSettings.shadowReceiverUpdateFrames);
+    WriteApplicationDword(kAppShadowReceiverQualityValue, g_applicationSettings.shadowReceiverQuality);
+    WriteApplicationDword(kAppShadowLengthValue, g_applicationSettings.shadowMaximumLength);
+    WriteApplicationDword(kAppShadowOpacityValue, g_applicationSettings.shadowOpacityPercent);
+    WriteApplicationDword(kAppShadowDebugValue, g_applicationSettings.shadowDebugVisualization);
+    WriteApplicationDword(kAppShadowCountersValue, g_applicationSettings.shadowPerformanceCounters);
+}
+
+static int* KeyBindingValue(ApplicationSettings::State& settings, const int index)
+{
+    switch (index)
+    {
+    case 0: return &settings.keyForward;
+    case 1: return &settings.keyBackward;
+    case 2: return &settings.keyLeft;
+    case 3: return &settings.keyRight;
+    case 4: return &settings.keyJump;
+    case 5: return &settings.keyAutoRun;
+    case 6: return &settings.keyRunToggle;
+    case 7: return &settings.keyGameMode;
+    case 8: return &settings.keyZoneMap;
+    case 9: return &settings.keyUnstick;
+    case 10: return &settings.keyCycleWeather;
+    case 11: return &settings.keyCameraDebug;
+    case 12: return &settings.keyBumpMapping;
+    default: return &settings.keyMainMenu;
+    }
+}
+
+static void InitKeyBindings()
+{
+    for (int index = 0; index < static_cast<int>(std::size(kAppKeyBindingValues)); ++index)
+    {
+        int* binding = KeyBindingValue(g_applicationSettings, index);
+        *binding = static_cast<int>(ReadApplicationDword(
+            kAppKeyBindingValues[index], static_cast<DWORD>(*binding)));
+    }
+}
+
+static void SaveKeyBindings()
+{
+    for (int index = 0; index < static_cast<int>(std::size(kAppKeyBindingValues)); ++index)
+        WriteApplicationDword(kAppKeyBindingValues[index], static_cast<DWORD>(
+            *KeyBindingValue(g_applicationSettings, index)));
+}
+
+static void InitTitleBackgroundSettings()
+{
+    g_applicationSettings.titleBackgroundMode =
+        ApplicationSettings::ClampTitleBackgroundMode(static_cast<int>(
+            ReadApplicationDword(kAppTitleBackgroundModeValue,
+                ApplicationSettings::TitleBackgroundRandom)));
+    g_applicationSettings.titleBackgroundZoneIndex =
+        ApplicationSettings::ClampTitleBackgroundZoneIndex(static_cast<int>(
+            ReadApplicationDword(kAppTitleBackgroundZoneValue, 8)));
+    g_applicationSettings.titleMusicMode =
+        ApplicationSettings::ClampTitleMusicMode(static_cast<int>(
+            ReadApplicationDword(kAppTitleMusicModeValue,
+                ApplicationSettings::TitleMusicRandom)));
+    g_applicationSettings.titleMusicIndex =
+        ApplicationSettings::ClampTitleMusicIndex(static_cast<int>(
+            ReadApplicationDword(kAppTitleMusicValue, 0)));
+    g_applicationSettings.showTitleUi = ReadApplicationDword(
+        kAppShowTitleUiValue, 1) != 0;
+}
+
+static void SaveTitleBackgroundSettings()
+{
+    WriteApplicationDword(kAppTitleBackgroundModeValue,
+        static_cast<DWORD>(ApplicationSettings::ClampTitleBackgroundMode(
+            g_applicationSettings.titleBackgroundMode)));
+    WriteApplicationDword(kAppTitleBackgroundZoneValue,
+        static_cast<DWORD>(ApplicationSettings::ClampTitleBackgroundZoneIndex(
+            g_applicationSettings.titleBackgroundZoneIndex)));
+    WriteApplicationDword(kAppTitleMusicModeValue,
+        static_cast<DWORD>(ApplicationSettings::ClampTitleMusicMode(
+            g_applicationSettings.titleMusicMode)));
+    WriteApplicationDword(kAppTitleMusicValue,
+        static_cast<DWORD>(ApplicationSettings::ClampTitleMusicIndex(
+            g_applicationSettings.titleMusicIndex)));
+    WriteApplicationDword(kAppShowTitleUiValue,
+        g_applicationSettings.showTitleUi ? 1u : 0u);
+}
+
 // Open a folder-browser dialog so the user can manually choose the FFXI root.
 // Saves the result and updates g_ffxiPath.
 static void PromptSetFFXIPath()
@@ -567,6 +1387,7 @@ static void PromptSetFFXIPath()
         AudioPlayer_SetRootPath(g_ffxiPath);
         TextureViewer_SetRootPath(g_ffxiPath);
         FFXIBitmapFont::SetRootPath(g_ffxiPath);
+        FFXIChatAssets::SetRootPath(g_ffxiPath);
         NpcNameplateRenderer::ClearCachedTextures();
 
         ShowFFXIPathInfoDialog("Path Saved", "FFXI path set to:", g_ffxiPath);
@@ -582,6 +1403,7 @@ static void ResetFFXIPathToDefault()
     AudioPlayer_SetRootPath(g_ffxiPath);
     TextureViewer_SetRootPath(g_ffxiPath);
     FFXIBitmapFont::SetRootPath(g_ffxiPath);
+    FFXIChatAssets::SetRootPath(g_ffxiPath);
     NpcNameplateRenderer::ClearCachedTextures();
 
     ShowFFXIPathInfoDialog("Path Reset", "Path reset to default:", g_ffxiPath);
@@ -600,6 +1422,7 @@ static void AutoDetectFFXIPath()
         AudioPlayer_SetRootPath(g_ffxiPath);
         TextureViewer_SetRootPath(g_ffxiPath);
         FFXIBitmapFont::SetRootPath(g_ffxiPath);
+        FFXIChatAssets::SetRootPath(g_ffxiPath);
         NpcNameplateRenderer::ClearCachedTextures();
 
         ShowFFXIPathInfoDialog("Auto-Detect", "Detected FFXI path:", g_ffxiPath);
@@ -678,13 +1501,36 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         break;
     case ConfigDialog::Command::MipMappingChanged:
     case ConfigDialog::Command::BumpMappingChanged:
+        SaveExtendedGraphicsSettings();
     case ConfigDialog::Command::LightingQualityChanged:
+    case ConfigDialog::Command::ShadowSettingsChanged:
+    case ConfigDialog::Command::LightDirectionChanged:
     case ConfigDialog::Command::EnvironmentalAnimationChanged:
         SyncSettingsMenuChecks();
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
+    case ConfigDialog::Command::CustomTextureSettingsChanged:
+        SaveCustomTextureSettings();
+        InvalidateRect(g_hWnd, NULL, FALSE);
+        break;
+    case ConfigDialog::Command::SceneClockChanged:
+        ZoneEnvironmentState::ClearTimeOverride();
+        ZoneEnvironmentState::SetUseLocalSystemTime(
+            g_applicationSettings.sceneClockMode == ApplicationSettings::SceneClockLocalSystem);
+        ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
+        InvalidateRect(g_hWnd, NULL, FALSE);
+        break;
     case ConfigDialog::Command::DisplayChanged:
         ApplyDisplaySettings();
+        break;
+    case ConfigDialog::Command::RenderingResolutionChanged:
+        SaveExtendedGraphicsSettings();
+        ApplyDisplaySettings();
+        break;
+    case ConfigDialog::Command::MapTextureCompressionChanged:
+    case ConfigDialog::Command::WeatherEffectsChanged:
+        SaveExtendedGraphicsSettings();
+        InvalidateRect(g_hWnd, NULL, FALSE);
         break;
     case ConfigDialog::Command::ToggleGameMode:
         ToggleEditGameMode();
@@ -707,6 +1553,7 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
     case ConfigDialog::Command::ChatLogChanged:
         NpcChatWindow::SetSize(g_gameUiConfig.chatLogWidthPercent, g_gameUiConfig.chatLogHeightPercent);
         NpcChatWindow::SetTimeout(g_gameUiConfig.chatLogTimeoutSeconds);
+        NpcChatWindow::SetFont(g_gameUiConfig.chatLogFont, g_gameUiConfig.chatLogFontSize);
         if (!GameUiConfig_SaveChatLog(g_gameUiConfig))
             MessageBoxA(ConfigDialog::Window(g_configDialog),
                 "The chat log timeout changed for this session, but the settings file could not be saved.",
@@ -732,8 +1579,53 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         InputController::SetHardwareCursorEnabled(
             g_input, g_applicationSettings.enableHardwareMouseCursor);
         break;
-    case ConfigDialog::Command::ShowZoneObjects:
-        ShowZoneObjectPanel();
+    case ConfigDialog::Command::MouseCursorStyleChanged:
+        InputController::SetCursorStyle(
+            g_input, g_applicationSettings.mouseCursorStyle, g_ffxiPath);
+        break;
+    case ConfigDialog::Command::MovementStyleChanged:
+        InvalidateRect(g_hWnd, NULL, FALSE);
+        break;
+    case ConfigDialog::Command::TitleBackgroundChanged:
+        SaveTitleBackgroundSettings();
+        SaveExtendedGraphicsSettings();
+        if (g_titleScreenActive)
+            LoadTitleScreen();
+        break;
+    case ConfigDialog::Command::ApplySettings:
+        SetColorTheme(event.value);
+        SaveExtendedGraphicsSettings();
+        SaveCustomTextureSettings();
+        SaveKeyBindings();
+        SaveTitleBackgroundSettings();
+        ApplyDisplaySettings();
+        ApplyTextureCompressionSetting();
+        g_doors.SetPhysics(
+            g_applicationSettings.doorInteractionMode == ApplicationSettings::DoorPhysics);
+        ZoneEnvironmentState::SetUseLocalSystemTime(
+            g_applicationSettings.sceneClockMode == ApplicationSettings::SceneClockLocalSystem);
+        InputController::SetHardwareCursorEnabled(
+            g_input, g_applicationSettings.enableHardwareMouseCursor);
+        InputController::SetCursorStyle(
+            g_input, g_applicationSettings.mouseCursorStyle, g_ffxiPath);
+        InputController::SetKeyBindings(g_input, g_applicationSettings);
+        SyncSettingsMenuChecks();
+        SyncAppMusic();
+        NpcChatWindow::SetSize(g_gameUiConfig.chatLogWidthPercent,
+            g_gameUiConfig.chatLogHeightPercent);
+        NpcChatWindow::SetTimeout(g_gameUiConfig.chatLogTimeoutSeconds);
+        NpcChatWindow::SetFont(g_gameUiConfig.chatLogFont,
+            g_gameUiConfig.chatLogFontSize);
+        GameUiConfig_SaveChatLog(g_gameUiConfig);
+        GameUiConfig_SavePlayerNameplate(g_gameUiConfig);
+        NpcNameplateRenderer::ClearCachedTextures();
+        ZoneObjectPanel::SetCollisionVisible(
+            g_zoneObjectPanel, g_applicationSettings.showCollisionGeometry);
+        ZoneEnvironmentState::ClearTimeOverride();
+        ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
+        if (g_titleScreenActive)
+            LoadTitleScreen();
+        InvalidateRect(g_hWnd, NULL, FALSE);
         break;
     }
 }
@@ -761,6 +1653,20 @@ static RendererBackend::DisplayConfiguration CurrentDisplayConfiguration()
     display.fullscreen = g_applicationSettings.windowMode == ApplicationSettings::Fullscreen;
     display.width = resolution.width;
     display.height = resolution.height;
+    const int renderPercent = ApplicationSettings::RenderingResolutionScalePercent(
+        g_applicationSettings.renderingResolutionScaleIndex);
+    // Exclusive D3D9 fullscreen requires the backbuffer to match a supported
+    // display mode. Windowed and borderless modes can scale an independent
+    // render-sized backbuffer during presentation.
+    display.renderWidth = display.fullscreen ? resolution.width :
+        std::max(1, resolution.width * renderPercent / 100);
+    display.renderHeight = display.fullscreen ? resolution.height :
+        std::max(1, resolution.height * renderPercent / 100);
+    display.antiAliasingSamples = ApplicationSettings::AntiAliasingSamples(
+        g_applicationSettings.antiAliasingIndex);
+    display.postProcessAntiAliasingMode =
+        ApplicationSettings::ClampPostProcessAntiAliasingMode(
+            g_applicationSettings.postProcessAntiAliasingMode);
     return display;
 }
 
@@ -848,6 +1754,7 @@ static void UnloadNpcModels();
 static void LoadNpcModelsForCurrentZone();
 static void UpdateNpcAnimations(float dt);
 static void TransitionPlayerZone(const ZoneTransition::Line& line, const PlayerController::State& previousPlayer);
+static int g_loadedZoneId = -1;
 static int g_transitionZoneId = -1;
 static const ZoneTransition::Line* g_failedZoneTransition = nullptr;
 
@@ -1128,71 +2035,29 @@ static void ClearZoneCollision()
 
 static void BindMetalworksElevatorObjects()
 {
-    for (auto& platform : g_metalworksElevator.platforms)
+    static constexpr int kRecordIndices[2] = { 422, 423 };
+    static constexpr const char* kObjectNames[2] = { "liftall", "liftallb" };
+
+    for (int platformIndex = 0; platformIndex < 2; ++platformIndex)
     {
+        auto& platform = g_metalworksElevator.platforms[platformIndex];
         platform.objectName.clear();
         platform.baseY = platform.startsAtTop ? ZoneElevator::kTopY : ZoneElevator::kBottomY;
-        float bestScore = FLT_MAX;
-        int bestIndex = -1;
 
         for (size_t objectIndex = 0; objectIndex < gFF11LastMapObjects.size(); ++objectIndex)
         {
             const auto& object = gFF11LastMapObjects[objectIndex];
-            if (object.visualCollisionCount == 0)
+            std::string authoredName = object.objectName;
+            authoredName.erase(authoredName.find_last_not_of(' ') + 1);
+            if (object.mapRecordIndex != kRecordIndices[platformIndex] ||
+                authoredName != kObjectNames[platformIndex])
                 continue;
 
-            bool haveBounds = false;
-            float minPos[3] = { FLT_MAX, FLT_MAX, FLT_MAX };
-            float maxPos[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
-            const size_t end = object.visualCollisionStart + object.visualCollisionCount;
-            for (size_t triIndex = object.visualCollisionStart;
-                 triIndex < end && triIndex < gFF11LastCollisionTriangles.size(); ++triIndex)
-            {
-                const float* points = &gFF11LastCollisionTriangles[triIndex].p[0][0];
-                for (int vertex = 0; vertex < 3; ++vertex)
-                {
-                    const float* point = points + vertex * 3;
-                    for (int axis = 0; axis < 3; ++axis)
-                    {
-                        minPos[axis] = std::min(minPos[axis], point[axis]);
-                        maxPos[axis] = std::max(maxPos[axis], point[axis]);
-                    }
-                    haveBounds = true;
-                }
-            }
-            if (!haveBounds)
-                continue;
-
-            const float centerX = (minPos[0] + maxPos[0]) * 0.5f;
-            const float centerY = (minPos[1] + maxPos[1]) * 0.5f;
-            const float centerZ = (minPos[2] + maxPos[2]) * 0.5f;
-            const float widthX = maxPos[0] - minPos[0];
-            const float widthZ = maxPos[2] - minPos[2];
-            const float dx = std::fabs(centerX - ZoneElevator::kPlatformX);
-            const float dz = std::fabs(centerZ - platform.z);
-            const float dy = std::fabs(centerY - platform.baseY);
-            if (dx > 6.5f || dz > 6.5f || dy > 5.0f ||
-                widthX > 12.0f || widthZ > 12.0f)
-            {
-                continue;
-            }
-
-            const float score = dx * 2.0f + dz * 2.0f + dy + widthX * 0.05f + widthZ * 0.05f;
-            if (score < bestScore)
-            {
-                bestScore = score;
-                bestIndex = static_cast<int>(objectIndex);
-            }
-        }
-
-        if (bestIndex >= 0)
-        {
-            platform.objectName = Model_FF11_GetLastMapObjectDisplayName(bestIndex);
-            float trans[3] = {};
-            float scale[3] = { 1.0f, 1.0f, 1.0f };
-            float rot[3] = {};
-            if (Model_FF11_GetLastMapObjectTransform(bestIndex, trans, scale, rot))
-                platform.baseY = trans[1];
+            platform.objectName = object.displayName;
+            // Both lift meshes author their deck at local Y=0.
+            platform.baseY = object.trans[1];
+            platform.lastY = platform.baseY;
+            break;
         }
     }
 }
@@ -1241,139 +2106,20 @@ static void ApplyMetalworksElevatorRuntimeCollision()
     }
 }
 
-static ZoneCollisionTriangle BuildMetalworksElevatorPlatformTriangle(
-    const ZoneElevator::Platform& platform, const int a, const int b, const int c)
-{
-    const float x0 = ZoneElevator::kPlatformX - ZoneElevator::kPlatformHalfWidth;
-    const float x1 = ZoneElevator::kPlatformX + ZoneElevator::kPlatformHalfWidth;
-    const float z0 = platform.z - ZoneElevator::kPlatformHalfDepth;
-    const float z1 = platform.z + ZoneElevator::kPlatformHalfDepth;
-    const float native[4][3] =
-    {
-        { x0, platform.baseY, z0 },
-        { x1, platform.baseY, z0 },
-        { x1, platform.baseY, z1 },
-        { x0, platform.baseY, z1 },
-    };
-    float points[9] = {};
-    const int indices[3] = { a, b, c };
-    for (int vertex = 0; vertex < 3; ++vertex)
-    {
-        const float* source = native[indices[vertex]];
-        points[vertex * 3 + 0] = source[0];
-        points[vertex * 3 + 1] = source[1];
-        points[vertex * 3 + 2] = source[2];
-    }
-    ZoneCollisionTriangle triangle = {};
-    ZoneCollision::BuildTriangle(points, !g_applicationSettings.mirrorWorldZones, triangle);
-    return triangle;
-}
-
-static bool HasMetalworksElevatorCollisionForPlatform(const int platformIndex)
-{
-    for (const auto& binding : g_metalworksElevatorCollision)
-        if (binding.platform == platformIndex)
-            return true;
-    return false;
-}
-
-static void AddSyntheticMetalworksElevatorCollision()
-{
-    for (int platformIndex = 0; platformIndex < 2; ++platformIndex)
-    {
-        if (HasMetalworksElevatorCollisionForPlatform(platformIndex))
-            continue;
-
-        const auto& platform = g_metalworksElevator.platforms[platformIndex];
-        const ZoneCollisionTriangle triangles[2] =
-        {
-            BuildMetalworksElevatorPlatformTriangle(platform, 0, 1, 2),
-            BuildMetalworksElevatorPlatformTriangle(platform, 0, 2, 3),
-        };
-        for (const ZoneCollisionTriangle& triangle : triangles)
-        {
-            const int runtimeIndex = static_cast<int>(g_zoneCollisionTris.size());
-            g_metalworksElevatorCollision.push_back({ platformIndex, runtimeIndex, triangle });
-            g_zoneCollisionMesh.AddTriangle(triangle, PlayerController::kCollisionRadius);
-        }
-    }
-}
-
 static void ApplyMetalworksElevatorRuntimeObjects()
 {
     for (const auto& platform : g_metalworksElevator.platforms)
     {
         if (platform.objectName.empty())
             continue;
-        for (size_t objectIndex = 0; objectIndex < gFF11LastMapObjects.size(); ++objectIndex)
-        {
-            const auto& object = gFF11LastMapObjects[objectIndex];
-            if (platform.objectName != object.displayName)
-                continue;
-
-            DebugTransform transform = {};
-            memcpy(transform.trans, object.trans, sizeof(transform.trans));
-            memcpy(transform.rot, object.rot, sizeof(transform.rot));
-            memcpy(transform.scale, object.scale, sizeof(transform.scale));
-            transform.trans[1] = object.trans[1] + (platform.lastY - platform.baseY);
-            g_zoneRuntimeOverrides[platform.objectName] = transform;
-            break;
-        }
+        // Placement is baked into zone vertices; the renderer needs only motion.
+        DebugTransform transform = {};
+        transform.trans[1] = platform.lastY - platform.baseY;
+        transform.scale[0] = 1.0f;
+        transform.scale[1] = 1.0f;
+        transform.scale[2] = 1.0f;
+        g_zoneRuntimeOverrides[platform.objectName] = transform;
     }
-}
-
-static void DrawMetalworksElevatorPlatforms()
-{
-    if (g_transitionZoneId != ZoneElevator::kMetalworksZone || !GraphicsDevice())
-        return;
-
-    struct PlatformVertex
-    {
-        float x, y, z;
-        DWORD color;
-    };
-
-    PlatformVertex vertices[12] = {};
-    int vertexCount = 0;
-    const bool mirrorX = !g_applicationSettings.mirrorWorldZones;
-    for (const auto& platform : g_metalworksElevator.platforms)
-    {
-        const float x0 = ZoneElevator::kPlatformX - ZoneElevator::kPlatformHalfWidth;
-        const float x1 = ZoneElevator::kPlatformX + ZoneElevator::kPlatformHalfWidth;
-        const float z0 = platform.z - ZoneElevator::kPlatformHalfDepth;
-        const float z1 = platform.z + ZoneElevator::kPlatformHalfDepth;
-        const std::array<float, 3> nativeCorners[4] =
-        {
-            { x0, platform.lastY - 0.015f, z0 },
-            { x1, platform.lastY - 0.015f, z0 },
-            { x1, platform.lastY - 0.015f, z1 },
-            { x0, platform.lastY - 0.015f, z1 },
-        };
-        const int indices[6] = { 0, 1, 2, 0, 2, 3 };
-        for (int i = 0; i < 6; ++i)
-        {
-            const auto scene = FFXICoordinateFrame::NativeDatToScene(
-                nativeCorners[indices[i]], mirrorX);
-            vertices[vertexCount++] = { scene[0], scene[1], scene[2],
-                D3DCOLOR_ARGB(255, 120, 122, 116) };
-        }
-    }
-
-    const D3DMATRIX identity = D3DMath::BuildIdentity();
-    GraphicsDevice()->SetTransform(D3DTS_WORLD, &identity);
-    GraphicsDevice()->SetTexture(0, nullptr);
-    GraphicsDevice()->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE);
-    GraphicsDevice()->SetRenderState(D3DRS_LIGHTING, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    GraphicsDevice()->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
-    GraphicsDevice()->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 4, vertices, sizeof(PlatformVertex));
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-    GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
 }
 
 static void BuildZoneCollisionFromDAT(const int zoneId)
@@ -1406,10 +2152,7 @@ static void BuildZoneCollisionFromDAT(const int zoneId)
         g_zoneCollisionMesh.AddTriangle(tri, PlayerController::kCollisionRadius + doorPadding);
     }
     if (zoneId == ZoneElevator::kMetalworksZone)
-    {
-        AddSyntheticMetalworksElevatorCollision();
         ApplyMetalworksElevatorRuntimeCollision();
-    }
 }
 
 static void ResetZoneCameraFromCollision()
@@ -1442,39 +2185,46 @@ static void ResetCameraForStandaloneModel(const noesisModel_t *model)
         return;
 
     bool haveVertex = false;
-    float minBounds[3] = {};
-    float maxBounds[3] = {};
+    float radiusSquared = 0.0f;
+    float highestVertexY = 0.0f;
     for (const noesisModel_t::Submesh &submesh : model->submeshes)
     {
-        for (const FFXIVertex &vertex : submesh.cpuVerts)
+        const auto includeVertex = [&](const FFXIVertex& vertex)
         {
+            float vertexRadiusSquared = 0.0f;
             for (int axis = 0; axis < 3; ++axis)
-            {
-                if (!haveVertex || vertex.pos[axis] < minBounds[axis])
-                    minBounds[axis] = vertex.pos[axis];
-                if (!haveVertex || vertex.pos[axis] > maxBounds[axis])
-                    maxBounds[axis] = vertex.pos[axis];
-            }
+                vertexRadiusSquared += vertex.pos[axis] * vertex.pos[axis];
+            radiusSquared = (std::max)(radiusSquared, vertexRadiusSquared);
+            highestVertexY = (std::min)(highestVertexY, vertex.pos[1]);
             haveVertex = true;
+        };
+
+        if (!submesh.cpuIndices.empty())
+        {
+            for (const DWORD index : submesh.cpuIndices)
+                if (index < submesh.cpuVerts.size())
+                    includeVertex(submesh.cpuVerts[index]);
+        }
+        else
+        {
+            for (const FFXIVertex& vertex : submesh.cpuVerts)
+                includeVertex(vertex);
         }
     }
     if (!haveVertex)
         return;
 
-    float radiusSquared = 0.0f;
-    for (int axis = 0; axis < 3; ++axis)
-    {
-        g_camTarget[axis] = (minBounds[axis] + maxBounds[axis]) * 0.5f;
-        const float halfExtent = (maxBounds[axis] - minBounds[axis]) * 0.5f;
-        radiusSquared += halfExtent * halfExtent;
-    }
     const float radius = sqrtf(radiusSquared);
-    g_camYaw = 0.0f;
-    g_camPitch = -0.12f;
+    // Actor DATs use the origin near their feet. Keep that stable anchor, then
+    // aim halfway toward the highest rendered vertex to center their height.
+    g_camTarget[0] = g_camTarget[2] = 0.0f;
+    g_camTarget[1] = highestVertexY * 0.5f;
+    g_camYaw = -3.14159265f * 0.5f;
+    g_camPitch = 0.0f;
     g_camDist = std::clamp(radius * 2.6f, 2.5f, 500.0f);
 }
 
-static bool SpawnPlayerAtZoneHomePoint()
+static bool SpawnPlayerAtZoneHomePoint(const unsigned int entityId = 0)
 {
     // The NPC catalog includes Home Point entities at their authoritative zone
     // coordinates. Never substitute the centre of arbitrary zone geometry,
@@ -1484,7 +2234,8 @@ static bool SpawnPlayerAtZoneHomePoint()
     // collision around their Home Point object.
     for (const FFXINpcPlacement::Placement &placement : FFXINpcPlacement::Snapshot())
     {
-        if (placement.name.compare(0, 10, "Home Point") != 0)
+        if (placement.name.compare(0, 10, "Home Point") != 0 ||
+            (entityId != 0 && placement.entityId != entityId))
             continue;
 
         // NPC/Home Point coordinates use the same native X orientation as the
@@ -1552,6 +2303,101 @@ static void UpdatePlayerCameraTarget()
     PlayerController::WriteCameraTarget(g_player, g_camTarget);
 }
 
+static bool SetClickMoveTargetFromViewportPoint(const POINT point)
+{
+    if (g_pickWidth <= 0 || g_pickHeight <= 0 || g_pickProjection._11 == 0.0f ||
+        g_pickProjection._22 == 0.0f || g_zoneCollisionMesh.Empty())
+        return false;
+
+    const float ndcX = (2.0f * static_cast<float>(point.x) / g_pickWidth) - 1.0f;
+    const float ndcY = 1.0f - (2.0f * static_cast<float>(point.y) / g_pickHeight);
+    const float cameraDirection[3] =
+    {
+        ndcX / g_pickProjection._11,
+        ndcY / g_pickProjection._22,
+        1.0f
+    };
+    float direction[3] =
+    {
+        g_pickView._11 * cameraDirection[0] + g_pickView._12 * cameraDirection[1] + g_pickView._13 * cameraDirection[2],
+        g_pickView._21 * cameraDirection[0] + g_pickView._22 * cameraDirection[1] + g_pickView._23 * cameraDirection[2],
+        g_pickView._31 * cameraDirection[0] + g_pickView._32 * cameraDirection[1] + g_pickView._33 * cameraDirection[2]
+    };
+    const float length = std::sqrt(direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2]);
+    if (length <= 0.0001f)
+        return false;
+    direction[0] /= length; direction[1] /= length; direction[2] /= length;
+
+    float origin[3] = {};
+    OrbitCamera::GetPosition(g_orbitCamera, origin[0], origin[1], origin[2]);
+    float normal[3] = {};
+    float pointWorld[3] = {};
+    if (!ZoneCollision::Raycast(g_zoneCollisionMesh, origin, direction, 4096.0f,
+                                pointWorld, normal) || std::fabs(normal[1]) < 0.25f)
+        return false;
+    g_clickMoveTarget[0] = pointWorld[0];
+    g_clickMoveTarget[1] = pointWorld[1];
+    g_clickMoveTarget[2] = pointWorld[2];
+    g_clickMoveActive = true;
+    return true;
+}
+
+static void DrawClickMoveTarget()
+{
+    if (!g_clickMoveActive ||
+        g_applicationSettings.movementStyle != ApplicationSettings::MovementClickToMove ||
+        !GraphicsDevice())
+        return;
+
+    struct Vertex { float x, y, z; DWORD color; };
+    constexpr int segments = 20;
+    const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(g_homePointSeconds) * 5.0f);
+    const float outerRadius = 0.32f + pulse * 0.08f;
+    const float innerRadius = outerRadius * 0.62f;
+    const DWORD color = D3DCOLOR_ARGB(static_cast<int>(150.0f + pulse * 80.0f), 255, 220, 64);
+    Vertex vertices[segments * 6] = {};
+    constexpr float pi = 3.14159265358979323846f;
+    for (int segment = 0; segment < segments; ++segment)
+    {
+        const float a0 = (2.0f * pi * segment) / segments;
+        const float a1 = (2.0f * pi * (segment + 1)) / segments;
+        const int base = segment * 6;
+        const float y = g_clickMoveTarget[1] - 0.035f;
+        vertices[base + 0] = {g_clickMoveTarget[0] + std::cos(a0) * innerRadius, y,
+            g_clickMoveTarget[2] + std::sin(a0) * innerRadius, color};
+        vertices[base + 1] = {g_clickMoveTarget[0] + std::cos(a0) * outerRadius, y,
+            g_clickMoveTarget[2] + std::sin(a0) * outerRadius, color};
+        vertices[base + 2] = {g_clickMoveTarget[0] + std::cos(a1) * outerRadius, y,
+            g_clickMoveTarget[2] + std::sin(a1) * outerRadius, color};
+        vertices[base + 3] = vertices[base + 0];
+        vertices[base + 4] = vertices[base + 2];
+        vertices[base + 5] = {g_clickMoveTarget[0] + std::cos(a1) * innerRadius, y,
+            g_clickMoveTarget[2] + std::sin(a1) * innerRadius, color};
+    }
+    D3DMATRIX world = {};
+    world._11 = world._22 = world._33 = world._44 = 1.0f;
+    IDirect3DDevice9* device = GraphicsDevice();
+    device->SetTransform(D3DTS_WORLD, &world);
+    device->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE);
+    device->SetTexture(0, nullptr);
+    device->SetRenderState(D3DRS_LIGHTING, FALSE);
+    device->SetRenderState(D3DRS_ZENABLE, TRUE);
+    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+    device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+    device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, segments * 2, vertices, sizeof(Vertex));
+    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
+    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+}
+
 static bool IsEditMode()
 {
     return InteractionController::IsEditMode(g_interaction);
@@ -1573,7 +2419,9 @@ static void SyncAppMusic()
         AudioPlayer_OwnsWindow(foregroundWindow);
     context.externalPlayerOpen = AudioPlayer_IsOpen();
     context.titleScreenActive = g_titleScreenActive;
-    context.titleMusicId = kTitleScreenMusicId;
+    const int titleMusicIndex = (g_titleMusicIndex >= 0) ? g_titleMusicIndex : 0;
+    context.titleMusicId = ApplicationSettings::TitleMusicOptionAt(
+        titleMusicIndex).musicId;
 
     if (!context.soundsEnabled || (!context.playSoundsInBackground && !context.applicationOwnsForeground) ||
         !IsGameMode() || g_titleScreenActive || g_nationSelectActive)
@@ -1611,6 +2459,12 @@ static void SetInteractionMode(const InteractionController::Mode mode)
         InteractionController::SetMode(g_interaction, mode);
     g_player.cameraActive = transition.playerCameraActive;
 
+    if (mode == InteractionController::Mode::Game)
+    {
+        g_highlightedZoneObjects.clear();
+        ZoneObjectPanel::SetHighlightActive(g_zoneObjectPanel, false);
+    }
+
     if (g_player.cameraActive && g_playerAsset)
         UpdatePlayerCameraTarget();
 
@@ -1622,6 +2476,24 @@ static void SetInteractionMode(const InteractionController::Mode mode)
         InvalidateRect(g_hWnd, NULL, FALSE);
 }
 
+static bool EnsureGameModePlayerForCurrentZone()
+{
+    if (!g_zoneAsset)
+        return true;
+    if (g_playerAsset)
+        return true;
+
+    LoadPlayerRaceModel(g_playerEquip.raceIndex);
+    if (!g_playerAsset)
+        return false;
+
+    // Player model loading initializes its pose from the editor camera. Restore
+    // the zone's authoritative playable spawn after the model exists.
+    SpawnPlayerAtZoneHomePoint();
+    UpdatePlayerCameraTarget();
+    return true;
+}
+
 static void ToggleEditGameMode()
 {
     g_npcInteraction = {};
@@ -1629,12 +2501,15 @@ static void ToggleEditGameMode()
     NpcChatWindow::Reset();
     if (IsEditMode())
     {
-        if (!g_playerAsset)
-        {
-            LoadPlayerRaceModel(0);
-            if (!g_playerAsset)
-                return;
-        }
+        if (!EnsureGameModePlayerForCurrentZone())
+            return;
+
+        // Enter gameplay at the point the editor camera is currently looking
+        // at. Keep the orbit target unchanged so switching modes does not
+        // move the camera to the previous player position.
+        PlayerController::SetPose(
+            g_player, g_camTarget[0], g_camTarget[1], g_camTarget[2], g_camYaw, false);
+        PlayerController::SetRespawnPoint(g_player);
         SetInteractionMode(InteractionController::Mode::Game);
     }
     else
@@ -1654,18 +2529,40 @@ static void UnstickPlayerFromGeometry()
 
 static PlayerController::InputSnapshot CapturePlayerInputSnapshot()
 {
-    const InputController::MovementSnapshot movement = InputController::Movement(g_input);
     PlayerController::InputSnapshot input;
+    if (g_zoneMapVisible)
+        return input;
+    const InputController::MovementSnapshot movement = InputController::Movement(g_input);
     input.turn = -movement.right;
     input.forward = movement.forward;
     input.strafe = movement.strafe;
     input.boost = movement.running;
     input.fastRunning = movement.fastRunning;
+    input.autoRun = movement.autoRun;
+    input.retail = g_applicationSettings.movementStyle == ApplicationSettings::MovementRetail;
+    input.cameraYaw = g_camYaw;
+    input.clickToMove = g_applicationSettings.movementStyle == ApplicationSettings::MovementClickToMove &&
+        g_clickMoveActive;
+    input.clickTarget[0] = g_clickMoveTarget[0];
+    input.clickTarget[1] = g_clickMoveTarget[1];
+    input.clickTarget[2] = g_clickMoveTarget[2];
+    if (input.retail)
+    {
+        input.strafe = movement.right;
+        input.turn = 0.0f;
+    }
     if (InputController::MouseForwardActive(g_input))
     {
         input.forward = 1.0f;
         input.turn = 0.0f;
         input.strafe = 0.0f;
+    }
+    if (input.clickToMove)
+        input.forward = 1.0f;
+    if (input.autoRun)
+    {
+        input.clickToMove = false;
+        input.forward = 1.0f;
     }
     input.slow = movement.slow;
     return input;
@@ -1686,6 +2583,9 @@ static void UpdatePlayerMovement(const float dt)
                 PlayerController::kCollisionRadius, PlayerController::kCollisionHeight);
             g_doorPhysicsUpdated = true;
         };
+    if (g_applicationSettings.movementStyle == ApplicationSettings::MovementClickToMove &&
+        InputController::IsMovementActive(g_input))
+        g_clickMoveActive = false;
     auto input = CapturePlayerInputSnapshot();
     if (InputController::MouseForwardActive(g_input))
     {
@@ -1710,6 +2610,18 @@ static void UpdatePlayerMovement(const float dt)
     }
     const auto movement = PlayerController::UpdateMovement(
         g_player, input, dt, context);
+    if (input.clickToMove)
+    {
+        const float dx = g_clickMoveTarget[0] - g_player.position[0];
+        const float dz = g_clickMoveTarget[2] - g_player.position[2];
+        if (dx * dx + dz * dz <= 0.18f * 0.18f || movement.respawned)
+            g_clickMoveActive = false;
+    }
+    if (!input.retail && InputController::IsMovementActive(g_input) &&
+        g_input.dragMode == InputController::DragMode::None)
+    {
+        OrbitCamera::FollowYaw(g_orbitCamera, g_player.yaw, dt);
+    }
     if (g_zoneAsset && g_playerAsset && !movement.respawned)
     {
         const ZoneTransition::Point current = { g_player.position[0], g_player.position[1], g_player.position[2] };
@@ -1722,7 +2634,9 @@ static void UpdatePlayerMovement(const float dt)
                 g_player = previousPlayer;
         }
     }
-    UpdatePlayerCameraTarget();
+    float desiredCameraTarget[3] = {};
+    PlayerController::WriteCameraTarget(g_player, desiredCameraTarget);
+    OrbitCamera::FollowTarget(g_orbitCamera, desiredCameraTarget, dt);
 }
 
 static void UpdatePlayerAnimation(float dt)
@@ -1772,6 +2686,16 @@ static void UpdateHighPolyCreationAnimation(float dt)
 
 static void UpdateCameraMovement(float dt)
 {
+    // The title rail already supplied this frame's eye/target. Player follow
+    // would shift both toward the gameplay actor after sampling the rail.
+    if (g_titleScreenActive)
+    {
+        InputController::ConsumeJump(g_input);
+        return;
+    }
+    if (g_companionViewerMode)
+        return;
+
     if (IsGameMode())
         UpdatePlayerMovement(dt);
     else
@@ -1791,9 +2715,8 @@ static int SelectZoneMusicId(const FFXIZoneMusicEntry* pMusic)
     if (!pMusic)
         return 0;
 
-    SYSTEMTIME localTime = {};
-    GetLocalTime(&localTime);
-    const bool useNight = (localTime.wHour >= 18 || localTime.wHour < 6);
+    const int minuteOfDay = ZoneEnvironmentState::CurrentMinuteOfDay();
+    const bool useNight = minuteOfDay >= 18 * 60 || minuteOfDay < 6 * 60;
     if (useNight && pMusic->nightMusicId != 0)
         return pMusic->nightMusicId;
     return (pMusic->dayMusicId != 0) ? pMusic->dayMusicId : pMusic->nightMusicId;
@@ -1806,7 +2729,8 @@ static int SelectZoneMusicId(const FFXIZoneMusicEntry* pMusic)
 static void UpdateZoneEnvironmentState()
 {
     ZoneEnvironmentState::Update(g_zoneEnvironment, g_zoneEnvironmentCache, g_zoneWeatherIndex,
-                                 gFF11LastEnvironmentRecords, ZoneEnvironmentState::CurrentMinuteOfDay());
+                                 gFF11LastEnvironmentRecords,
+                                 ZoneEnvironmentState::CurrentMinuteOfDay());
 }
 
 static void GetRenderCameraPosition(float &x, float &y, float &z)
@@ -1821,8 +2745,10 @@ static bool FindZoneShadowReceiverY(const float x, const float y, const float z,
 
     float floorY = 0.0f;
     float floorNormal[3] = {};
+    const float searchRadius = g_applicationSettings.shadowReceiverQuality <= 0 ? 1.5f :
+        (g_applicationSettings.shadowReceiverQuality == 1 ? 0.75f : 0.25f);
     if (!ZoneCollision::FindFloorAt(g_zoneCollisionTris, g_zoneCollisionGrid,
-                                    0.75f, x, z, y - 80.0f, y + 80.0f,
+                                    searchRadius, x, z, y - 80.0f, y + 80.0f,
                                     &floorY, floorNormal))
     {
         return false;
@@ -1839,19 +2765,89 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
     if (!pModel || !GraphicsDevice())
         return;
 
+    CustomTextureAssets::Configure(GraphicsDevice(),
+        g_applicationSettings.enableHdTextures, g_applicationSettings.hdTextureFolder,
+        g_applicationSettings.enablePbr, g_applicationSettings.pbrTextureFolder);
+
     ModelRenderer::Context rendererContext = {};
     rendererContext.device = GraphicsDevice();
     rendererContext.geometryPass = pass;
     rendererContext.minuteOfDay = ZoneEnvironmentState::CurrentMinuteOfDay();
     rendererContext.lightingQuality = g_applicationSettings.lightingQuality;
+    rendererContext.automaticLightDirection =
+        g_applicationSettings.lightDirectionMode == ApplicationSettings::LightDirectionAutomatic;
+    rendererContext.lightAzimuthDegrees = static_cast<float>(
+        rendererContext.automaticLightDirection
+            ? g_applicationSettings.lightAzimuthOffsetDegrees
+            : g_applicationSettings.lightAzimuthDegrees);
+    rendererContext.lightElevationDegrees = static_cast<float>(
+        rendererContext.automaticLightDirection
+            ? g_applicationSettings.lightElevationOffsetDegrees
+            : g_applicationSettings.lightElevationDegrees);
+    if (g_companionViewerMode)
+    {
+        rendererContext.automaticLightDirection = false;
+        rendererContext.lightAzimuthDegrees = g_modelViewerLightAzimuthDegrees;
+        rendererContext.lightElevationDegrees = g_modelViewerLightElevationDegrees;
+    }
+    rendererContext.useAuthoredLightColor = g_zoneEnvironment.valid;
+    if (allowObjectOverrides)
+    {
+        rendererContext.authoredMainLightColor = g_zoneEnvironment.terrainMainLightColor;
+        rendererContext.authoredSecondaryLightColor = g_zoneEnvironment.terrainSecondaryLightColor;
+        rendererContext.authoredAmbientLightColor = g_zoneEnvironment.terrainAmbientColor;
+        rendererContext.authoredLightPower = g_zoneEnvironment.terrainLightPower;
+        memcpy(rendererContext.authoredMainLightDirection,
+            g_zoneEnvironment.terrainMainLightDirection,
+            sizeof(rendererContext.authoredMainLightDirection));
+    }
+    else
+    {
+        rendererContext.authoredMainLightColor = g_zoneEnvironment.modelMainLightColor;
+        rendererContext.authoredSecondaryLightColor = g_zoneEnvironment.modelSecondaryLightColor;
+        rendererContext.authoredAmbientLightColor = g_zoneEnvironment.modelAmbientColor;
+        rendererContext.authoredLightPower = g_zoneEnvironment.modelLightPower;
+        memcpy(rendererContext.authoredMainLightDirection,
+            g_zoneEnvironment.modelMainLightDirection,
+            sizeof(rendererContext.authoredMainLightDirection));
+    }
+    rendererContext.useAuthoredLightDirection =
+        g_zoneEnvironment.valid && g_zoneEnvironment.authoredLightDirection;
+    rendererContext.useAuthoredFog = allowObjectOverrides && g_zoneEnvironment.valid;
+    rendererContext.authoredFogColor = g_zoneEnvironment.fogColor;
+    rendererContext.authoredFogNear = g_zoneEnvironment.fogNear;
+    rendererContext.authoredFogFar = g_zoneEnvironment.fogFar;
+    rendererContext.authoredGenerators = &gFF11LastGeneratorRecords;
+    rendererContext.authoredKeyframes = &gFF11LastKeyframeRecords;
+    rendererContext.mirrorAuthoredLightX = !g_applicationSettings.mirrorWorldZones;
     rendererContext.vegetationAnimationMode = g_applicationSettings.environmentalAnimationMode;
     rendererContext.rendersZoneObjects = allowObjectOverrides;
     rendererContext.dynamicActorShadows =
-        drawDynamicActorShadow &&
+        !g_companionViewerMode && drawDynamicActorShadow &&
         g_applicationSettings.lightingQuality == ApplicationSettings::LightingDynamicShadows;
+    rendererContext.dynamicObjectShadows = rendererContext.dynamicActorShadows &&
+        g_applicationSettings.shadowObjects;
+    rendererContext.shadowGroundLikeObjects = g_applicationSettings.shadowGroundLikeObjects;
+    rendererContext.shadowAlphaTestedObjects = g_applicationSettings.shadowAlphaTestedObjects;
+    rendererContext.shadowMaxDistance = static_cast<float>((std::max)(0, g_applicationSettings.shadowMaxDistance));
+    rendererContext.shadowObjectLimit = (std::max)(0, g_applicationSettings.shadowObjectLimit);
+    rendererContext.shadowMinimumSize = (std::max)(0, g_applicationSettings.shadowMinimumSizePercent) * 0.01f;
+    rendererContext.shadowMaximumSize = static_cast<float>((std::max)(0, g_applicationSettings.shadowMaximumSize));
+    rendererContext.shadowReceiverUpdateFrames = (std::max)(1, g_applicationSettings.shadowReceiverUpdateFrames);
+    rendererContext.shadowMaximumLength = static_cast<float>((std::max)(1, g_applicationSettings.shadowMaximumLength));
+    rendererContext.shadowOpacity = std::clamp(g_applicationSettings.shadowOpacityPercent, 0, 100) * 0.01f;
+    rendererContext.shadowDebugVisualization = g_applicationSettings.shadowDebugVisualization;
+    rendererContext.shadowPerformanceCounters = g_applicationSettings.shadowPerformanceCounters;
     rendererContext.enableMipMapping = g_applicationSettings.enableMipMapping;
+    rendererContext.enableBumpMapping = g_applicationSettings.enableBumpMapping;
+    rendererContext.bumpMappingIntensity =
+        ApplicationSettings::ClampBumpMappingIntensity(
+            g_applicationSettings.bumpMappingIntensityPercent) * 0.01f *
+        (g_applicationSettings.invertBumpMapping ? -1.0f : 1.0f);
     rendererContext.indoorZone = g_zoneEnvironment.valid && g_zoneEnvironment.indoor;
     rendererContext.findZoneShadowReceiverY = FindZoneShadowReceiverY;
+    GetRenderCameraPosition(rendererContext.cameraPosition[0],
+        rendererContext.cameraPosition[1], rendererContext.cameraPosition[2]);
     ZoneModelRenderMetadata::Prepare(pModel, GraphicsDevice());
     GraphicsDevice()->SetFVF(FFXI_VERTEX_FVF);
     D3DMATRIX baseWorld = {};
@@ -1861,8 +2857,6 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
     // has uneven ground, so projecting an entire zone onto a single plane would be wrong.
     ModelRenderer::DrawActorPlanarShadow(rendererContext, pModel, baseWorld);
     ModelRenderer::PrepareFixedFunctionPass(rendererContext, baseWorld);
-    if (allowObjectOverrides)
-        ZoneEnvironmentFog::Apply(GraphicsDevice(), g_zoneEnvironment);
 
     rendererContext.visibility.hiddenNames = &g_hiddenZoneObjects;
     rendererContext.visibility.viewerPointValid = g_zoneVisibilityViewerPointValid;
@@ -1870,8 +2864,6 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
     rendererContext.visibility.visibleMapObjects = &g_zoneVisibleMapObjects;
     rendererContext.visibility.overrides = &g_zoneRuntimeOverrides;
     rendererContext.visibility.frustum = &g_zoneRenderFrustum;
-    GetRenderCameraPosition(rendererContext.cameraPosition[0],
-        rendererContext.cameraPosition[1], rendererContext.cameraPosition[2]);
     ModelRenderer::DrawGeometry(rendererContext, pModel, baseWorld);
     if (allowObjectOverrides && pass == ModelRenderer::GeometryPass::Opaque)
         ModelRenderer::DrawZoneObjectPlanarShadows(rendererContext, pModel, baseWorld);
@@ -1946,6 +2938,8 @@ static void ShowSceneModelLoadError(const SceneModelLoader::Error error)
 
 static void UnloadZoneModel()
 {
+    g_metalworksElevatorAudio.Reset();
+    g_loadedZoneId = -1;
     g_transitionZoneId = -1;
     g_failedZoneTransition = nullptr;
     ClearZoneCollision();
@@ -2059,6 +3053,11 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     if (!g_applicationSettings.mirrorWorldZones)
         ZoneModelTransform::MirrorOnX(g_zoneAsset.Model(), GraphicsDevice());
     const int zoneId = FFXIPath::FindZoneIDByModelPath(g_ffxiPath, path);
+    g_loadedZoneId = zoneId;
+    g_metalworksElevator = {};
+    g_metalworksElevatorAudio.Reset();
+    if (zoneId == ZoneElevator::kMetalworksZone)
+        g_metalworksElevatorAudio.Load(g_ffxiPath);
     g_doors.Initialize(g_zoneAsset.Model(), !g_applicationSettings.mirrorWorldZones);
     g_doors.SetPhysics(g_applicationSettings.doorInteractionMode == ApplicationSettings::DoorPhysics);
     BuildZoneCollisionFromDAT(zoneId);
@@ -2081,7 +3080,6 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     if (userContentLoad && !preserveGameScreen)
     {
         SpawnPlayerAtZoneHomePoint();
-        SetInteractionMode(InteractionController::Mode::Edit);
     }
 }
 
@@ -2127,7 +3125,6 @@ static void CompletePlayerZoneTransitionLoad()
         g_camDist = cameraDistance;
         g_camPitch = cameraPitch;
         g_camYaw = cameraYaw;
-        SetInteractionMode(InteractionController::Mode::Game);
         const auto* music = FFXIZoneMusic_FindByID(line.fromZone);
         SetGameModeMusic(SelectZoneMusicId(music));
         return;
@@ -2152,9 +3149,11 @@ static void CompletePlayerZoneTransitionLoad()
     g_camDist = cameraDistance;
     g_camPitch = cameraPitch;
     g_playerAnimTime = 0;
-    SetInteractionMode(InteractionController::Mode::Game);
     const auto* music = FFXIZoneMusic_FindByID(line.toZone);
     SetGameModeMusic(SelectZoneMusicId(music));
+    const std::string zoneEntryMessage = ZoneEntryMessage::ForZone(line.toZone);
+    if (!zoneEntryMessage.empty())
+        NpcChatWindow::Show(g_hWnd, "System", zoneEntryMessage);
 }
 
 static void TransitionPlayerZone(const ZoneTransition::Line& line, const PlayerController::State& previousPlayer)
@@ -2308,27 +3307,171 @@ static void DrawZoneBoundaryDots(const D3DMATRIX& viewProjection, int width, int
     }
 }
 
+static int SelectTitleBackgroundIndex()
+{
+    const int count = ApplicationSettings::TitleBackgroundOptionCount();
+    if (count <= 1)
+        return 0;
+
+    switch (ApplicationSettings::ClampTitleBackgroundMode(
+        g_applicationSettings.titleBackgroundMode))
+    {
+    case ApplicationSettings::TitleBackgroundCycle:
+        g_titleCycleIndex = (g_titleCycleIndex + 1) % count;
+        return g_titleCycleIndex;
+    case ApplicationSettings::TitleBackgroundFixed:
+        return ApplicationSettings::ClampTitleBackgroundZoneIndex(
+            g_applicationSettings.titleBackgroundZoneIndex);
+    default:
+        {
+            static std::mt19937 generator(static_cast<unsigned int>(
+                GetTickCount64() ^ reinterpret_cast<UINT_PTR>(&SelectTitleBackgroundIndex)));
+            if (g_titleBackgroundIndex < 0)
+            {
+                std::uniform_int_distribution<int> firstDistribution(0, count - 1);
+                return firstDistribution(generator);
+            }
+            std::uniform_int_distribution<int> distribution(0, count - 2);
+            int selected = distribution(generator);
+            // Draw from count-1 values, then skip the current entry. This
+            // guarantees a visibly different scene on every return without
+            // biasing any of the remaining choices.
+            if (g_titleBackgroundIndex >= 0 && selected >= g_titleBackgroundIndex)
+                ++selected;
+            return selected;
+        }
+    }
+}
+
+static int SelectTitleMusicIndex()
+{
+    const int count = ApplicationSettings::TitleMusicOptionCount();
+    if (count <= 1)
+        return 0;
+
+    switch (ApplicationSettings::ClampTitleMusicMode(
+        g_applicationSettings.titleMusicMode))
+    {
+    case ApplicationSettings::TitleMusicCycle:
+        g_titleMusicCycleIndex = (g_titleMusicCycleIndex + 1) % count;
+        return g_titleMusicCycleIndex;
+    case ApplicationSettings::TitleMusicFixed:
+        return ApplicationSettings::ClampTitleMusicIndex(
+            g_applicationSettings.titleMusicIndex);
+    default:
+        {
+            static std::mt19937 generator(static_cast<unsigned int>(
+                GetTickCount64() ^ reinterpret_cast<UINT_PTR>(&SelectTitleMusicIndex)));
+            if (g_titleMusicIndex < 0)
+            {
+                std::uniform_int_distribution<int> firstDistribution(0, count - 1);
+                return firstDistribution(generator);
+            }
+            std::uniform_int_distribution<int> distribution(0, count - 2);
+            int selected = distribution(generator);
+            if (selected >= g_titleMusicIndex)
+                ++selected;
+            return selected;
+        }
+    }
+}
+
+static void ConfigureGenericTitleCameraBase()
+{
+    if (!g_haveZoneCollisionBounds || g_zoneCollisionTris.empty())
+        return;
+
+    const float centerX = (g_zoneCollisionMin[0] + g_zoneCollisionMax[0]) * 0.5f;
+    const float centerZ = (g_zoneCollisionMin[2] + g_zoneCollisionMax[2]) * 0.5f;
+    const float extentX = (g_zoneCollisionMax[0] - g_zoneCollisionMin[0]) * 0.5f;
+    const float extentZ = (g_zoneCollisionMax[2] - g_zoneCollisionMin[2]) * 0.5f;
+    constexpr float ringFractions[] = { 0.0f, 0.08f, 0.16f, 0.26f, 0.38f };
+
+    bool found = false;
+    float anchorX = centerX;
+    float anchorY = 0.0f;
+    float anchorZ = centerZ;
+    for (const float fraction : ringFractions)
+    {
+        const int samples = fraction == 0.0f ? 1 : 16;
+        for (int sample = 0; sample < samples; ++sample)
+        {
+            const float angle = 6.28318530718f * static_cast<float>(sample) /
+                static_cast<float>(samples);
+            const float x = centerX + std::cos(angle) * extentX * fraction;
+            const float z = centerZ + std::sin(angle) * extentZ * fraction;
+            float floorY = 0.0f;
+            float normal[3] = {};
+            if (ZoneCollision::FindFloorAt(g_zoneCollisionTris, g_zoneCollisionGrid,
+                    2.0f, x, z, g_zoneCollisionMin[1] - 2.0f,
+                    g_zoneCollisionMax[1] + 2.0f, &floorY, normal) &&
+                normal[1] >= 0.55f)
+            {
+                anchorX = x;
+                anchorY = floorY;
+                anchorZ = z;
+                found = true;
+                break;
+            }
+        }
+        if (found)
+            break;
+    }
+    if (!found)
+        return;
+
+    // Scene Y increases downward. Put the look target just above the sampled
+    // floor and the camera a little higher still, instead of using the global
+    // collision minimum (the tallest peak anywhere in the zone).
+    g_camTarget[0] = anchorX;
+    g_camTarget[1] = anchorY - 2.0f;
+    g_camTarget[2] = anchorZ;
+    g_camYaw = 0.0f;
+    g_camPitch = -0.04f;
+    g_camDist = 45.0f;
+}
+
 static void LoadTitleScreen()
 {
     UnloadCreationModel();
     UnloadTitleAssets();
     InteractionController::SetGameMusicId(g_interaction, 0);
-    SetInteractionMode(InteractionController::Mode::Edit);
     g_highPolyCreationActive = false;
     g_nationSelectActive = false;
+    g_titleCameraRailTime = 0.0f;
+    g_retailTitleCamera = {};
+    g_titleMusicIndex = SelectTitleMusicIndex();
+
+    // The original PS2 lobby deliberately presents its title demo at 12:30,
+    // independent of the live in-game clock.
+    ZoneEnvironmentState::SetTimeOverride(12 * 60 + 30);
 
     SceneLoadContext::Options backdropOptions;
     backdropOptions.preserveGameScreen = true;
-    const SceneRequestResolver::Result backdrop =
+    g_titleBackgroundIndex = SelectTitleBackgroundIndex();
+    const ApplicationSettings::TitleBackgroundOption* background =
+        &ApplicationSettings::TitleBackgroundOptionAt(g_titleBackgroundIndex);
+    SceneRequestResolver::Result backdrop =
         SceneRequestResolver::ResolveRelativeModel(
-            g_ffxiPath, kTitleScreenZoneDat, nullptr, backdropOptions);
+            g_ffxiPath, background->modelDat, background->name, backdropOptions);
     if (!backdrop.Succeeded())
     {
-        g_titleScreenActive = true;
-        return;
+        // A partial FFXI installation may not contain every expansion DAT.
+        // Fall back to DATura's known-good Konschtat presentation rather than
+        // leaving the title screen without a backdrop.
+        g_titleBackgroundIndex = 8;
+        background = &ApplicationSettings::TitleBackgroundOptionAt(
+            g_titleBackgroundIndex);
+        backdrop = SceneRequestResolver::ResolveRelativeModel(
+            g_ffxiPath, background->modelDat, background->name, backdropOptions);
+        if (!backdrop.Succeeded())
+        {
+            g_titleScreenActive = true;
+            return;
+        }
     }
 
-    // Load Konschtat through the same regular-zone content path used everywhere
+    // Load the selected backdrop through the regular-zone content path
     // else (environment, collision, NPC placements, and ordinary visibility).
     // Only suppress the UI transition that would otherwise leave the title
     // screen and unload the title-specific overlay assets.
@@ -2340,14 +3483,31 @@ static void LoadTitleScreen()
         FFXIParserDiagnostics::ScopedSnapshot parserDiagnostics;
         g_titleScreenActive = true;
 
-        // Replace the regular zone loader's collision-derived camera with the
-        // captured title presentation pose. Keeping the target as well as the
-        // orbit values fixed makes the opening composition deterministic.
+        // Preserve DATura's custom Konschtat composition. Every retail zone
+        // starts on its exact authored scheduler camera; collision-derived
+        // framing is retained only as a safe fallback for incomplete installs.
+        if (g_titleBackgroundIndex == 8)
+        {
+            for (int axis = 0; axis < 3; ++axis)
+                g_camTarget[axis] = kTitleScreenCameraTarget[axis];
+            g_camYaw = kTitleScreenCameraYaw;
+            g_camPitch = kTitleScreenCameraPitch;
+            g_camDist = kTitleScreenCameraDistance;
+        }
+        else
+        {
+            if (!LoadRetailTitleCamera(
+                    RetailTitleScheduleForBackground(g_titleBackgroundIndex)) ||
+                !SampleRetailTitleCamera())
+            {
+                ConfigureGenericTitleCameraBase();
+            }
+        }
         for (int axis = 0; axis < 3; ++axis)
-            g_camTarget[axis] = kTitleScreenCameraTarget[axis];
-        g_camYaw = kTitleScreenCameraYaw;
-        g_camPitch = kTitleScreenCameraPitch;
-        g_camDist = kTitleScreenCameraDistance;
+            g_titleCameraBaseTarget[axis] = g_camTarget[axis];
+        g_titleCameraBaseYaw = g_camYaw;
+        g_titleCameraBasePitch = g_camPitch;
+        g_titleCameraBaseDistance = g_camDist;
 
         const TitleSceneAssets::Paths paths =
         {
@@ -2361,7 +3521,7 @@ static void LoadTitleScreen()
     }
     ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, true);
 
-    // The title presentation starts with Konschtat's authored sunny sky. The
+    // Prefer an authored sunny sky when the selected zone provides one. The
     // ordinary zone default remains independent of this title-only selection.
     UpdateZoneEnvironmentState();
     for (size_t weather = 0; weather < g_zoneEnvironmentCache.weatherGroups.size(); ++weather)
@@ -2385,7 +3545,6 @@ static void LoadCreationEntry(const FFXICreationEntry *pEntry)
     if (!pEntry)
         return;
 
-    SetInteractionMode(InteractionController::Mode::Edit);
     g_titleScreenActive = false;
     g_highPolyCreationActive = true;
     g_nationSelectActive = false;
@@ -2507,6 +3666,53 @@ static void LoadCreationEntry(const FFXICreationEntry *pEntry)
         g_camTarget[0] = g_camTarget[2] = 0.0f;
         g_camTarget[1] = -12.0f;
     }
+}
+
+static void LoadCreationEntryInModelViewer(const FFXICreationEntry *pEntry)
+{
+    if (!pEntry)
+        return;
+
+    g_titleScreenActive = false;
+    g_highPolyCreationActive = true;
+    g_nationSelectActive = false;
+    UnloadTitleAssets();
+    UnloadZoneModel();
+    UnloadPlayerModel();
+    UnloadCreationModel();
+
+    CreationModelLoader::Request request;
+    request.ffxiRoot = g_ffxiPath;
+    request.label = pEntry->label;
+    request.bodyMeshDat = pEntry->bodyMeshDat;
+    request.bodyMaterialDat = pEntry->bodyMaterialDat;
+    request.headMeshDat = pEntry->headMeshDat;
+    request.headMaterialDat = pEntry->headMaterialDat;
+    request.bodyAnimationDat = CreationBodyAnimDatForRace(g_creationSelection.raceIndex);
+    request.headAnimationDat = CreationHeadAnimDatForRace(g_creationSelection.raceIndex);
+    request.headAlphaMode = pEntry->headAlphaMode;
+    request.headYOffset = pEntry->headYOffset;
+    request.enableTextureCompression = g_applicationSettings.enableTextureCompression;
+
+    CreationModelLoader::Result result = CreationModelLoader::Load(GraphicsDevice(), request);
+    if (!result.Succeeded())
+    {
+        MessageBoxA(g_hWnd, "Could not load the selected character model.",
+                    "Model Viewer", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    g_creationAsset = std::move(result.asset);
+    g_creationAnimationIndex = 0;
+    g_creationAnimatedCamera = false;
+    g_creationBodyMotion = {};
+    g_creationHeadMotion = {};
+    g_creationAnimTime = 0.0f;
+    g_creationHorizontalPlacement[0] = 0.0f;
+    g_creationHorizontalPlacement[1] = 0.0f;
+    g_creationHorizontalPlacement[2] = 0.0f;
+    ResetCameraForStandaloneModel(g_creationAsset.Model());
+    InvalidateRect(g_hWnd, NULL, FALSE);
 }
 
 static void LoadDatSetFile(const char *path)
@@ -2950,8 +4156,105 @@ static void SaveHighPolyCreationCharacter()
         return;
     }
 
+    char dataPath[MAX_PATH] = {};
+    FFXIFileIO::ReplaceExtension(datSetPath, ".ini", dataPath, sizeof(dataPath));
+    CharacterSaveData::Data characterData;
+    characterData.homeNationIndex = 0;
+    CharacterSaveData::Data existingData;
+    if (CharacterSaveData::Load(dataPath, existingData))
+        characterData = existingData;
+    if (!CharacterSaveData::Save(dataPath, characterData))
+    {
+        MessageBoxA(panel ? panel : g_hWnd,
+                    "The character model was saved, but its character data file could not be created.",
+                    "Save Character", MB_OK | MB_ICONWARNING);
+    }
+    g_lastSavedCharacterDataPath = dataPath;
+
     FFXISaveResultDialog::Show(g_highPolyCreationActive && g_hWnd ? g_hWnd : NULL,
                                g_hWnd, noesisPath, datSetPath);
+}
+
+static bool FileExists(const char* path)
+{
+    const DWORD attributes = path && path[0] ? GetFileAttributesA(path) : INVALID_FILE_ATTRIBUTES;
+    return attributes != INVALID_FILE_ATTRIBUTES &&
+        (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+static bool EnsureActiveCharacterModelFiles()
+{
+    if (g_activeCharacterDataPath.empty())
+        return false;
+
+    char datSetPath[MAX_PATH] = {};
+    char noesisPath[MAX_PATH] = {};
+    FFXIFileIO::ReplaceExtension(g_activeCharacterDataPath.c_str(), ".ff11datset",
+        datSetPath, sizeof(datSetPath));
+    FFXIFileIO::ReplaceExtension(g_activeCharacterDataPath.c_str(), ".noesis",
+        noesisPath, sizeof(noesisPath));
+
+    if (!FileExists(datSetPath))
+    {
+        FFXIDatSet::PlayerOptions options;
+        options.raceIndex = g_playerEquip.raceIndex;
+        options.faceVariant = g_playerFaceVariant;
+        options.animationBank = g_playerEquip.animationBank;
+        options.headItem = g_playerEquip.headItem;
+        options.bodyItem = g_playerEquip.bodyItem;
+        options.handsItem = g_playerEquip.handsItem;
+        options.legsItem = g_playerEquip.legsItem;
+        options.feetItem = g_playerEquip.feetItem;
+        options.mainItem = g_playerEquip.mainItem;
+        options.subItem = g_playerEquip.subItem;
+        options.rangedItem = g_playerEquip.rangedItem;
+
+        char datSetText[4096] = {};
+        if (!FFXIDatSet::BuildPlayer(g_ffxiPath, options, datSetText, sizeof(datSetText)) ||
+            !FFXIFileIO::WriteTextFile(datSetPath, datSetText))
+            return false;
+    }
+
+    if (!FileExists(noesisPath))
+    {
+        const char* fileName = strrchr(datSetPath, '\\');
+        fileName = fileName ? fileName + 1 : datSetPath;
+        if (strchr(fileName, '"'))
+            return false;
+
+        char noesisText[1024] = {};
+        sprintf_s(noesisText,
+            "NOESIS_SCENE_FILE\n"
+            "version 1\n"
+            "physicslib\t\t\"\"\n"
+            "defaultAxis\t\t\"0\"\n\n"
+            "object\n"
+            "{\n"
+            "\tname\t\t\t\"character\"\n"
+            "\tmodel\t\t\t\"%s\"\n"
+            "}\n",
+            fileName);
+        if (!FFXIFileIO::WriteTextFile(noesisPath, noesisText))
+            return false;
+    }
+    return true;
+}
+
+static bool LoadOrCreateActiveCharacterData(CharacterSaveData::Data& data)
+{
+    if (g_activeCharacterDataPath.empty())
+        return false;
+    if (CharacterSaveData::Load(g_activeCharacterDataPath.c_str(), data))
+    {
+        g_activeCharacterHomeNationIndex = data.homeNationIndex;
+        return true;
+    }
+    if (FileExists(g_activeCharacterDataPath.c_str()))
+        return false;
+
+    data = {};
+    data.homeNationIndex = std::clamp(g_activeCharacterHomeNationIndex, 0, 2);
+    return true;
 }
 
 static void BeginNationSelectScene()
@@ -3051,10 +4354,10 @@ static std::size_t NpcEventFixedSize(std::uint8_t op)
         return 1;
     case 0x43:
         return 2;
-    case 0x01: case 0x1a: case 0x1c: case 0x1d: case 0x48: case 0x63:
+    case 0x01: case 0x05: case 0x06: case 0x0b: case 0x0c:
+    case 0x1a: case 0x1c: case 0x1d: case 0x34: case 0x35: case 0x48: case 0x63:
         return 3;
-    case 0x03: case 0x05: case 0x06: case 0x0b: case 0x0c:
-    case 0x34: case 0x35: case 0x6f: case 0x76: case 0x80: case 0x99:
+    case 0x03: case 0x6f: case 0x76: case 0x80: case 0x99:
         return 5;
     case 0x07: case 0x08: case 0x09: case 0x0a: case 0x0d: case 0x0e:
     case 0x0f: case 0x10: case 0x11: case 0x14: case 0x15: case 0x19:
@@ -3209,6 +4512,7 @@ static NpcEventStep StepNpcEvent(NpcEventRuntime& runtime)
         case 0x24:
             runtime.pendingChoiceMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
             runtime.defaultChoice = static_cast<std::uint32_t>(std::max<std::int32_t>(0, NpcEventGetWork(runtime, 3)));
+            runtime.hiddenChoiceMask = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 5));
             runtime.waitingChoice = true;
             runtime.pc += 7;
             break;
@@ -3291,6 +4595,7 @@ static void EndNpcConversation()
 {
     NpcChatWindow::HideChoices();
     g_npcConversation = {};
+    g_homePointTeleport = {};
 }
 
 static bool LoadRetailNpcConversation(const FFXINpcPlacement::Placement& placement)
@@ -3352,14 +4657,18 @@ static bool PresentNpcEventStep(HWND owner)
             const std::uint32_t id = g_npcConversation.runtime.pendingChoiceMessage;
             std::string prompt;
             std::vector<std::string> options;
+            std::vector<std::uint32_t> optionValues;
             if (id < g_npcConversation.messages.size() &&
-                FFXIEventMessages::SplitChoiceText(g_npcConversation.messages[(size_t)id], prompt, options))
+                FFXIEventMessages::SplitChoiceText(g_npcConversation.messages[(size_t)id],
+                    g_npcConversation.runtime.hiddenChoiceMask, prompt, options, optionValues))
             {
                 g_npcConversation.choicePrompt = prompt;
                 g_npcConversation.choiceOptions = options;
-                g_npcConversation.choiceSelected = std::clamp(
-                    static_cast<int>(g_npcConversation.runtime.defaultChoice), 0,
-                    (std::max)(0, (int)options.size() - 1));
+                g_npcConversation.choiceValues = optionValues;
+                const auto defaultIt = std::find(optionValues.begin(), optionValues.end(),
+                    g_npcConversation.runtime.defaultChoice);
+                g_npcConversation.choiceSelected = defaultIt == optionValues.end()
+                    ? 0 : static_cast<int>(defaultIt - optionValues.begin());
                 NpcChatWindow::ShowChoices(owner, prompt, options, g_npcConversation.choiceSelected);
                 return true;
             }
@@ -3389,12 +4698,20 @@ static bool AdvanceNpcConversation(HWND owner)
 {
     if (!g_npcConversation.entityId)
         return false;
+    if (g_homePointTeleport.active)
+        return CompleteHomePointTeleport(owner);
     if (!g_npcConversation.choiceOptions.empty())
     {
+        const std::uint32_t selectedValue =
+            g_npcConversation.choiceSelected >= 0 &&
+            static_cast<std::size_t>(g_npcConversation.choiceSelected) < g_npcConversation.choiceValues.size()
+            ? g_npcConversation.choiceValues[static_cast<std::size_t>(g_npcConversation.choiceSelected)]
+            : 0;
         SelectNpcEventChoice(g_npcConversation.runtime,
-            static_cast<std::uint32_t>(g_npcConversation.choiceSelected));
+            selectedValue);
         g_npcConversation.choicePrompt.clear();
         g_npcConversation.choiceOptions.clear();
+        g_npcConversation.choiceValues.clear();
         NpcChatWindow::HideChoices();
         if (!PresentNpcEventStep(owner))
             EndNpcConversation();
@@ -3727,13 +5044,17 @@ static void HandleLowPolyPanelEvent(
         break;
     case LowPolyCharacterPanel::Command::Stop:
         g_playerEquip.animationPlaying = false;
-        if (g_playerAsset)
+        if (!g_companionViewerMode)
+            LoadPlayerRaceInModelViewer(g_playerEquip.raceIndex);
+        else if (g_playerAsset)
             g_playerAsset.Model()->RestoreBindPose(GraphicsDevice());
         break;
     case LowPolyCharacterPanel::Command::Reset:
         g_playerEquip.animationPlaying = false;
         g_playerAnimTime = 0.0f;
-        if (g_playerAsset)
+        if (!g_companionViewerMode)
+            LoadPlayerRaceInModelViewer(g_playerEquip.raceIndex);
+        else if (g_playerAsset)
             g_playerAsset.Model()->RestoreBindPose(GraphicsDevice());
         break;
     case LowPolyCharacterPanel::Command::SelectionChanged:
@@ -3782,6 +5103,8 @@ static void BeginHighPolyCreationScene()
     g_creationSelection.equipmentIndex = 1; // Initial Equipment
     g_creationAnimationIndex = 2;           // Character creation sequence
     g_creationAnimatedCamera = true;
+    g_activeCharacterDataPath.clear();
+    g_lastSavedCharacterDataPath.clear();
 
     const FFXICreationEntry *pEntry = CurrentHighPolyCreationEntry();
     if (pEntry)
@@ -3833,6 +5156,43 @@ static void BeginZoneObjectPanelRefresh()
     ZoneObjectPanel::BeginRefresh(g_zoneObjectPanel, g_loadedZoneLabel.c_str());
 }
 
+static bool g_selectingZoneObjectFromWorld = false;
+
+static void HighlightZoneObject(const int mapObjectIndex)
+{
+    if (mapObjectIndex < 0 || mapObjectIndex >= Model_FF11_GetLastMapObjectCount())
+        return;
+    const char* objectName = Model_FF11_GetLastMapObjectDisplayName(mapObjectIndex);
+    if (!objectName || !objectName[0])
+        return;
+    g_highlightedZoneObjects.clear();
+    g_highlightedZoneObjects.insert(objectName);
+    ZoneObjectPanel::SetHighlightActive(g_zoneObjectPanel, true);
+    if (g_hWnd)
+        InvalidateRect(g_hWnd, NULL, FALSE);
+}
+
+static void HighlightSelectedZoneObjectRows()
+{
+    g_highlightedZoneObjects.clear();
+    const std::vector<int> selectedIndices =
+        ZoneObjectPanel::SelectedMapObjectIndices(g_zoneObjectPanel);
+    for (const int mapObjectIndex : selectedIndices)
+    {
+        if (mapObjectIndex < 0 ||
+            mapObjectIndex >= Model_FF11_GetLastMapObjectCount())
+            continue;
+        const char* objectName =
+            Model_FF11_GetLastMapObjectDisplayName(mapObjectIndex);
+        if (objectName && objectName[0])
+            g_highlightedZoneObjects.insert(objectName);
+    }
+    ZoneObjectPanel::SetHighlightActive(
+        g_zoneObjectPanel, !g_highlightedZoneObjects.empty());
+    if (g_hWnd)
+        InvalidateRect(g_hWnd, NULL, FALSE);
+}
+
 static void HandleZoneObjectPanelEvent(
     void*, const ZoneObjectPanel::Event& event)
 {
@@ -3855,6 +5215,8 @@ static void HandleZoneObjectPanelEvent(
                 ? event.mapObjectIndex : -1);
         ZoneObjectPanel::PopulateTransformFields(
             g_zoneObjectPanel, GetSelectedZoneObjectIndex(), g_zoneObjectOverrides);
+        if (!g_selectingZoneObjectFromWorld)
+            HighlightZoneObject(event.mapObjectIndex);
         return;
     case ZoneObjectPanel::EventType::MapObjectVisibilityChanged:
         if (event.mapObjectIndex >= 0)
@@ -3869,6 +5231,8 @@ static void HandleZoneObjectPanelEvent(
     case ZoneObjectPanel::EventType::MapObjectSelectionChanged:
         ZoneObjectPanel::PopulateTransformFields(
             g_zoneObjectPanel, GetSelectedZoneObjectIndex(), g_zoneObjectOverrides);
+        if (!g_selectingZoneObjectFromWorld)
+            HighlightSelectedZoneObjectRows();
         return;
     case ZoneObjectPanel::EventType::Command:
         break;
@@ -3938,12 +5302,12 @@ static void HandleZoneObjectPanelEvent(
             const char* objectName = GetSelectedZoneObjectName();
             if (objectName && objectName[0])
             {
-                if (g_highlightedZoneObject == objectName)
-                    g_highlightedZoneObject.clear();
+                if (!g_highlightedZoneObjects.empty())
+                    g_highlightedZoneObjects.clear();
                 else
-                    g_highlightedZoneObject = objectName;
+                    g_highlightedZoneObjects.insert(objectName);
                 ZoneObjectPanel::SetHighlightActive(
-                    g_zoneObjectPanel, !g_highlightedZoneObject.empty());
+                    g_zoneObjectPanel, !g_highlightedZoneObjects.empty());
             }
         }
         break;
@@ -3998,12 +5362,67 @@ static void ShowZoneObjectPanel()
     BeginZoneObjectPanelRefresh();
 }
 
+static int FindZoneObjectIndex(const std::string& objectName)
+{
+    for (int index = 0; index < Model_FF11_GetLastMapObjectCount(); ++index)
+    {
+        const char* displayName = Model_FF11_GetLastMapObjectDisplayName(index);
+        if (displayName && objectName == displayName)
+            return index;
+    }
+    return -1;
+}
+
+static bool SelectZoneObjectAtClientPoint(
+    const HWND window, POINT point, const bool additive)
+{
+    if (!GraphicsDevice() || !g_zoneAsset.Model())
+        return false;
+
+    int width = 0;
+    int height = 0;
+    D3D9Device::GetViewportOrClientSize(GraphicsDevice(), window, &width, &height);
+    point = D3D9Device::MapClientPointToViewport(window, width, height, point);
+
+    ZoneObjectVisibility::RenderContext visibility;
+    visibility.hiddenNames = &g_hiddenZoneObjects;
+    visibility.viewerPointValid = g_zoneVisibilityViewerPointValid;
+    visibility.lodViewerPoint = g_zoneVisibilityViewerPoint;
+    visibility.visibleMapObjects = &g_zoneVisibleMapObjects;
+    visibility.overrides = &g_zoneRuntimeOverrides;
+    visibility.frustum = &g_zoneRenderFrustum;
+    const ZoneObjectPicker::Hit hit = ZoneObjectPicker::Pick(
+        g_zoneAsset.Model(), visibility, g_pickView, g_pickProjection,
+        g_pickWidth, g_pickHeight, static_cast<float>(point.x),
+        static_cast<float>(point.y));
+    const int mapObjectIndex = FindZoneObjectIndex(hit.objectName);
+    if (mapObjectIndex < 0)
+        return false;
+
+    const HWND zoneObjectPanel = ZoneObjectPanel::Window(g_zoneObjectPanel);
+    if (zoneObjectPanel && IsWindowVisible(zoneObjectPanel))
+    {
+        g_selectingZoneObjectFromWorld = true;
+        ZoneObjectPanel::SelectMapObject(
+            g_zoneObjectPanel, mapObjectIndex, additive, false);
+        g_selectingZoneObjectFromWorld = false;
+    }
+    if (!additive)
+        g_highlightedZoneObjects.clear();
+    g_highlightedZoneObjects.insert(hit.objectName);
+    ZoneObjectPanel::SetHighlightActive(g_zoneObjectPanel, true);
+    InvalidateRect(window, NULL, FALSE);
+    return true;
+}
+
 static void LoadPlayerRaceModel(int raceIndex)
 {
     g_titleScreenActive = false;
     g_highPolyCreationActive = false;
     UnloadCreationModel();
     UnloadTitleAssets();
+    if (g_companionViewerMode)
+        UnloadZoneModel();
     BGM_Stop();
     if (raceIndex < 0 || raceIndex >= kFFXICharRaceCount)
         return;
@@ -4051,6 +5470,18 @@ static void LoadPlayerRaceModel(int raceIndex)
     g_player.groundOffset = loadResult.groundOffset;
     g_player.cameraTargetLocalY = loadResult.cameraTargetLocalY;
     g_playerAnimTime = 0.0f;
+    if (g_companionViewerMode)
+    {
+        g_player.position[0] = 0.0f;
+        g_player.position[1] = 0.0f;
+        g_player.position[2] = 0.0f;
+        g_player.yaw = 0.0f;
+        g_player.verticalVelocity = 0.0f;
+        g_player.onGround = false;
+        ResetCameraForStandaloneModel(g_playerAsset.Model());
+        InvalidateRect(g_hWnd, NULL, FALSE);
+        return;
+    }
     PlayerController::SetPose(
         g_player, g_camTarget[0], g_camTarget[1], g_camTarget[2], g_camYaw, false);
     if (!g_zoneCollisionTris.empty())
@@ -4069,7 +5500,6 @@ static void LoadPlayerRaceModel(int raceIndex)
             g_player.onGround = true;
         }
     }
-    SetInteractionMode(InteractionController::Mode::Game);
     g_camDist = 10.0f;
     g_camPitch = -0.35f;
     PlayerController::SetRespawnPoint(g_player);
@@ -4080,6 +5510,11 @@ static void LoadPlayerRaceModel(int raceIndex)
 static void ReloadPlayerModelFromControls()
 {
     PullLowPolyStateFromControls();
+    if (!g_companionViewerMode)
+    {
+        LoadPlayerRaceInModelViewer(g_playerEquip.raceIndex);
+        return;
+    }
     LoadPlayerRaceModel(g_playerEquip.raceIndex);
 }
 
@@ -4098,6 +5533,7 @@ static void BeginCharacterSelectScene()
     g_titleAssets.LoadUi(GraphicsDevice(), g_ffxiPath, g_gameUiConfig.title.uiDat,
         g_applicationSettings.enableTextureCompression);
     g_savedCharacterPreviews.clear();
+    g_activeCharacterDataPath.clear();
     char exeDir[MAX_PATH] = {}, pattern[MAX_PATH] = {};
     FFXIFileIO::GetExecutableDirectory(exeDir, sizeof(exeDir));
     sprintf_s(pattern, "%sCharacters\\*.ff11datset", exeDir);
@@ -4118,6 +5554,9 @@ static void BeginCharacterSelectScene()
             preview.name = file.cFileName;
             const size_t dot = preview.name.find_last_of('.');
             if (dot != std::string::npos) preview.name.erase(dot);
+            char dataPath[MAX_PATH] = {};
+            FFXIFileIO::ReplaceExtension(path, ".ini", dataPath, sizeof(dataPath));
+            preview.dataPath = dataPath;
             g_savedCharacterPreviews.push_back(std::move(preview));
         } while (FindNextFileA(handle, &file));
         FindClose(handle);
@@ -4141,6 +5580,153 @@ static void BeginCharacterDeleteScene()
     BeginCharacterSelectScene();
     g_characterSelectActive = false;
     g_characterDeleteActive = true;
+}
+
+static bool LoadCharacterZone(const int zoneId)
+{
+    const SceneRequestResolver::Result resolution =
+        SceneRequestResolver::ResolveZone(g_ffxiPath, zoneId);
+    if (!resolution.Succeeded())
+        return false;
+
+    LoadDatFile(resolution.request);
+    SetLoadedSceneContext(resolution.request);
+    return !!g_zoneAsset;
+}
+
+static std::string HomePointDisplayName(const CharacterSaveData::HomePoint& point)
+{
+    const FFXIZoneEntry* zone = FFXIZone::FindByID(point.zoneId);
+    const std::string zoneName = zone && zone->name ? zone->name :
+        "Zone " + std::to_string(point.zoneId);
+    return zoneName + " - " + (point.name.empty() ? "Home Point" : point.name);
+}
+
+static void StartHomePointTeleportChoice(
+    HWND owner, const CharacterSaveData::Data& data,
+    const CharacterSaveData::HomePoint& source)
+{
+    g_homePointTeleport = {};
+    g_homePointTeleport.source = source;
+    for (const CharacterSaveData::HomePoint& point : data.activatedHomePoints)
+    {
+        if (!CharacterSaveData::SameHomePoint(point, source))
+            g_homePointTeleport.destinations.push_back(point);
+    }
+    if (g_homePointTeleport.destinations.empty())
+        return;
+
+    g_homePointTeleport.active = true;
+    g_npcConversation = {};
+    g_npcConversation.entityId = source.entityId;
+    g_npcConversation.name = "Home Point";
+    for (std::size_t index = 0; index < g_homePointTeleport.destinations.size(); ++index)
+    {
+        g_npcConversation.choiceOptions.push_back(
+            HomePointDisplayName(g_homePointTeleport.destinations[index]));
+        g_npcConversation.choiceValues.push_back(static_cast<std::uint32_t>(index));
+    }
+    g_npcConversation.choiceOptions.push_back("Cancel");
+    g_npcConversation.choiceValues.push_back(
+        static_cast<std::uint32_t>(g_homePointTeleport.destinations.size()));
+    g_npcConversation.choiceSelected = 0;
+    NpcChatWindow::ShowChoices(owner, "Teleport to which Home Point?",
+        g_npcConversation.choiceOptions, g_npcConversation.choiceSelected);
+}
+
+static bool CompleteHomePointTeleport(HWND owner)
+{
+    const int selected = g_npcConversation.choiceSelected;
+    const CharacterSaveData::HomePoint source = g_homePointTeleport.source;
+    const std::vector<CharacterSaveData::HomePoint> destinations =
+        g_homePointTeleport.destinations;
+    EndNpcConversation();
+    if (selected < 0 || static_cast<std::size_t>(selected) >= destinations.size())
+        return true;
+
+    const CharacterSaveData::HomePoint destination = destinations[selected];
+    if (!LoadCharacterZone(destination.zoneId) ||
+        !SpawnPlayerAtZoneHomePoint(destination.entityId))
+    {
+        if (LoadCharacterZone(source.zoneId))
+            SpawnPlayerAtZoneHomePoint(source.entityId);
+        NpcChatWindow::Show(owner, "System",
+            "That Home Point could not be reached. You have been returned to the source Home Point.");
+        return true;
+    }
+
+    g_camDist = 10.0f;
+    g_camPitch = -0.35f;
+    UpdatePlayerCameraTarget();
+    PlayerController::SetRespawnPoint(g_player);
+    const FFXIZoneMusicEntry* music = FFXIZoneMusic_FindByID(g_loadedZoneId);
+    SetGameModeMusic(SelectZoneMusicId(music));
+
+    CharacterSaveData::Data characterData;
+    if (!g_activeCharacterDataPath.empty() &&
+        CharacterSaveData::Load(g_activeCharacterDataPath.c_str(), characterData))
+    {
+        CharacterSaveData::RegisterHomePoint(characterData, destination);
+        CharacterSaveData::Save(g_activeCharacterDataPath.c_str(), characterData);
+    }
+    NpcChatWindow::Show(owner, "System",
+        "Teleported to " + HomePointDisplayName(destination) + ".");
+    return true;
+}
+
+static void LoadSelectedCharacterScene()
+{
+    if (g_savedCharacterPreviews.empty())
+        return;
+
+    SavedCharacterPreview& selected = g_savedCharacterPreviews[g_selectedCharacterPreview];
+    CharacterSaveData::Data characterData;
+    bool loadedCharacterData =
+        CharacterSaveData::Load(selected.dataPath.c_str(), characterData);
+    if (!loadedCharacterData)
+    {
+        // Legacy characters have no metadata. Give them a durable Bastok
+        // fallback immediately so their first Home Point activation can save.
+        characterData.homeNationIndex = 0;
+        loadedCharacterData = CharacterSaveData::Save(
+            selected.dataPath.c_str(), characterData);
+    }
+    const int nationIndex = loadedCharacterData ? characterData.homeNationIndex : 0;
+    const int homeNationZone = FFXINationSelection::InfoForIndex(nationIndex).zoneId;
+
+    bool spawned = false;
+    if (loadedCharacterData && characterData.hasHomePoint &&
+        LoadCharacterZone(characterData.homePointZoneId))
+    {
+        spawned = SpawnPlayerAtZoneHomePoint(characterData.homePointEntityId);
+    }
+    if (!spawned)
+    {
+        if (!LoadCharacterZone(homeNationZone))
+        {
+            MessageBoxA(g_hWnd,
+                "The character's Home Point and home nation could not be loaded.",
+                "Select Character", MB_OK | MB_ICONWARNING);
+            return;
+        }
+        SpawnPlayerAtZoneHomePoint();
+    }
+
+    UnloadPlayerModel();
+    g_playerAsset = std::move(selected.asset);
+    g_activeCharacterDataPath = selected.dataPath;
+    g_activeCharacterHomeNationIndex = nationIndex;
+    g_savedCharacterPreviews.clear();
+    g_characterSelectActive = false;
+    g_characterDeleteActive = false;
+    g_camDist = 10.0f;
+    g_camPitch = -0.35f;
+    UpdatePlayerCameraTarget();
+    PlayerController::SetRespawnPoint(g_player);
+
+    const FFXIZoneMusicEntry* music = FFXIZoneMusic_FindByID(g_loadedZoneId);
+    SetGameModeMusic(SelectZoneMusicId(music));
+    InvalidateRect(g_hWnd, nullptr, FALSE);
 }
 
 static void ActivateTitleButton(int buttonIndex)
@@ -4195,6 +5781,28 @@ static void LoadSelectedNationScene()
 
     ApplyCreationStateToLowPolyPlayer();
     LoadPlayerRaceModel(g_playerEquip.raceIndex);
+    SpawnPlayerAtZoneHomePoint();
+
+    char dataPath[MAX_PATH] = {};
+    if (!g_lastSavedCharacterDataPath.empty())
+    {
+        strcpy_s(dataPath, g_lastSavedCharacterDataPath.c_str());
+    }
+    else
+    {
+        char characterDir[MAX_PATH] = {};
+        char safeName[64] = {};
+        FFXIFileIO::GetExecutableDirectory(characterDir, sizeof(characterDir));
+        strcat_s(characterDir, "Characters\\");
+        CreateDirectoryA(characterDir, nullptr);
+        FFXIFileIO::MakeSafeFileStem(g_creationCharacterName, safeName, sizeof(safeName));
+        sprintf_s(dataPath, "%s%s.ini", characterDir, safeName);
+    }
+    CharacterSaveData::Data characterData;
+    characterData.homeNationIndex = g_selectedNationIndex;
+    CharacterSaveData::Save(dataPath, characterData);
+    g_activeCharacterDataPath = dataPath;
+    g_activeCharacterHomeNationIndex = g_selectedNationIndex;
 
     const FFXIZoneMusicEntry *pMusic = FFXIZoneMusic_FindByID(nation.zoneId);
     if (pMusic)
@@ -4243,50 +5851,55 @@ static void DrawNationSelectOverlay(HDC overlayDc = nullptr)
 
 static void DrawTitleScreenTextures()
 {
-    if (!g_titleScreenActive || !g_hWnd)
+    if (!g_titleScreenActive || !g_hWnd || !g_applicationSettings.showTitleUi)
         return;
 
     const FFXITitleScreenRenderer::Context context =
     {
         GraphicsDevice(), g_hWnd, g_applicationSettings.enableMipMapping,
         g_titleAssets.LogoModel(), g_titleAssets.AtlasModel(), g_titleAssets.UiModel(),
-        g_gameUiConfig.title, g_input.clientMouse
+        g_gameUiConfig.title, g_input.clientMouse, g_titleMenuSelection
     };
     FFXITitleScreenRenderer::DrawTextures(context);
 }
 
 static void DrawTitleScreenOverlay(HDC overlayDc = nullptr)
 {
-    if (!g_titleScreenActive || !g_hWnd)
+    if (!g_titleScreenActive || !g_hWnd || !g_applicationSettings.showTitleUi)
         return;
 
     const FFXITitleScreenRenderer::Context context =
     {
         GraphicsDevice(), g_hWnd, g_applicationSettings.enableMipMapping,
         g_titleAssets.LogoModel(), g_titleAssets.AtlasModel(), g_titleAssets.UiModel(),
-        g_gameUiConfig.title, g_input.clientMouse, overlayDc
+        g_gameUiConfig.title, g_input.clientMouse, g_titleMenuSelection, overlayDc
     };
     FFXITitleScreenRenderer::DrawOverlay(context);
 }
 
 static RECT CharacterRosterBackRect(int width, int height);
 static RECT CharacterRosterConfirmRect(int width, int height);
+static RECT CharacterRosterPanelRect();
+static RECT CharacterRosterRowRect(int index);
+
+static constexpr int kCharacterRosterRowHeight = 30;
+static constexpr int kCharacterRosterPanelInset = 12;
 
 static void DrawCharacterRosterOverlay(HDC dc)
 {
     if ((!g_characterSelectActive && !g_characterDeleteActive) || !dc) return;
-    RECT panel = { 16, 70, 260, 360 };
-    HBRUSH brush = CreateSolidBrush(g_characterDeleteActive ? RGB(55, 12, 18) : RGB(12, 16, 28));
-    FillRect(dc, &panel, brush); DeleteObject(brush);
+    const RECT panel = CharacterRosterPanelRect();
+    NpcChatWindow::PaintFrameRect(dc, panel);
     HFONT font = CreateFontA(-18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_SWISS, "Arial");
     for (size_t i = 0; i < g_savedCharacterPreviews.size(); ++i)
     {
-        RECT row = { 28, 84 + (int)i * 30, 248, 110 + (int)i * 30 };
+        RECT row = CharacterRosterRowRect((int)i);
         if ((int)i == g_selectedCharacterPreview)
         {
-            HBRUSH selected = CreateSolidBrush(RGB(65, 75, 135));
+            HBRUSH selected = CreateSolidBrush(
+                g_characterDeleteActive ? RGB(102, 40, 58) : RGB(48, 79, 124));
             FillRect(dc, &row, selected); DeleteObject(selected);
         }
         Win32Drawing::DrawShadowText(dc, font, g_savedCharacterPreviews[i].name.c_str(), row,
@@ -4308,6 +5921,23 @@ static void DrawCharacterRosterOverlay(HDC dc)
     DeleteObject(font);
 }
 
+static RECT CharacterRosterPanelRect()
+{
+    return { 16, 70, 262, 360 };
+}
+
+static RECT CharacterRosterRowRect(int index)
+{
+    const RECT panel = CharacterRosterPanelRect();
+    const int top = panel.top + 14 + index * kCharacterRosterRowHeight;
+    return {
+        panel.left + kCharacterRosterPanelInset,
+        top,
+        panel.right - kCharacterRosterPanelInset,
+        top + 26
+    };
+}
+
 static RECT CharacterRosterBackRect(int width, int height)
 {
     const int w = 180, h = 32;
@@ -4317,6 +5947,133 @@ static RECT CharacterRosterConfirmRect(int width, int height)
 {
     const int w = 180, h = 32;
     return { width - w - 28, height - 58, width - 28, height - 58 + h };
+}
+
+static void DrawCharacterRosterTextures(const int width, const int height)
+{
+    if (!g_characterSelectActive && !g_characterDeleteActive)
+        return;
+    noesisTex_t* buttonTexture = FFXITitleAssets::FindTitleTexture(
+        g_titleAssets.UiModel(), "buttonto");
+    if (!buttonTexture)
+        buttonTexture = FFXITitleAssets::FindTitleTexture(
+            g_titleAssets.UiModel(), "lrbutton");
+    if (!buttonTexture || !buttonTexture->pD3DTex)
+        return;
+
+    const POINT mouse = D3D9Device::MapClientPointToViewport(
+        g_hWnd, width, height, g_input.clientMouse);
+    const RECT back = CharacterRosterBackRect(width, height);
+    const RECT confirm = CharacterRosterConfirmRect(width, height);
+    FFXITitleUiPrimitives::DrawButton(
+        GraphicsDevice(), g_applicationSettings.enableMipMapping, buttonTexture,
+        (float)back.left, (float)back.top,
+        (float)(back.right - back.left), (float)(back.bottom - back.top),
+        PtInRect(&back, mouse) != FALSE);
+    FFXITitleUiPrimitives::DrawButton(
+        GraphicsDevice(), g_applicationSettings.enableMipMapping, buttonTexture,
+        (float)confirm.left, (float)confirm.top,
+        (float)(confirm.right - confirm.left), (float)(confirm.bottom - confirm.top),
+        PtInRect(&confirm, mouse) != FALSE);
+}
+
+static void DrawZoneMapOverlay(HDC dc)
+{
+    if (!g_zoneMapVisible || !dc || !IsGameMode())
+        return;
+
+    RECT client = {};
+    GetClientRect(g_hWnd, &client);
+    const int clientWidth = client.right - client.left;
+    const int clientHeight = client.bottom - client.top;
+    if (clientWidth < 240 || clientHeight < 180)
+        return;
+
+    const int margin = (std::max)(24, (std::min)(clientWidth, clientHeight) / 14);
+    RECT panel = { margin, margin, clientWidth - margin, clientHeight - margin };
+    HBRUSH shadow = CreateSolidBrush(RGB(3, 7, 13));
+    FillRect(dc, &panel, shadow);
+    DeleteObject(shadow);
+    FrameRect(dc, &panel, static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
+
+    RECT mapRect = { panel.left + 18, panel.top + 52, panel.right - 18, panel.bottom - 42 };
+    HBRUSH sea = CreateSolidBrush(RGB(19, 35, 48));
+    FillRect(dc, &mapRect, sea);
+    DeleteObject(sea);
+
+    if (g_haveZoneCollisionBounds && !g_zoneCollisionTris.empty())
+    {
+        const float minX = g_zoneCollisionMin[0], maxX = g_zoneCollisionMax[0];
+        const float minZ = g_zoneCollisionMin[2], maxZ = g_zoneCollisionMax[2];
+        const float worldWidth = (std::max)(1.0f, maxX - minX);
+        const float worldHeight = (std::max)(1.0f, maxZ - minZ);
+        const float scale = (std::min)(
+            static_cast<float>(mapRect.right - mapRect.left - 8) / worldWidth,
+            static_cast<float>(mapRect.bottom - mapRect.top - 8) / worldHeight);
+        const float offsetX = (mapRect.left + mapRect.right - worldWidth * scale) * 0.5f;
+        const float offsetY = (mapRect.top + mapRect.bottom - worldHeight * scale) * 0.5f;
+        const auto project = [&](const float x, const float z)
+        {
+            POINT point = {
+                static_cast<LONG>(offsetX + (x - minX) * scale),
+                static_cast<LONG>(offsetY + (maxZ - z) * scale)
+            };
+            return point;
+        };
+
+        HBRUSH ground = CreateSolidBrush(RGB(92, 105, 91));
+        HGDIOBJ oldBrush = SelectObject(dc, ground);
+        HGDIOBJ oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
+        for (const ZoneCollisionTriangle& triangle : g_zoneCollisionTris)
+        {
+            if (std::fabs(triangle.normal[1]) < 0.20f)
+                continue;
+            POINT points[3] = {
+                project(triangle.p[0][0], triangle.p[0][2]),
+                project(triangle.p[1][0], triangle.p[1][2]),
+                project(triangle.p[2][0], triangle.p[2][2])
+            };
+            Polygon(dc, points, 3);
+        }
+        SelectObject(dc, oldPen);
+        SelectObject(dc, oldBrush);
+        DeleteObject(ground);
+
+        const POINT player = project(g_player.position[0], g_player.position[2]);
+        const float arrowSize = 11.0f;
+        const float forwardX = -std::sin(g_player.yaw);
+        const float forwardY = -std::cos(g_player.yaw);
+        const float rightX = -forwardY, rightY = forwardX;
+        POINT arrow[3] = {
+            { player.x + static_cast<LONG>(forwardX * arrowSize),
+              player.y + static_cast<LONG>(forwardY * arrowSize) },
+            { player.x - static_cast<LONG>(forwardX * arrowSize * 0.65f) + static_cast<LONG>(rightX * arrowSize * 0.65f),
+              player.y - static_cast<LONG>(forwardY * arrowSize * 0.65f) + static_cast<LONG>(rightY * arrowSize * 0.65f) },
+            { player.x - static_cast<LONG>(forwardX * arrowSize * 0.65f) - static_cast<LONG>(rightX * arrowSize * 0.65f),
+              player.y - static_cast<LONG>(forwardY * arrowSize * 0.65f) - static_cast<LONG>(rightY * arrowSize * 0.65f) }
+        };
+        HBRUSH marker = CreateSolidBrush(RGB(255, 222, 76));
+        oldBrush = SelectObject(dc, marker);
+        oldPen = SelectObject(dc, GetStockObject(WHITE_PEN));
+        Polygon(dc, arrow, 3);
+        SelectObject(dc, oldPen);
+        SelectObject(dc, oldBrush);
+        DeleteObject(marker);
+    }
+
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(240, 240, 226));
+    HFONT font = CreateFontA(-24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+    HGDIOBJ oldFont = SelectObject(dc, font);
+    TextOutA(dc, panel.left + 18, panel.top + 14, g_loadedZoneLabel.c_str(),
+        static_cast<int>(g_loadedZoneLabel.size()));
+    SelectObject(dc, oldFont);
+    DeleteObject(font);
+    SetTextColor(dc, RGB(185, 194, 203));
+    const char* hint = "M or Esc: close map";
+    TextOutA(dc, panel.left + 18, panel.bottom - 28, hint, static_cast<int>(strlen(hint)));
 }
 
 static void DrawCameraDebugOverlay(HDC overlayDc = nullptr)
@@ -4397,6 +6154,62 @@ static void DrawCameraDebugOverlay(HDC overlayDc = nullptr)
         RestoreDC(dc, savedDc);
     if (ownsDc)
         ReleaseDC(g_hWnd, dc);
+}
+
+static void DrawModelViewerLightOverlay(HDC dc)
+{
+    if (!g_companionViewerMode || g_modelViewerLightOverlayCorner == 0 || !dc)
+        return;
+
+    char text[96] = {};
+    sprintf_s(text, "Azimuth: %.1f deg\r\nElevation: %.1f deg",
+        g_modelViewerLightAzimuthDegrees, g_modelViewerLightElevationDegrees);
+
+    const int savedDc = SaveDC(dc);
+    HFONT font = CreateFontA(
+        -16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
+    HFONT previousFont = static_cast<HFONT>(SelectObject(dc, font));
+    RECT measured = {};
+    static const char kMaximumLightAngleText[] =
+        "Azimuth: -359.9 deg\r\nElevation: -359.9 deg";
+    DrawTextA(dc, kMaximumLightAngleText, -1, &measured,
+        DT_LEFT | DT_TOP | DT_NOPREFIX | DT_CALCRECT);
+    SelectObject(dc, previousFont);
+
+    RECT viewport = {};
+    GetClipBox(dc, &viewport);
+    constexpr int margin = 10;
+    constexpr int paddingX = 8;
+    constexpr int paddingY = 6;
+    const int panelWidth = measured.right + paddingX * 2;
+    const int panelHeight = measured.bottom + paddingY * 2;
+    const bool right = g_modelViewerLightOverlayCorner == 2 ||
+        g_modelViewerLightOverlayCorner == 3;
+    const bool bottom = g_modelViewerLightOverlayCorner == 3 ||
+        g_modelViewerLightOverlayCorner == 4;
+    RECT panel = {
+        right ? viewport.right - margin - panelWidth : margin,
+        bottom ? viewport.bottom - margin - panelHeight : margin,
+        0, 0
+    };
+    panel.right = panel.left + panelWidth;
+    panel.bottom = panel.top + panelHeight;
+
+    HBRUSH background = CreateSolidBrush(RGB(12, 16, 22));
+    FillRect(dc, &panel, background);
+    DeleteObject(background);
+    RECT textBounds = {
+        panel.left + paddingX, panel.top + paddingY,
+        panel.right - paddingX, panel.bottom - paddingY
+    };
+    Win32Drawing::DrawShadowText(
+        dc, font, text, textBounds, DT_LEFT | DT_TOP | DT_NOPREFIX,
+        RGB(235, 240, 248), 1);
+    DeleteObject(font);
+    if (savedDc)
+        RestoreDC(dc, savedDc);
 }
 
 static void DrawFfxiMainMenuOverlay(HDC overlayDc = nullptr)
@@ -4516,7 +6329,7 @@ static void Render()
     g_zoneRuntimeOverrides = g_zoneObjectOverrides;
     for (const auto& entry : g_doors.transforms)
         g_zoneRuntimeOverrides.insert(entry);
-    if (g_transitionZoneId == ZoneElevator::kMetalworksZone)
+    if (g_loadedZoneId == ZoneElevator::kMetalworksZone)
         ApplyMetalworksElevatorRuntimeObjects();
     if (SUCCEEDED(GraphicsDevice()->BeginScene()))
     {
@@ -4602,10 +6415,13 @@ static void Render()
         g_pickWidth = static_cast<int>(w); g_pickHeight = static_cast<int>(h2);
         const D3DMATRIX viewProjection = D3DMath::Multiply(view, proj);
         ZoneRenderFrustum::Build(g_zoneRenderFrustum, view, proj);
-        // Retail selects the active cell from the player, not the third-person
-        // eye. In DATura the orbit target is the equivalent position; the eye
-        // can be high above and outside every finite cell volume.
-        FFXICoordinateFrame::SceneToNativeDat(renderCameraTarget,
+        // Normal play selects the active cell from the player-equivalent orbit
+        // target. The title demo has no player, however, and its authored rails
+        // often look across cell boundaries. Select title visibility from the
+        // actual eye so the room surrounding the moving camera stays resident.
+        const float* visibilityAnchor = g_titleScreenActive
+            ? renderCameraEye : renderCameraTarget;
+        FFXICoordinateFrame::SceneToNativeDat(visibilityAnchor,
             !g_applicationSettings.mirrorWorldZones, g_zoneVisibilityViewerPoint);
         g_zoneVisibilityViewerPointValid = Model_FF11_HasZoneVisibilityData();
         g_zoneVisibleMapObjects.clear();
@@ -4643,20 +6459,36 @@ static void Render()
 			sky.ringColors = g_zoneEnvironment.ringColors;
 			ZoneSkyDome::Draw(GraphicsDevice(), sky, renderCameraEye[0], renderCameraEye[1],
                                 renderCameraEye[2], skyProjectionDistance);
-			ZoneEnvironmentRenderState::DrawCameraShells(
-				GraphicsDevice(), zoneModel, g_applicationSettings.enableMipMapping,
-                g_zoneEnvironment.weatherPath,
-				gFF11LastGeneratorRecords, gFF11LastKeyframeRecords,
-                                renderCameraEye[0], renderCameraEye[1], renderCameraEye[2]);
+			if (g_applicationSettings.enableWeatherEffects &&
+                g_zoneEnvironment.previousWeatherPath[0])
+			{
+				ZoneEnvironmentRenderState::DrawCameraShells(
+					GraphicsDevice(), zoneModel, g_applicationSettings.enableMipMapping,
+                    g_zoneEnvironment.previousWeatherPath,
+					gFF11LastGeneratorRecords, gFF11LastKeyframeRecords,
+                    renderCameraEye[0], renderCameraEye[1], renderCameraEye[2],
+                    1.0f - g_zoneEnvironment.weatherTransition);
+			}
+            if (g_applicationSettings.enableWeatherEffects)
+            {
+			    ZoneEnvironmentRenderState::DrawCameraShells(
+				    GraphicsDevice(), zoneModel, g_applicationSettings.enableMipMapping,
+                    g_zoneEnvironment.weatherPath,
+				    gFF11LastGeneratorRecords, gFF11LastKeyframeRecords,
+                    renderCameraEye[0], renderCameraEye[1], renderCameraEye[2],
+                    g_zoneEnvironment.weatherTransition);
+            }
 			GraphicsDevice()->SetTransform(D3DTS_PROJECTION, &proj);
 			GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
             RenderModel(zoneModel, true, ModelRenderer::GeometryPass::Opaque);
-            DrawMetalworksElevatorPlatforms();
         }
 
         if (creationModel)
         {
-            D3DMATRIX creationWorld = world;
+            // Creation assets face +Z, while the standalone viewer begins on -X.
+            D3DMATRIX creationWorld = g_companionViewerMode
+                ? D3DMath::BuildYawTranslation(-3.1415926535f * 0.5f, nullptr)
+                : world;
             float creationRootMotion[3] = {};
             FFXISqleModelAnimation::SampleRootMotion(
                 creationModel, g_creationAnimTime, creationRootMotion);
@@ -4682,31 +6514,6 @@ static void Render()
                 RenderModel(g_savedCharacterPreviews[i].asset.Model());
             }
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
-            noesisTex_t* rosterButton = FFXITitleAssets::FindTitleTexture(
-                g_titleAssets.UiModel(), "buttonto");
-            if (rosterButton && rosterButton->pD3DTex)
-            {
-                POINT mouse = D3D9Device::MapClientPointToViewport(
-                    g_hWnd, (int)w, (int)h2, g_input.clientMouse);
-                const RECT button = CharacterRosterBackRect((int)w, (int)h2);
-                D3DUiRenderer::DrawSolidQuad(GraphicsDevice(),
-                    (float)button.left, (float)button.top,
-                    (float)(button.right - button.left),
-                    (float)(button.bottom - button.top), 0xFF111522);
-                FFXITitleUiPrimitives::DrawButton(GraphicsDevice(), g_applicationSettings.enableMipMapping,
-                    rosterButton, (float)button.left, (float)button.top,
-                    (float)(button.right - button.left), (float)(button.bottom - button.top),
-                    PtInRect(&button, mouse) != FALSE);
-                const RECT confirm = CharacterRosterConfirmRect((int)w, (int)h2);
-                D3DUiRenderer::DrawSolidQuad(GraphicsDevice(),
-                    (float)confirm.left, (float)confirm.top,
-                    (float)(confirm.right - confirm.left),
-                    (float)(confirm.bottom - confirm.top), 0xFF111522);
-                FFXITitleUiPrimitives::DrawButton(GraphicsDevice(), g_applicationSettings.enableMipMapping,
-                    rosterButton, (float)confirm.left, (float)confirm.top,
-                    (float)(confirm.right - confirm.left), (float)(confirm.bottom - confirm.top),
-                    PtInRect(&confirm, mouse) != FALSE);
-            }
         }
 
         for (NpcRenderAsset &asset : g_npcRenderAssets)
@@ -4731,6 +6538,7 @@ static void Render()
                 asset.homePoint->UpdateSound(homePoints, g_player.position, listenerRight,
                     homePointAudioAllowed, g_applicationSettings.maxSimultaneousSounds);
 
+        int npcShadowCount = 0;
         for (const NpcRenderInstance &npc : g_npcRenderInstances)
         {
             if (npc.assetIndex >= g_npcRenderAssets.size() || !npc.placement.visible)
@@ -4785,7 +6593,14 @@ static void Render()
             if (asset.homePoint)
                 visibleHomePoints.push_back(&npc);
             else
-                RenderModel(asset.resource.Model());
+            {
+                const bool drawNpcShadow = g_applicationSettings.shadowNpcs &&
+                    npcShadowCount < (std::max)(0, g_applicationSettings.shadowNpcLimit);
+                RenderModel(asset.resource.Model(), false, ModelRenderer::GeometryPass::All,
+                    drawNpcShadow);
+                if (drawNpcShadow)
+                    ++npcShadowCount;
+            }
 
             if (!npc.placement.name.empty() &&
                 !FFXIPath::StringEqualsNoCase(npc.placement.name.c_str(), "blank"))
@@ -4807,10 +6622,14 @@ static void Render()
         if (playerModel)
         {
             // Character DAT forward is offset from DATura's movement/camera convention by 90 degrees.
-            D3DMATRIX playerWorld = D3DMath::BuildYawTranslation(
-                g_player.yaw + (3.1415926535f * 0.5f), g_player.position);
+            D3DMATRIX playerWorld = g_companionViewerMode
+                ? D3DMath::BuildYawTranslation(3.1415926535f, nullptr)
+                :
+                D3DMath::BuildYawTranslation(
+                    g_player.yaw + (3.1415926535f * 0.5f), g_player.position);
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &playerWorld);
-            RenderModel(playerModel);
+            RenderModel(playerModel, false, ModelRenderer::GeometryPass::All,
+                g_applicationSettings.shadowPlayer);
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
 
             // Use the posed mesh after animation to keep the label above the
@@ -4847,7 +6666,7 @@ static void Render()
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
             RenderModel(zoneModel, true, ModelRenderer::GeometryPass::Transparent);
             ZoneObjectHighlightRenderer::Draw(
-                GraphicsDevice(), zoneModel, g_highlightedZoneObject, g_zoneRuntimeOverrides);
+                GraphicsDevice(), zoneModel, g_highlightedZoneObjects, g_zoneRuntimeOverrides);
         }
         // Crystal layers blend against completed actor/terrain depth. Rendering
         // them in the opaque NPC loop would let a later actor erase the aura.
@@ -4871,16 +6690,28 @@ static void Render()
         }
         if (g_applicationSettings.showCollisionGeometry)
             ZoneCollision::DrawOverlay(GraphicsDevice(), g_zoneCollisionMesh);
+        DrawClickMoveTarget();
 
         // Precipitation blends against the completed scene and depth-tests against
         // actors as well as terrain. Drawing it before actors erases foreground drops.
-        if (zoneModel)
+        if (zoneModel && g_applicationSettings.enableWeatherEffects)
         {
+            if (g_zoneEnvironment.previousWeatherPath[0])
+            {
+                ZoneWeatherParticles::Draw(
+                    GraphicsDevice(), zoneModel, g_zoneEnvironment.valid,
+                    g_applicationSettings.enableMipMapping,
+                    g_zoneEnvironment.previousWeatherPath,
+                    gFF11LastGeneratorRecords, gFF11LastKeyframeRecords,
+                    renderCameraEye[0], renderCameraEye[1], renderCameraEye[2],
+                    1.0f - g_zoneEnvironment.weatherTransition);
+            }
             ZoneWeatherParticles::Draw(
                 GraphicsDevice(), zoneModel, g_zoneEnvironment.valid,
                 g_applicationSettings.enableMipMapping, g_zoneEnvironment.weatherPath,
                 gFF11LastGeneratorRecords, gFF11LastKeyframeRecords,
-                renderCameraEye[0], renderCameraEye[1], renderCameraEye[2]);
+                renderCameraEye[0], renderCameraEye[1], renderCameraEye[2],
+                g_zoneEnvironment.weatherTransition);
             GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
         }
 
@@ -4904,16 +6735,27 @@ static void Render()
                 g_npcNameplates.push_back(std::move(label));
             }
         }
-        if (!g_titleScreenActive && !g_nationSelectActive)
-            NpcNameplateRenderer::Draw(GraphicsDevice(), g_npcNameplates);
-        DrawTitleScreenTextures();
-        DrawNationSelectTextures();
-        DrawFfxiMainMenuTextures();
-        DrawZoneBoundaryDots(viewProjection, w, h2);
-        DrawZoneTransitionOverlay();
+        if (g_uiVisible)
+        {
+            if (!g_titleScreenActive && !g_nationSelectActive)
+                NpcNameplateRenderer::Draw(GraphicsDevice(), g_npcNameplates);
+            DrawTitleScreenTextures();
+            DrawNationSelectTextures();
+            DrawCharacterRosterTextures((int)w, (int)h2);
+            DrawFfxiMainMenuTextures();
+            DrawZoneBoundaryDots(viewProjection, w, h2);
+            DrawZoneTransitionOverlay();
+        }
 
         GraphicsDevice()->EndScene();
     }
+
+    // Resolve MSAA/post-processing before drawing GDI overlays into the final
+    // swap-chain back buffer.
+    g_graphicsRuntime.ResolveFrame();
+
+    if (g_uiVisible)
+        NpcChatWindow::Draw(GraphicsDevice());
 
     // The title/nation labels are GDI-rendered.  Paint them into the
     // lockable backbuffer before Present so they cannot flicker independently
@@ -4926,18 +6768,22 @@ static void Render()
         backBuffer->GetDC(&overlayDc);
         if (overlayDc)
         {
-            DrawTitleScreenOverlay(overlayDc);
-            DrawCharacterRosterOverlay(overlayDc);
-            DrawNationSelectOverlay(overlayDc);
-            DrawCameraDebugOverlay(overlayDc);
-            DrawFfxiMainMenuOverlay(overlayDc);
-            DrawDeveloperConsoleOverlay(overlayDc);
+            if (g_uiVisible)
+            {
+                DrawTitleScreenOverlay(overlayDc);
+                DrawCharacterRosterOverlay(overlayDc);
+                DrawNationSelectOverlay(overlayDc);
+                DrawZoneMapOverlay(overlayDc);
+                DrawCameraDebugOverlay(overlayDc);
+                DrawModelViewerLightOverlay(overlayDc);
+                DrawFfxiMainMenuOverlay(overlayDc);
+                DrawDeveloperConsoleOverlay(overlayDc);
+            }
             backBuffer->ReleaseDC(overlayDc);
         }
         backBuffer->Release();
     }
 
-    NpcChatWindow::Draw(GraphicsDevice());
     g_graphicsRuntime.Present();
 }
 
@@ -4976,15 +6822,104 @@ static void LoadStandaloneModelEntry(const FFXIStandaloneModelEntry *entry, cons
     InvalidateRect(g_hWnd, NULL, FALSE);
 }
 
-static void LoadCompanionModel(void *, const char *label, const char *datPath)
+static void OpenOrUpdateModelViewer(
+    const ULONG_PTR messageId, void* payload, const DWORD payloadSize,
+    const std::string& selectionArguments)
 {
-    const FFXIStandaloneModelEntry entry = { label, datPath };
-    LoadStandaloneModelEntry(&entry, "companion model");
+    const HWND companionWindow = FindWindowW(kWindowClassName, kCompanionViewerTitle);
+    if (companionWindow)
+    {
+        COPYDATASTRUCT copyData = {};
+        copyData.dwData = messageId;
+        copyData.cbData = payloadSize;
+        copyData.lpData = payload;
+        const LRESULT accepted = SendMessageA(
+            companionWindow, WM_COPYDATA,
+            static_cast<WPARAM>(GetCurrentProcessId()),
+            reinterpret_cast<LPARAM>(&copyData));
+        if (accepted)
+        {
+            ShowWindow(companionWindow, SW_RESTORE);
+            SetForegroundWindow(companionWindow);
+            return;
+        }
+
+        // A viewer from an older build does not understand this protocol.
+        // Retire it before launching the current executable so stale camera
+        // behavior cannot survive across debug/build cycles.
+        PostMessageW(companionWindow, WM_CLOSE, 0, 0);
+        for (int attempt = 0; attempt < 40 &&
+             FindWindowW(kWindowClassName, kCompanionViewerTitle); ++attempt)
+            Sleep(50);
+    }
+
+    char executable[MAX_PATH] = {};
+    if (!GetModuleFileNameA(NULL, executable, sizeof(executable)))
+    {
+        MessageBoxA(g_hWnd, "Could not locate the DATura executable.", "Model Viewer",
+                    MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    std::string parameters = QuoteCommandLineArgument(kCompanionViewerArg);
+    parameters.push_back(' ');
+    parameters += selectionArguments;
+    parameters.push_back(' ');
+    parameters += QuoteCommandLineArgument(kCompanionOwnerPidArg);
+    parameters.push_back(' ');
+    parameters += std::to_string(GetCurrentProcessId());
+
+    HINSTANCE result = ShellExecuteA(
+        g_hWnd, "open", executable, parameters.c_str(), nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) <= 32)
+    {
+        MessageBoxA(g_hWnd, "Could not open the model viewer window.",
+                    "Model Viewer", MB_OK | MB_ICONERROR);
+    }
+}
+
+static void LoadModelInCompanionViewer(void *, const char *label, const char *datPath)
+{
+    std::string payload = label ? label : "Companion";
+    payload.push_back('\0');
+    payload += datPath ? datPath : "";
+    payload.push_back('\0');
+
+    std::string arguments = QuoteCommandLineArgument(kCompanionModelArg);
+    arguments.push_back(' ');
+    arguments += QuoteCommandLineArgument(datPath);
+    arguments.push_back(' ');
+    arguments += QuoteCommandLineArgument(kCompanionLabelArg);
+    arguments.push_back(' ');
+    arguments += QuoteCommandLineArgument(label ? label : "Companion");
+    OpenOrUpdateModelViewer(kCompanionModelCopyDataId, &payload[0],
+                            static_cast<DWORD>(payload.size()), arguments);
+}
+
+static void LoadPlayerRaceInModelViewer(const int raceIndex)
+{
+    PlayerViewerRequest payload = { g_playerEquip, g_playerFaceVariant };
+    payload.equipment.raceIndex = raceIndex;
+    const std::string serialized = SerializePlayerViewerRequest(payload);
+    std::string arguments = QuoteCommandLineArgument(kPlayerCustomizationArg);
+    arguments.push_back(' ');
+    arguments += QuoteCommandLineArgument(serialized.c_str());
+    OpenOrUpdateModelViewer(kPlayerRaceCopyDataId, &payload, sizeof(payload), arguments);
+}
+
+static void LoadCreationModelInModelViewer(const int flatIndex)
+{
+    int payload = flatIndex;
+    std::string arguments = QuoteCommandLineArgument(kCreationModelArg);
+    arguments.push_back(' ');
+    arguments += std::to_string(flatIndex);
+    OpenOrUpdateModelViewer(kCreationModelCopyDataId, &payload, sizeof(payload), arguments);
 }
 
 static void ShowCompanionBrowser()
 {
-    FFXICompanionBrowser::Show(g_hWnd, g_ffxiPath, LoadCompanionModel);
+    FFXICompanionBrowser::Show(
+        g_hWnd, g_ffxiPath, g_themeState, LoadModelInCompanionViewer);
 }
 
 static void RefreshMainMenuTheme()
@@ -4999,17 +6934,15 @@ static bool HandleApplicationMenuCommand(
     switch (command.selectionType)
     {
     case ApplicationMenu::SelectionType::NpcModel:
-        LoadStandaloneModelEntry(
-            FFXIStandaloneModel_GetEntry(
-                kFFXINpcModelGroups, kFFXINpcModelGroupCount, command.selectionIndex),
-            "NPC model");
+        if (const FFXIStandaloneModelEntry* entry = FFXIStandaloneModel_GetEntry(
+                kFFXINpcModelGroups, kFFXINpcModelGroupCount, command.selectionIndex))
+            LoadModelInCompanionViewer(nullptr, entry->label, entry->dat);
         return true;
 
     case ApplicationMenu::SelectionType::MonsterModel:
-        LoadStandaloneModelEntry(
-            FFXIStandaloneModel_GetEntry(
-                kFFXIMonsterModelGroups, kFFXIMonsterModelGroupCount, command.selectionIndex),
-            "monster model");
+        if (const FFXIStandaloneModelEntry* entry = FFXIStandaloneModel_GetEntry(
+                kFFXIMonsterModelGroups, kFFXIMonsterModelGroupCount, command.selectionIndex))
+            LoadModelInCompanionViewer(nullptr, entry->label, entry->dat);
         return true;
 
     case ApplicationMenu::SelectionType::PrototypeArea:
@@ -5043,6 +6976,8 @@ static bool HandleApplicationMenuCommand(
             {
                 LoadDatFile(resolution.request);
                 SetLoadedSceneContext(resolution.request);
+                if (IsGameMode())
+                    EnsureGameModePlayerForCurrentZone();
                 const FFXIZoneMusicEntry* music = FFXIZoneMusic_FindByID(zoneId);
                 SetGameModeMusic(music ? SelectZoneMusicId(music) : 0);
             }
@@ -5056,19 +6991,11 @@ static bool HandleApplicationMenuCommand(
         return true;
 
     case ApplicationMenu::SelectionType::PlayerRace:
-        LoadPlayerRaceModel(command.selectionIndex);
-        ShowLowPolyControlPanel();
+        LoadPlayerRaceInModelViewer(command.selectionIndex);
         return true;
 
     case ApplicationMenu::SelectionType::CreationModel:
-        if (SetHighPolyCreationSelectionFromFlatIndex(command.selectionIndex))
-        {
-            LowPolyCharacterPanel::Hide(g_lowPolyPanel);
-            const FFXICreationEntry* entry = CurrentHighPolyCreationEntry();
-            if (entry)
-                LoadCreationEntry(entry);
-            ShowHighPolyCreationPanel();
-        }
+        LoadCreationModelInModelViewer(command.selectionIndex);
         return true;
 
     case ApplicationMenu::SelectionType::None:
@@ -5182,8 +7109,7 @@ static bool HandleApplicationMenuCommand(
         return true;
     case ApplicationMenu::Action::CustomizePlayer:
         ShowLowPolyControlPanel();
-        if (!g_playerAsset)
-            ReloadPlayerModelFromControls();
+        ReloadPlayerModelFromControls();
         return true;
     case ApplicationMenu::Action::None:
         return false;
@@ -5212,16 +7138,21 @@ static void HandleInputAction(const InputController::Action action, HWND window)
         }
         break;
     case InputController::Action::Confirm:
-        if (IsGameMode() && AdvanceNpcConversation(window))
-            return;
+        if (IsGameMode())
+        {
+            // An active event owns Confirm. Reopen its hidden transcript first;
+            // otherwise advance it. Outside an event, Confirm opens chat input.
+            if (g_npcConversation.entityId)
+            {
+                if (NpcChatWindow::Reopen(window))
+                    return;
+                if (AdvanceNpcConversation(window))
+                    return;
+            }
+        }
         if (g_characterSelectActive && !g_savedCharacterPreviews.empty())
         {
-            UnloadPlayerModel();
-            g_playerAsset = std::move(g_savedCharacterPreviews[g_selectedCharacterPreview].asset);
-            g_savedCharacterPreviews.clear();
-            g_characterSelectActive = false;
-            SetInteractionMode(InteractionController::Mode::Game);
-            InvalidateRect(window, nullptr, FALSE);
+            LoadSelectedCharacterScene();
             return;
         }
         if (g_characterDeleteActive && !g_savedCharacterPreviews.empty())
@@ -5234,12 +7165,22 @@ static void HandleInputAction(const InputController::Action action, HWND window)
                 FFXIFileIO::GetExecutableDirectory(exeDir, sizeof(exeDir));
                 sprintf_s(path, "%sCharacters\\%s.ff11datset", exeDir, name.c_str()); DeleteFileA(path);
                 sprintf_s(path, "%sCharacters\\%s.noesis", exeDir, name.c_str()); DeleteFileA(path);
+                sprintf_s(path, "%sCharacters\\%s.ini", exeDir, name.c_str()); DeleteFileA(path);
                 BeginCharacterDeleteScene();
             }
             return;
         }
         if (g_nationSelectActive)
+        {
             LoadSelectedNationScene();
+            return;
+        }
+        if (IsGameMode())
+        {
+            const char* playerName = g_gameUiConfig.playerNameplate.name[0]
+                ? g_gameUiConfig.playerNameplate.name : g_creationCharacterName;
+            NpcChatWindow::OpenInput(window, playerName);
+        }
         break;
     case InputController::Action::OpenDat:
         SendMessageA(window, WM_COMMAND,
@@ -5260,6 +7201,50 @@ static void HandleInputAction(const InputController::Action action, HWND window)
         g_cameraDebugOverlayVisible = !g_cameraDebugOverlayVisible;
         InvalidateRect(window, NULL, FALSE);
         break;
+    case InputController::Action::ToggleZoneMap:
+        if (IsGameMode() && g_zoneAsset && !g_titleScreenActive &&
+            !g_nationSelectActive)
+        {
+            g_zoneMapVisible = !g_zoneMapVisible;
+            if (g_zoneMapVisible)
+            {
+                g_ffxiMainMenu.open = false;
+                g_clickMoveActive = false;
+                InputController::EndDrag(g_input);
+            }
+            InvalidateRect(window, NULL, FALSE);
+        }
+        break;
+    case InputController::Action::ToggleBumpMapping:
+        if (IsGameMode() && !g_ffxiMainMenu.open)
+        {
+            g_applicationSettings.enableBumpMapping =
+                !g_applicationSettings.enableBumpMapping;
+            SyncSettingsMenuChecks();
+            ConfigDialog::Sync(g_configDialog);
+            InvalidateRect(window, NULL, FALSE);
+        }
+        break;
+    case InputController::Action::ToggleBumpMappingInversion:
+        g_applicationSettings.invertBumpMapping =
+            !g_applicationSettings.invertBumpMapping;
+        SaveExtendedGraphicsSettings();
+        ConfigDialog::Sync(g_configDialog);
+        InvalidateRect(g_hWnd, NULL, FALSE);
+        break;
+    case InputController::Action::DecreaseBumpMappingIntensity:
+    case InputController::Action::IncreaseBumpMappingIntensity:
+        if (IsGameMode() && !g_ffxiMainMenu.open)
+        {
+            const int direction = action ==
+                InputController::Action::IncreaseBumpMappingIntensity ? 1 : -1;
+            g_applicationSettings.bumpMappingIntensityPercent =
+                ApplicationSettings::ClampBumpMappingIntensity(
+                    g_applicationSettings.bumpMappingIntensityPercent + direction * 10);
+            ConfigDialog::Sync(g_configDialog);
+            InvalidateRect(window, NULL, FALSE);
+        }
+        break;
     case InputController::Action::None:
         break;
     }
@@ -5271,6 +7256,71 @@ static void HandleInputAction(const InputController::Action action, HWND window)
 
 static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    if (msg == WM_COPYDATA && g_companionViewerMode)
+    {
+        const COPYDATASTRUCT* copyData = reinterpret_cast<const COPYDATASTRUCT*>(lParam);
+        if (!copyData || !copyData->lpData)
+            return FALSE;
+
+        SetCompanionViewerOwner(static_cast<DWORD>(wParam));
+        if (copyData->dwData == kCompanionModelCopyDataId && copyData->cbData >= 2)
+        {
+            const char* payload = static_cast<const char*>(copyData->lpData);
+            const size_t payloadSize = copyData->cbData;
+            const size_t labelLength = strnlen_s(payload, payloadSize);
+            if (labelLength >= payloadSize)
+                return FALSE;
+            const char* datPath = payload + labelLength + 1;
+            const size_t datCapacity = payloadSize - labelLength - 1;
+            const size_t datLength = strnlen_s(datPath, datCapacity);
+            if (datLength >= datCapacity || datLength == 0)
+                return FALSE;
+
+            g_startupModelLabel.assign(payload, labelLength);
+            g_startupModelDat.assign(datPath, datLength);
+            g_startupPlayerRace = -1;
+            g_startupCreationModel = -1;
+            if (g_graphicsRuntime.IsInitialized())
+            {
+                const char* label = g_startupModelLabel.empty() ? "Companion" : g_startupModelLabel.c_str();
+                const FFXIStandaloneModelEntry entry = { label, g_startupModelDat.c_str() };
+                LoadStandaloneModelEntry(&entry, "model");
+            }
+        }
+        else if (copyData->dwData == kPlayerRaceCopyDataId &&
+                 copyData->cbData == sizeof(PlayerViewerRequest))
+        {
+            const PlayerViewerRequest& request =
+                *static_cast<const PlayerViewerRequest*>(copyData->lpData);
+            g_playerEquip = request.equipment;
+            g_playerFaceVariant = request.faceVariant;
+            ClampLowPolyState();
+            g_startupPlayerRace = g_playerEquip.raceIndex;
+            g_startupPlayerCustomization = SerializePlayerViewerRequest(request);
+            g_startupCreationModel = -1;
+            g_startupModelDat.clear();
+            if (g_graphicsRuntime.IsInitialized())
+                LoadPlayerRaceModel(g_startupPlayerRace);
+        }
+        else if (copyData->dwData == kCreationModelCopyDataId && copyData->cbData == sizeof(int))
+        {
+            g_startupCreationModel = *static_cast<const int*>(copyData->lpData);
+            g_startupPlayerRace = -1;
+            g_startupModelDat.clear();
+            if (g_graphicsRuntime.IsInitialized() &&
+                SetHighPolyCreationSelectionFromFlatIndex(g_startupCreationModel))
+                LoadCreationEntryInModelViewer(CurrentHighPolyCreationEntry());
+        }
+        else
+        {
+            return FALSE;
+        }
+
+        ShowWindow(hWnd, SW_RESTORE);
+        SetForegroundWindow(hWnd);
+        return TRUE;
+    }
+
     if (g_developerConsoleOpen && msg != WM_KEYDOWN && msg != WM_CHAR &&
         msg != WM_KEYUP && msg != WM_MOUSEWHEEL && msg != WM_PAINT &&
         msg != WM_ERASEBKGND && msg != WM_DESTROY)
@@ -5343,6 +7393,19 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         break;
 
     case WM_LBUTTONUP:
+        if (g_companionViewerMode && g_input.dragMode == InputController::DragMode::Pan)
+        {
+            EndMouseLook();
+            return 0;
+        }
+        if (IsEditMode() && !g_titleScreenActive && !g_nationSelectActive)
+        {
+            POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            const bool additive = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+            if (SelectZoneObjectAtClientPoint(hWnd, point, additive))
+                return 0;
+            break;
+        }
         if (!IsGameMode()) break;
         if (g_ffxiMainMenu.open)
         {
@@ -5384,12 +7447,15 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     npcDepth = (std::min)(npcDepth, target.depth);
             if (doorHit.door >= 0 && doorHit.depth <= npcDepth)
             {
+                g_clickMoveActive = false;
                 g_npcInteraction.selected = 0;
                 g_doors.Click(doorHit.door, g_player.position);
                 return 0;
             }
             g_doors.selected = -1;
             const bool npcTalk = g_npcInteraction.Click((float)point.x, (float)point.y);
+            if (npcTalk)
+                g_clickMoveActive = false;
             if (!npcTalk)
                 EndNpcConversation();
             if (npcTalk)
@@ -5412,6 +7478,33 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                         npc.homePointActivatedAt = g_homePointSeconds;
                         const float right[3] = {g_pickView._11, g_pickView._21, g_pickView._31};
                         asset.homePoint->ActivateSound(instance, g_player.position, right);
+                        if (!g_activeCharacterDataPath.empty() && g_loadedZoneId >= 0)
+                        {
+                            CharacterSaveData::Data characterData;
+                            const bool haveCharacterData =
+                                LoadOrCreateActiveCharacterData(characterData);
+                            if (haveCharacterData && EnsureActiveCharacterModelFiles())
+                            {
+                                const CharacterSaveData::HomePoint point = {
+                                    g_loadedZoneId, npc.placement.entityId,
+                                    npc.placement.name
+                                };
+                                CharacterSaveData::RegisterHomePoint(characterData, point);
+                                if (CharacterSaveData::Save(
+                                        g_activeCharacterDataPath.c_str(), characterData))
+                                {
+                                    NpcChatWindow::Show(g_hWnd, "System",
+                                        "Home Point registered. Character data has been saved.");
+                                    StartHomePointTeleportChoice(
+                                        g_hWnd, characterData, point);
+                                }
+                            }
+                            else
+                            {
+                                NpcChatWindow::Show(g_hWnd, "System",
+                                    "The character's save files could not be completed. The Home Point was not registered.");
+                            }
+                        }
                     }
                     return 0;
                 }
@@ -5419,11 +7512,19 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 if (FFXINpcPlacement::Find(g_npcInteraction.selected, placement))
                     StartNpcConversation(hWnd, placement);
             }
+            if (!npcTalk && g_applicationSettings.movementStyle == ApplicationSettings::MovementClickToMove)
+                SetClickMoveTargetFromViewportPoint(point);
             return 0;
         }
         return 0;
 
     case WM_LBUTTONDOWN:
+        if (g_companionViewerMode)
+        {
+            InputController::BeginPan(
+                g_input, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            return 0;
+        }
         if (g_characterSelectActive || g_characterDeleteActive)
         {
             POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
@@ -5441,16 +7542,33 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 HandleInputAction(InputController::Action::Confirm, hWnd);
                 return 0;
             }
-            const int row = (GET_Y_LPARAM(lParam) - 84) / 30;
-            if (GET_X_LPARAM(lParam) >= 28 && GET_X_LPARAM(lParam) < 248 &&
-                row >= 0 && row < (int)g_savedCharacterPreviews.size())
-                g_selectedCharacterPreview = row;
+            const RECT panel = CharacterRosterPanelRect();
+            if (PtInRect(&panel, point))
+            {
+                for (int row = 0; row < (int)g_savedCharacterPreviews.size(); ++row)
+                {
+                    const RECT rowRect = CharacterRosterRowRect(row);
+                    if (PtInRect(&rowRect, point))
+                    {
+                        g_selectedCharacterPreview = row;
+                        break;
+                    }
+                }
+            }
             return 0;
         }
         if (IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
         {
             InputController::PlayerMouseButton(g_input, true, true,
                 GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            if (g_applicationSettings.movementStyle == ApplicationSettings::MovementClickToMove)
+            {
+                int width = 0, height = 0;
+                D3D9Device::GetViewportOrClientSize(GraphicsDevice(), hWnd, &width, &height);
+                POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                SetClickMoveTargetFromViewportPoint(
+                    D3D9Device::MapClientPointToViewport(hWnd, width, height, point));
+            }
             UpdatePlayerCameraTarget();
             return 0;
         }
@@ -5500,6 +7618,12 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     // ---- Mouse camera orbit ----
     case WM_RBUTTONDOWN:
+        if (g_companionViewerMode)
+        {
+            InputController::BeginOrbit(
+                g_input, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            return 0;
+        }
         if (IsGameMode())
         {
             InputController::PlayerMouseButton(g_input, false, true,
@@ -5512,6 +7636,11 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
 
     case WM_RBUTTONUP:
+        if (g_companionViewerMode)
+        {
+            EndMouseLook();
+            return 0;
+        }
         if (IsGameMode())
         {
             InputController::PlayerMouseButton(g_input, false, false,
@@ -5522,6 +7651,12 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
 
     case WM_MBUTTONDOWN:
+        if (g_companionViewerMode)
+        {
+            InputController::BeginLightAzimuth(
+                g_input, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            return 0;
+        }
         if (g_highPolyCreationActive && !g_titleScreenActive)
         {
             InputController::BeginPan(
@@ -5531,7 +7666,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         break;
 
     case WM_MBUTTONUP:
-        if (g_input.dragMode == InputController::DragMode::Pan)
+        if (g_input.dragMode == InputController::DragMode::Pan ||
+            g_input.dragMode == InputController::DragMode::LightAzimuth)
         {
             EndMouseLook();
             return 0;
@@ -5550,11 +7686,32 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         {
             const InputController::DragDelta delta = InputController::MouseMoved(
                 g_input, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            if (g_applicationSettings.movementStyle == ApplicationSettings::MovementClickToMove &&
+                g_input.leftMouseHeld && !g_input.rightMouseHeld &&
+                IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
+            {
+                int width = 0, height = 0;
+                D3D9Device::GetViewportOrClientSize(GraphicsDevice(), hWnd, &width, &height);
+                POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                SetClickMoveTargetFromViewportPoint(
+                    D3D9Device::MapClientPointToViewport(hWnd, width, height, point));
+            }
             TRACKMOUSEEVENT tme = {};
             tme.cbSize = sizeof(tme);
             tme.dwFlags = TME_LEAVE;
             tme.hwndTrack = hWnd;
             TrackMouseEvent(&tme);
+            if (g_titleScreenActive)
+            {
+                int uiW = 0, uiH = 0;
+                D3D9Device::GetViewportOrClientSize(GraphicsDevice(), hWnd, &uiW, &uiH);
+                POINT mouse = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                const int hovered = GameUiConfig_GetTitleMenuButtonIndex(
+                    g_gameUiConfig.title, uiW, uiH,
+                    D3D9Device::MapClientPointToViewport(hWnd, uiW, uiH, mouse));
+                if (hovered >= 0)
+                    g_titleMenuSelection = hovered;
+            }
             if (delta.mode == InputController::DragMode::Pan)
             {
                 OrbitCamera::Pan(g_orbitCamera, delta.x, delta.y);
@@ -5562,6 +7719,19 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             else if (delta.mode == InputController::DragMode::Orbit)
             {
                 OrbitCamera::Rotate(g_orbitCamera, delta.x, delta.y);
+            }
+            else if (delta.mode == InputController::DragMode::LightAzimuth)
+            {
+                g_modelViewerLightAzimuthDegrees += static_cast<float>(delta.x) * 0.5f;
+                g_modelViewerLightElevationDegrees -= static_cast<float>(delta.y) * 0.5f;
+                if (g_modelViewerLightAzimuthDegrees >= 360.0f ||
+                    g_modelViewerLightAzimuthDegrees <= -360.0f)
+                    g_modelViewerLightAzimuthDegrees = fmodf(
+                        g_modelViewerLightAzimuthDegrees, 360.0f);
+                if (g_modelViewerLightElevationDegrees >= 360.0f ||
+                    g_modelViewerLightElevationDegrees <= -360.0f)
+                    g_modelViewerLightElevationDegrees = fmodf(
+                        g_modelViewerLightElevationDegrees, 360.0f);
             }
         }
         return 0;
@@ -5579,10 +7749,30 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 g_developerConsoleScroll + direction));
             return 0;
         }
+        if ((GET_KEYSTATE_WPARAM(wParam) & MK_SHIFT) != 0)
+        {
+            OrbitCamera::RotateByTrackpadScroll(
+                g_orbitCamera,
+                0.0f,
+                static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
+                    static_cast<float>(WHEEL_DELTA));
+            return 0;
+        }
         OrbitCamera::Zoom(
             g_orbitCamera,
             static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
                 static_cast<float>(WHEEL_DELTA));
+        return 0;
+
+    case WM_MOUSEHWHEEL:
+        if (!g_developerConsoleOpen)
+        {
+            OrbitCamera::RotateByTrackpadScroll(
+                g_orbitCamera,
+                static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) /
+                    static_cast<float>(WHEEL_DELTA),
+                0.0f);
+        }
         return 0;
 
     // ---- Keyboard ----
@@ -5599,6 +7789,13 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         break;
 
     case WM_KEYDOWN:
+        if (g_companionViewerMode && wParam == 'R')
+        {
+            if ((lParam & (1LL << 30)) == 0)
+                g_modelViewerLightOverlayCorner =
+                    (g_modelViewerLightOverlayCorner + 1) % 5;
+            return 0;
+        }
         if (wParam == VK_OEM_3)
         {
             g_developerConsoleOpen = !g_developerConsoleOpen;
@@ -5624,6 +7821,44 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         if (g_developerConsoleOpen && wParam == VK_RETURN)
         { ExecuteDeveloperCommand(); return 0; }
         if (g_developerConsoleOpen)
+            return 0;
+        if (wParam == '0' && (lParam & (1LL << 30)) == 0)
+        {
+            g_uiVisible = !g_uiVisible;
+            InvalidateRect(hWnd, nullptr, FALSE);
+            return 0;
+        }
+        if (g_titleScreenActive)
+        {
+            if (wParam == VK_UP)
+            {
+                g_titleMenuSelection = (g_titleMenuSelection + 4) % 5;
+                return 0;
+            }
+            if (wParam == VK_DOWN)
+            {
+                g_titleMenuSelection = (g_titleMenuSelection + 1) % 5;
+                return 0;
+            }
+            if (wParam == VK_RETURN || wParam == VK_SPACE)
+            {
+                ActivateTitleButton(g_titleMenuSelection);
+                return 0;
+            }
+            if (wParam == VK_ESCAPE)
+            {
+                g_titleMenuSelection = 4;
+                ActivateTitleButton(g_titleMenuSelection);
+                return 0;
+            }
+        }
+        if (g_zoneMapVisible && wParam == VK_ESCAPE)
+        {
+            g_zoneMapVisible = false;
+            InvalidateRect(hWnd, NULL, FALSE);
+            return 0;
+        }
+        if (g_zoneMapVisible && wParam != 'M')
             return 0;
         if (IsGameMode() && (wParam == VK_UP || wParam == VK_DOWN) &&
             MoveNpcConversationChoice(hWnd, wParam == VK_UP ? -1 : 1))
@@ -5653,10 +7888,14 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
         if (IsGameMode())
         {
-            const bool menuKey = wParam == VK_SUBTRACT || wParam == VK_OEM_MINUS;
+            const bool menuKey = wParam == VK_SUBTRACT ||
+                wParam == static_cast<WPARAM>(g_applicationSettings.keyMainMenu);
+            const bool showMogHouse =
+                g_loadedZoneLabel.find("Mog House") != std::string::npos;
             const FFXIMainMenu::Action menuAction = menuKey
-                ? FFXIMainMenu::HandleKey(g_ffxiMainMenu, VK_ESCAPE)
-                : FFXIMainMenu::HandleKey(g_ffxiMainMenu, static_cast<unsigned int>(wParam));
+                ? FFXIMainMenu::HandleKey(g_ffxiMainMenu, VK_ESCAPE, showMogHouse)
+                : FFXIMainMenu::HandleKey(g_ffxiMainMenu,
+                    static_cast<unsigned int>(wParam), showMogHouse);
             if (menuAction != FFXIMainMenu::Action::None)
             {
                 InvalidateRect(hWnd, NULL, FALSE);
@@ -5704,44 +7943,106 @@ static void InitializeMainWindowState()
     InputController::Initialize(
         g_input, g_hWnd, g_applicationSettings.enableHardwareMouseCursor);
     ApplyColorTheme(g_hWnd);
-    SetWindowTextW(g_hWnd, kWindowTitle);
+    SetWindowTextW(g_hWnd, g_companionViewerMode ? kCompanionViewerTitle : kWindowTitle);
+    if (g_companionViewerMode)
+        SetCompanionViewerOwner(g_companionOwnerPid);
     InitFFXIPath();
+    InitCustomTextureSettings();
+    InitExtendedGraphicsSettings();
+    InitTitleBackgroundSettings();
+    InitKeyBindings();
+    InputController::SetKeyBindings(g_input, g_applicationSettings);
+    InputController::SetCursorStyle(
+        g_input, g_applicationSettings.mouseCursorStyle, g_ffxiPath);
     FFXIBitmapFont::SetRootPath(g_ffxiPath);
-    ApplicationMenu::Initialize(g_applicationMenu, g_hWnd, g_ffxiPath, g_themeState);
-    SetMenu(g_hWnd,
-        ApplicationMenu::Build(g_applicationMenu, g_applicationSettings, IsGameMode()));
-    ConfigDialog::Initialize(
-        g_configDialog, g_hWnd, g_ffxiPath, g_applicationSettings, g_themeState, g_gameUiConfig,
-        HandleConfigDialogEvent, ConfigDialogIsGameMode);
-    LowPolyCharacterPanel::Initialize(
-        g_lowPolyPanel, g_hWnd, g_playerEquip, g_playerFaceVariant,
-        HandleLowPolyPanelEvent);
-    HighPolyCreationPanel::Initialize(
-        g_highPolyCreationPanel, g_hWnd, g_creationSelection,
-        g_creationAnimationIndex, g_creationAnimatedCamera,
-        g_creationCharacterName, sizeof(g_creationCharacterName),
-        HandleHighPolyCreationPanelEvent);
-    ZoneObjectPanel::Initialize(
-        g_zoneObjectPanel, g_hWnd, HandleZoneObjectPanelEvent);
+    FFXIChatAssets::SetRootPath(g_ffxiPath);
+    if (!g_companionViewerMode)
+    {
+        ApplicationMenu::Initialize(g_applicationMenu, g_hWnd, g_ffxiPath, g_themeState);
+        SetMenu(g_hWnd,
+            ApplicationMenu::Build(g_applicationMenu, g_applicationSettings, IsGameMode()));
+        ConfigDialog::Initialize(
+            g_configDialog, g_hWnd, g_ffxiPath, g_applicationSettings, g_themeState, g_gameUiConfig,
+            HandleConfigDialogEvent, ConfigDialogIsGameMode);
+        LowPolyCharacterPanel::Initialize(
+            g_lowPolyPanel, g_hWnd, g_playerEquip, g_playerFaceVariant,
+            g_themeState, HandleLowPolyPanelEvent);
+        HighPolyCreationPanel::Initialize(
+            g_highPolyCreationPanel, g_hWnd, g_creationSelection,
+            g_creationAnimationIndex, g_creationAnimatedCamera,
+            g_creationCharacterName, sizeof(g_creationCharacterName),
+            HandleHighPolyCreationPanelEvent);
+        ZoneObjectPanel::Initialize(
+            g_zoneObjectPanel, g_hWnd, g_themeState, HandleZoneObjectPanelEvent);
+    }
+
+    // Interaction mode is application-wide. Apply its initial camera state once
+    // without making any individual screen or asset load choose a mode.
+    g_player.cameraActive = IsGameMode();
 }
 
 static bool InitializeGraphicsState()
 {
     if (!InitD3D())
         return false;
-    LoadTitleScreen();
+
+    if (g_companionViewerMode && !g_startupPlayerCustomization.empty())
+    {
+        PlayerViewerRequest request = {};
+        if (DeserializePlayerViewerRequest(g_startupPlayerCustomization.c_str(), request))
+        {
+            g_playerEquip = request.equipment;
+            g_playerFaceVariant = request.faceVariant;
+            ClampLowPolyState();
+            LoadPlayerRaceModel(g_playerEquip.raceIndex);
+        }
+    }
+    else if (g_companionViewerMode && g_startupPlayerRace >= 0)
+    {
+        LoadPlayerRaceModel(g_startupPlayerRace);
+    }
+    else if (g_companionViewerMode && g_startupCreationModel >= 0)
+    {
+        if (SetHighPolyCreationSelectionFromFlatIndex(g_startupCreationModel))
+            LoadCreationEntryInModelViewer(CurrentHighPolyCreationEntry());
+    }
+    else if (g_companionViewerMode && !g_startupModelDat.empty())
+    {
+        const char* label = g_startupModelLabel.empty()
+            ? "Companion"
+            : g_startupModelLabel.c_str();
+        const FFXIStandaloneModelEntry entry = { label, g_startupModelDat.c_str() };
+        LoadStandaloneModelEntry(&entry, "model");
+    }
+    else
+    {
+        LoadTitleScreen();
+    }
     return true;
 }
 
 static void RunApplicationFrame(void*, const float deltaSeconds)
 {
+    if (g_companionViewerMode && g_companionOwnerProcess &&
+        WaitForSingleObject(g_companionOwnerProcess, 0) == WAIT_OBJECT_0)
+    {
+        PostMessageW(g_hWnd, WM_CLOSE, 0, 0);
+        return;
+    }
+
     UpdateAdaptivePlayDrawDistance(deltaSeconds, IsGameMode());
 
     if (deltaSeconds > 0.0f)
     {
+        if (g_titleScreenActive)
+        {
+            g_titleCameraRailTime += deltaSeconds;
+            if (!SampleRetailTitleCamera())
+                SampleTitleCameraRail();
+        }
         g_doorPhysicsUpdated = false;
         g_doors.Update(deltaSeconds, g_zoneCollisionMesh);
-        if (g_transitionZoneId == ZoneElevator::kMetalworksZone &&
+        if (g_loadedZoneId == ZoneElevator::kMetalworksZone &&
             ZoneElevator::Update(g_metalworksElevator, deltaSeconds,
                                  g_player.position, g_player.onGround,
                                  !g_applicationSettings.mirrorWorldZones))
@@ -5752,10 +8053,17 @@ static void RunApplicationFrame(void*, const float deltaSeconds)
             PlayerController::SetLastSafePoint(g_player);
             UpdatePlayerCameraTarget();
         }
-        else if (g_transitionZoneId == ZoneElevator::kMetalworksZone)
+        else if (g_loadedZoneId == ZoneElevator::kMetalworksZone)
         {
             ApplyMetalworksElevatorRuntimeCollision();
         }
+        const HWND soundForeground = GetForegroundWindow();
+        const bool elevatorAudioAllowed = g_loadedZoneId == ZoneElevator::kMetalworksZone &&
+            IsGameMode() && g_applicationSettings.enableSounds &&
+            (g_applicationSettings.playSoundsInBackground || soundForeground == g_hWnd ||
+             soundForeground == ConfigDialog::Window(g_configDialog) || AudioPlayer_OwnsWindow(soundForeground));
+        g_metalworksElevatorAudio.Update(g_metalworksElevator, g_player.position,
+            !g_applicationSettings.mirrorWorldZones, elevatorAudioAllowed);
         UpdateCameraMovement(deltaSeconds);
         if (g_doors.physics && !g_doorPhysicsUpdated)
             g_doors.UpdatePhysics(deltaSeconds, g_zoneCollisionMesh,
@@ -5782,13 +8090,25 @@ static void ShutdownApplication(HINSTANCE hInstance)
     ShutdownD3D();
     ConfigDialog::Close(g_configDialog);
 
-    if (g_hWnd && IsWindow(g_hWnd))
+    if (!g_companionViewerMode && g_hWnd && IsWindow(g_hWnd))
         SetMenu(g_hWnd, NULL);
-    ApplicationMenu::Release(g_applicationMenu);
+    if (!g_companionViewerMode)
+        ApplicationMenu::Release(g_applicationMenu);
 
     if (g_hWnd && IsWindow(g_hWnd))
         DestroyWindow(g_hWnd);
     g_hWnd = NULL;
+
+    if (g_companionViewerMutex)
+    {
+        CloseHandle(g_companionViewerMutex);
+        g_companionViewerMutex = NULL;
+    }
+    if (g_companionOwnerProcess)
+    {
+        CloseHandle(g_companionOwnerProcess);
+        g_companionOwnerProcess = NULL;
+    }
 
     Win32Theme::ReleaseState(g_themeState);
     UnregisterClassW(kWindowClassName, hInstance);
@@ -5797,10 +8117,79 @@ static void ShutdownApplication(HINSTANCE hInstance)
 int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*/,
                    _In_ LPSTR /*lpCmdLine*/, _In_ int nCmdShow)
 {
+    ParseStartupArguments();
+
+    if (g_companionViewerMode)
+    {
+        g_companionViewerMutex = CreateMutexW(NULL, FALSE, kCompanionViewerMutexName);
+        if (g_companionViewerMutex && GetLastError() == ERROR_ALREADY_EXISTS)
+        {
+            CloseHandle(g_companionViewerMutex);
+            g_companionViewerMutex = NULL;
+
+            HWND companionWindow = NULL;
+            for (int attempt = 0; attempt < 100 && !companionWindow; ++attempt)
+            {
+                companionWindow = FindWindowW(kWindowClassName, kCompanionViewerTitle);
+                if (!companionWindow)
+                    Sleep(50);
+            }
+
+            if (companionWindow)
+            {
+                COPYDATASTRUCT copyData = {};
+                int selectionIndex = -1;
+                PlayerViewerRequest playerRequest = {};
+                std::string payload;
+                if (!g_startupPlayerCustomization.empty() &&
+                    DeserializePlayerViewerRequest(
+                        g_startupPlayerCustomization.c_str(), playerRequest))
+                {
+                    copyData.dwData = kPlayerRaceCopyDataId;
+                    copyData.cbData = sizeof(playerRequest);
+                    copyData.lpData = &playerRequest;
+                }
+                else if (g_startupPlayerRace >= 0)
+                {
+                    playerRequest.equipment = g_playerEquip;
+                    playerRequest.equipment.raceIndex = g_startupPlayerRace;
+                    playerRequest.faceVariant = g_playerFaceVariant;
+                    copyData.dwData = kPlayerRaceCopyDataId;
+                    copyData.cbData = sizeof(playerRequest);
+                    copyData.lpData = &playerRequest;
+                }
+                else if (g_startupCreationModel >= 0)
+                {
+                    selectionIndex = g_startupCreationModel;
+                    copyData.dwData = kCreationModelCopyDataId;
+                    copyData.cbData = sizeof(selectionIndex);
+                    copyData.lpData = &selectionIndex;
+                }
+                else
+                {
+                    payload = g_startupModelLabel.empty() ? "Companion" : g_startupModelLabel;
+                    payload.push_back('\0');
+                    payload += g_startupModelDat;
+                    payload.push_back('\0');
+                    copyData.dwData = kCompanionModelCopyDataId;
+                    copyData.cbData = static_cast<DWORD>(payload.size());
+                    copyData.lpData = &payload[0];
+                }
+                SendMessageA(companionWindow, WM_COPYDATA,
+                             static_cast<WPARAM>(g_companionOwnerPid),
+                             reinterpret_cast<LPARAM>(&copyData));
+                ShowWindow(companionWindow, SW_RESTORE);
+                SetForegroundWindow(companionWindow);
+            }
+            return 0;
+        }
+    }
+
     InitColorTheme();
     GameUiConfig_Load(g_gameUiConfig);
     NpcChatWindow::SetSize(g_gameUiConfig.chatLogWidthPercent, g_gameUiConfig.chatLogHeightPercent);
     NpcChatWindow::SetTimeout(g_gameUiConfig.chatLogTimeoutSeconds);
+    NpcChatWindow::SetFont(g_gameUiConfig.chatLogFont, g_gameUiConfig.chatLogFontSize);
     Win32Application::InitializeCommonControls(
         ICC_LISTVIEW_CLASSES | ICC_TREEVIEW_CLASSES | ICC_TAB_CLASSES);
 
@@ -5808,13 +8197,13 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*
     windowSpec.instance = hInstance;
     windowSpec.windowProcedure = WndProc;
     windowSpec.className = kWindowClassName;
-    windowSpec.title = kWindowTitle;
-    windowSpec.clientWidth = kDefaultWidth;
-    windowSpec.clientHeight = kDefaultHeight;
+    windowSpec.title = g_companionViewerMode ? kCompanionViewerTitle : kWindowTitle;
+    windowSpec.clientWidth = g_companionViewerMode ? kCompanionViewerWidth : kDefaultWidth;
+    windowSpec.clientHeight = g_companionViewerMode ? kCompanionViewerHeight : kDefaultHeight;
     windowSpec.backgroundBrush = (HBRUSH)GetStockObject(BLACK_BRUSH);
     windowSpec.icon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_DATURA));
     windowSpec.smallIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_DATURA));
-    windowSpec.hasMenu = true;
+    windowSpec.hasMenu = !g_companionViewerMode;
 
     Win32Application::CreateWindowResult createResult;
     g_hWnd = Win32Application::CreateMainWindow(windowSpec, createResult);

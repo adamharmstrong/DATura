@@ -16,6 +16,7 @@ const char* const kPageItems[][14] = {
       "Help Desk", "Current Time", "Communication", "Shut Down", "Log Out" }
 };
 constexpr int kPageItemCounts[] = { 14, 12 };
+constexpr int kMenuWidth = 190;
 
 void DrawChatStylePanel(IDirect3DDevice9* device, const int left, const int top,
                         const int width, const int height)
@@ -87,7 +88,7 @@ void DrawTextures(IDirect3DDevice9* device, const bool enableMipMapping,
     if (!button) button = FFXITitleAssets::FindTitleTexture(uiModel, "lrbutton");
     if (!button) return;
     const int rowHeight = std::max(29, height / 27);
-    const int menuWidth = 190;
+    const int menuWidth = kMenuWidth;
     const int left = width - menuWidth - std::max(24, width / 16);
     const int top = std::max(24, height / 7);
     const int titleHeight = rowHeight + 4;
@@ -104,26 +105,7 @@ void DrawTextures(IDirect3DDevice9* device, const bool enableMipMapping,
     }
 }
 
-static int MenuWidth(HDC dc, int rowHeight)
-{
-    HFONT font = CreateFontA(-std::max(18, rowHeight - 8), 0, 0, 0, FW_NORMAL,
-                             FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS,
-                             CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Arial");
-    HGDIOBJ oldFont = SelectObject(dc, font);
-    int textWidth = 0;
-    for (int page = 0; page < 2; ++page)
-    for (int i = 0; i < kPageItemCounts[page]; ++i)
-    {
-        SIZE size = {};
-        GetTextExtentPoint32A(dc, kPageItems[page][i], lstrlenA(kPageItems[page][i]), &size);
-        textWidth = std::max(textWidth, static_cast<int>(size.cx));
-    }
-    SelectObject(dc, oldFont);
-    DeleteObject(font);
-    return std::max(150, textWidth + 30);
-}
-
-Action HandleKey(State& state, const unsigned int key)
+Action HandleKey(State& state, const unsigned int key, const bool showMogHouse)
 {
     if (key == VK_ESCAPE)
     {
@@ -138,7 +120,9 @@ Action HandleKey(State& state, const unsigned int key)
         state.selected = 0;
         return Action::None;
     }
-    const int itemCount = kPageItemCounts[state.page];
+    const int itemCount = kPageItemCounts[state.page] -
+        (state.page == 0 && !showMogHouse ? 1 : 0);
+    state.selected = std::clamp(state.selected, 0, itemCount - 1);
     if (key == VK_UP) { state.selected = (state.selected + itemCount - 1) % itemCount; return Action::None; }
     if (key == VK_DOWN) { state.selected = (state.selected + 1) % itemCount; return Action::None; }
     if (key == VK_RETURN) return Action::Activated;
@@ -158,7 +142,7 @@ void Draw(HDC dc, const State& state, const int width, const int height, const b
                              FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS,
                              CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Arial");
     HGDIOBJ oldFont = SelectObject(dc, font);
-    const int menuWidth = MenuWidth(dc, rowHeight);
+    const int menuWidth = kMenuWidth;
     const int left = width - menuWidth - rightMargin;
     const int titleHeight = rowHeight + 4;
     const int firstItemTop = top + titleHeight + 4;
@@ -202,7 +186,7 @@ bool ClickTab(State& state, HDC dc, const int width, const int height, const POI
 {
     if (!state.open || !dc) return false;
     const int rowHeight = std::max(29, height / 27);
-    const int menuWidth = MenuWidth(dc, rowHeight);
+    const int menuWidth = kMenuWidth;
     const int rightMargin = std::max(24, width / 16);
     const int left = width - menuWidth - rightMargin;
     const int top = std::max(24, height / 7);

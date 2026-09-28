@@ -1,5 +1,13 @@
 # FFXI cloud/sky checkerboarding — cause and fix
 
+## PS2 client evidence revision — 2026-09-20
+
+The PS2 weather runtime confirms that sky rendering is driven by more than fog color. The world environment interpolates focus-near/far values, clip range, sky-sphere division parameters, sphere colors, and related horizon data across weather transitions. Checkerboard diagnosis should therefore capture the active interpolated world environment as well as texture alpha and alpha-test state.
+
+The PS2 zone cutout path uses alpha reference `0x60` in the native half-range convention, equivalent to `0.375` in conventional normalized alpha. Character display lists can instead use reference `0x30`, also mapping to approximately `0.375` after their state conversion. These original-client values strengthen the requirement to keep alpha-test cutoffs out of dither transition bands, while later-client thresholds must remain platform-qualified.
+
+Sky geometry and weather effects can be unplaced or state-selected resources. Rendering every unreferenced sky mesh at identity remains invalid.
+
 Applies to any FFXI model/zone viewer that uploads DAT textures to a GPU. Symptom: cloud layers, and sometimes skin or other "opaque" surfaces, show a fine per-texel checkerboard of light/dark or solid/see-through.
 
 ## Cause

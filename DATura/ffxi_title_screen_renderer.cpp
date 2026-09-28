@@ -139,9 +139,11 @@ void DrawTextures(const Context& context)
         int buttonY = menuMetrics.y;
         const int buttonWidth = menuMetrics.width;
         const int buttonHeight = menuMetrics.height;
-        const int selectedButton = GameUiConfig_GetTitleMenuButtonIndex(
+        const int hoveredButton = GameUiConfig_GetTitleMenuButtonIndex(
             ui, width, height, D3D9Device::MapClientPointToViewport(
                 context.window, width, height, context.mouseClient));
+        const int selectedButton = hoveredButton >= 0
+            ? hoveredButton : context.selectedButton;
         for (int index = 0; index < 5; ++index)
         {
             FFXITitleUiPrimitives::DrawButton(
@@ -250,9 +252,11 @@ void DrawOverlay(const Context& context)
     int buttonY = menuMetrics.y;
     const int buttonWidth = menuMetrics.width;
     const int buttonHeight = menuMetrics.height;
-    const int selectedButton = GameUiConfig_GetTitleMenuButtonIndex(
+    const int hoveredButton = GameUiConfig_GetTitleMenuButtonIndex(
         ui, width, height, D3D9Device::MapClientPointToViewport(
             context.window, width, height, context.mouseClient));
+    const int selectedButton = hoveredButton >= 0
+        ? hoveredButton : context.selectedButton;
     const char* buttons[] =
     {
         "Select Character", "Create Character", "Delete Character", "Config", "Back"

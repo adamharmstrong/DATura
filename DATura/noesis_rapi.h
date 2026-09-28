@@ -616,7 +616,6 @@ struct noesisModel_t
     {
         noesisMaterial_t *pMaterial;
         noesisTex_t      *pTexture;
-        noesisTex_t      *pNormalTexture;
         int               bufferGroupIndex;
         int               startIndex;
         int               triCount;
@@ -628,7 +627,7 @@ struct noesisModel_t
         bool              hasBounds;
 
         OpaqueBatch()
-            : pMaterial(nullptr), pTexture(nullptr), pNormalTexture(nullptr)
+            : pMaterial(nullptr), pTexture(nullptr)
             , bufferGroupIndex(-1)
             , startIndex(0), triCount(0), minVertexIndex(0), vertexCount(0)
             , animatedWater(false), hasBounds(false)
@@ -664,7 +663,6 @@ struct noesisModel_t
         // rendering never has to rescan material or object-name strings.
         noesisMaterial_t       *pResolvedMaterial;
         noesisTex_t            *pResolvedTexture;
-        noesisTex_t            *pResolvedNormalTexture;
         float                   boundsMin[3];
         float                   boundsMax[3];
         float                   boundsCenter[3];
@@ -677,7 +675,6 @@ struct noesisModel_t
             : pVB(nullptr), pIB(nullptr), vertCount(0), triCount(0)
             , staticBufferGroupIndex(-1), staticVertexOffset(0), staticStartIndex(0)
             , pResolvedMaterial(nullptr), pResolvedTexture(nullptr)
-            , pResolvedNormalTexture(nullptr)
             , hasBounds(false), environmentObject(false), animatedWater(false)
             , softBlend(false)
         {

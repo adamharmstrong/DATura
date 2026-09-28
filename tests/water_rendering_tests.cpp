@@ -269,6 +269,7 @@ void TestSyntheticRendering(IDirect3DDevice9* device, const std::filesystem::pat
     model.submeshes.push_back(Quad("water fixture", "water", -1.4f, 1.4f, -1.4f, 1.4f, 2, 0x80808080));
     auto surface = std::make_shared<ZoneWater::Surface>();
     surface->generator = "test"; surface->resource = "water";
+    surface->blendMode = 0x44;
     surface->uvVelocity[0] = 0.125f; surface->uvVelocity[1] = -0.0625f;
     surface->colorScale[3] = 0.5f;
     model.submeshes.back().water = surface;
@@ -289,6 +290,15 @@ void TestSyntheticRendering(IDirect3DDevice9* device, const std::filesystem::pat
     context.waterRenderingEnabled = true;
     const auto enabled = Draw(device, &model, context, view, projection, output / "synthetic-t0.bmp");
     Check(ChangedPixels(disabled, enabled) > 20000, "enabling water produces visible pixels");
+    context.useAuthoredFog = true;
+    context.authoredFogColor = D3DCOLOR_XRGB(8, 24, 48);
+    context.authoredFogNear = 0.5f;
+    context.authoredFogFar = 1.0f;
+    const auto fogged = Draw(device, &model, context, view, projection,
+        output / "synthetic-fogged.bmp");
+    Check(ChangedPixels(enabled, fogged) > 20000,
+        "authored zone fog reaches the water effect pass");
+    context.useAuthoredFog = false;
     size_t blockerPixels = 0, overwritten = 0;
     for (size_t i = 0; i < disabled.size() && i < enabled.size(); ++i)
         if (((disabled[i] >> 16) & 255) > 160 && ((disabled[i] >> 8) & 255) < 60)
@@ -432,6 +442,8 @@ void TestWaterPolicy()
     Check(curve.Evaluate(std::numeric_limits<float>::quiet_NaN(), 0.4f) == 0.4f,
         "invalid clock returns finite curve fallback");
     ZoneWater::Surface surface;
+    Check(surface.blendMode == 0x48,
+        "water without an explicit blend opcode inherits the PS2 YmElem default");
     surface.colorCurves[3] = curve;
     surface.uvVelocity[0] = 0.125f;
     surface.uvVelocity[1] = -0.12f;
@@ -509,6 +521,11 @@ void TestWaterPolicy()
     gFF11LastKeyframeRecords = {parentCurve, localCurve};
     strcpy_s(generator.redKeyframe, "colr");
     auto copied = FF11Water::BuildSurface(generator);
+    generator.hasColor = true;
+    generator.colorBgra = 0x78787878;
+    auto ps2Color = FF11Water::BuildSurface(generator);
+    Check(Near(ps2Color->colorScale[3], 0.9375f),
+        "generator alpha uses the PS2 effect engine's 0..128 color scale");
     gFF11LastKeyframeRecords.clear();
     Check(Near(copied->colorCurves[0].Evaluate(0.5f), 0.75f),
         "nearest scoped curves remain model-owned after loading another DAT");
@@ -700,6 +717,9 @@ int main(int argc, char** argv)
         const InstalledFixture fountain = {"bastok-markets", "ROM/1/35.DAT", "fnmz", "funm", "t_ba/effe/funs", 4,
             {-276, -24, -42}, {-276, -12.93f, -68}, 0.48f, true, true, false, false, false, false};
         TestInstalledDat(device.device.ptr, argv[1], output, fountain);
+        const InstalledFixture port = {"port-bastok", "ROM/1/36.DAT", "1sea", "1sea", "t_ba/effe/esea", 1,
+            {18, -29, -86}, {18, -18, -130}, -0.0479998f, false, true, true, true, true, false};
+        TestInstalledDat(device.device.ptr, argv[1], output, port);
     }
     else std::cout << "Installed-DAT checks skipped: pass the FFXI installation root to enable them.\n";
     std::cout << (failures ? "Water rendering tests failed: " : "Water rendering tests passed: ") << failures << '\n';

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ffxi_player_customization_state.h"
+#include "win32_theme.h"
 
 #include <windows.h>
 
@@ -34,13 +35,15 @@ struct State
     HWND owner = NULL;
     HWND window = NULL;
     PlayerEquipState* equipment = nullptr;
+    Win32Theme::State* theme = nullptr;
     int* faceVariant = nullptr;
     EventHandler eventHandler = nullptr;
     void* eventContext = nullptr;
 };
 
 void Initialize(State& state, HWND owner, PlayerEquipState& equipment,
-                int& faceVariant, EventHandler eventHandler,
+                int& faceVariant, Win32Theme::State& theme,
+                EventHandler eventHandler,
                 void* eventContext = nullptr);
 HWND Window(const State& state) noexcept;
 void Show(State& state, bool activate = true);

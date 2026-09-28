@@ -48,7 +48,7 @@ void TestDefaultState()
 
     Check(settings.doorInteractionMode == ApplicationSettings::DoorClassic, "doors default to Classic interaction");
     Check(settings.windowMode == ApplicationSettings::Windowed, "default window mode is windowed");
-    Check(settings.resolutionIndex == 0, "default resolution index is zero");
+    Check(settings.resolutionIndex == 6, "default resolution index selects 1280 x 720");
     Check(settings.environmentalAnimationMode == ApplicationSettings::EnvironmentalAnimationSmooth,
         "default environmental animation mode is smooth");
     Check(settings.enableSounds, "sounds are enabled by default");
@@ -56,7 +56,13 @@ void TestDefaultState()
     Check(settings.maxSimultaneousSounds == -1, "simultaneous sounds are unlimited by default");
     Check(settings.enableHardwareMouseCursor, "hardware cursor is enabled by default");
     Check(settings.enableMipMapping, "mip mapping is enabled by default");
-    Check(!settings.enableBumpMapping, "bump mapping is disabled by default");
+    Check(settings.enableBumpMapping, "bump mapping is enabled by default");
+    Check(settings.bumpMappingIntensityPercent == 100,
+        "bump mapping defaults to retail-style intensity");
+    Check(!settings.enableHdTextures && settings.hdTextureFolder.empty(),
+        "HD texture overrides are disabled and unset by default");
+    Check(!settings.enablePbr && settings.pbrTextureFolder.empty(),
+        "PBR material overrides are disabled and unset by default");
     Check(settings.lightingQuality == ApplicationSettings::LightingDynamicShadows,
         "dynamic shadows are the default lighting quality");
     Check(settings.drawDistanceIndex == 4, "default draw-distance index selects 8000");
@@ -65,20 +71,38 @@ void TestDefaultState()
     Check(!settings.showCollisionGeometry, "collision geometry is hidden by default");
 }
 
+void TestBumpMappingIntensity()
+{
+    Check(ApplicationSettings::ClampBumpMappingIntensity(-1) == 0,
+        "negative bump intensity clamps to zero");
+    Check(ApplicationSettings::ClampBumpMappingIntensity(100) == 100,
+        "retail-style bump intensity is retained");
+    Check(ApplicationSettings::ClampBumpMappingIntensity(250) == 250,
+        "enhanced bump intensity is retained");
+    Check(ApplicationSettings::ClampBumpMappingIntensity(301) == 300,
+        "bump intensity clamps to the enhanced maximum");
+}
+
 void TestResolutionOptions()
 {
-    Check(ApplicationSettings::ResolutionOptionCount() == 6, "six resolution options are available");
+    Check(ApplicationSettings::ResolutionOptionCount() == 25, "expanded resolution catalog is available");
     Check(ApplicationSettings::ClampResolutionIndex(-1) == 0, "negative resolution index clamps to zero");
-    Check(ApplicationSettings::ClampResolutionIndex(6) == 0, "large resolution index clamps to zero");
+    Check(ApplicationSettings::ClampResolutionIndex(25) == 0, "large resolution index clamps to zero");
     Check(ApplicationSettings::ClampResolutionIndex(4) == 4, "valid resolution index is retained");
 
     const auto& first = ApplicationSettings::ResolutionOptionAt(0);
-    Check(first.width == 1280 && first.height == 720, "first resolution is 1280 x 720");
-    Check(std::string_view(first.label) == "1280 x 720", "first resolution label is stable");
+    Check(first.width == 640 && first.height == 480, "first resolution is 640 x 480");
+    Check(std::string_view(first.label) == "640 x 480", "first resolution label is stable");
 
-    const auto& last = ApplicationSettings::ResolutionOptionAt(5);
-    Check(last.width == 2560 && last.height == 1440, "last resolution is 2560 x 1440");
-    Check(std::string_view(last.label) == "2560 x 1440", "last resolution label is stable");
+    const auto& defaultResolution = ApplicationSettings::ResolutionOptionAt(6);
+    Check(defaultResolution.width == 1280 && defaultResolution.height == 720,
+        "default resolution remains 1280 x 720");
+    Check(std::string_view(defaultResolution.label) == "1280 x 720",
+        "default resolution label is stable");
+
+    const auto& last = ApplicationSettings::ResolutionOptionAt(24);
+    Check(last.width == 5120 && last.height == 2160, "last resolution is 5120 x 2160");
+    Check(std::string_view(last.label) == "5120 x 2160", "last resolution label is stable");
 
     const auto& clamped = ApplicationSettings::ResolutionOptionAt(99);
     Check(clamped.width == first.width && clamped.height == first.height,
@@ -97,6 +121,20 @@ void TestWindowModes()
         "borderless mode is retained");
     Check(ApplicationSettings::ClampWindowMode(ApplicationSettings::Fullscreen) == ApplicationSettings::Fullscreen,
         "fullscreen mode is retained");
+}
+
+void TestMovementStyles()
+{
+    Check(ApplicationSettings::ClampMovementStyle(-1) == ApplicationSettings::MovementDATura,
+        "invalid movement style defaults to DATura");
+    Check(ApplicationSettings::ClampMovementStyle(99) == ApplicationSettings::MovementDATura,
+        "large movement style defaults to DATura");
+    Check(std::string_view(ApplicationSettings::MovementStyleName(ApplicationSettings::MovementRetail)) ==
+          "Controller (retail)", "retail movement style has a clear label");
+    Check(std::string_view(ApplicationSettings::MovementStyleName(ApplicationSettings::MovementDATura)) ==
+          "WoW style", "keyboard and mouse movement style has a clear label");
+    Check(std::string_view(ApplicationSettings::MovementStyleName(ApplicationSettings::MovementClickToMove)) ==
+          "Click to Move", "click-to-move style has a clear label");
 }
 
 void TestSoundOptions()
@@ -254,6 +292,51 @@ void TestPlayerControllerMovement()
     Check(!freeMove.reachedStableFloor && !freeMove.respawned,
         "free movement reports no collision outcome");
 
+    PlayerController::State retailPlayer;
+    PlayerController::InputSnapshot retailInput;
+    retailInput.retail = true;
+    retailInput.cameraYaw = 1.57079632679f;
+    retailInput.forward = 1.0f;
+    PlayerController::UpdateMovement(retailPlayer, retailInput, 0.1f, {});
+    Check(NearlyEqual(retailPlayer.position[0], -0.4f) &&
+          NearlyEqual(retailPlayer.position[2], 0.0f) &&
+          NearlyEqual(retailPlayer.position[1], 0.0f) &&
+          retailPlayer.yaw > 0.0f && retailPlayer.yaw < 1.57079632679f,
+        "retail movement follows the current camera orientation");
+
+    retailPlayer = {};
+    retailInput = {};
+    retailInput.retail = true;
+    retailInput.cameraYaw = 0.0f;
+    retailInput.forward = 0.0f;
+    retailInput.strafe = 1.0f;
+    PlayerController::UpdateMovement(retailPlayer, retailInput, 0.1f, {});
+    Check(retailPlayer.position[0] > 0.0f &&
+          NearlyEqual(retailPlayer.position[2], 0.0f) &&
+          retailPlayer.yaw < 0.0f,
+        "retail movement faces the direction selected by the player");
+
+    retailPlayer = {};
+    retailInput = {};
+    retailInput.retail = true;
+    retailInput.cameraYaw = 0.0f;
+    retailInput.forward = 1.0f;
+    retailInput.strafe = 1.0f;
+    PlayerController::UpdateMovement(retailPlayer, retailInput, 0.1f, {});
+    Check(retailPlayer.position[0] > 0.0f &&
+          retailPlayer.position[2] < 0.0f &&
+          retailPlayer.yaw < 0.0f,
+        "retail diagonal input moves and faces along the camera-relative vector");
+
+    PlayerController::State clickPlayer;
+    PlayerController::InputSnapshot clickInput;
+    clickInput.clickToMove = true;
+    clickInput.clickTarget[2] = -2.0f;
+    PlayerController::UpdateMovement(clickPlayer, clickInput, 0.1f, {});
+    Check(NearlyEqual(clickPlayer.position[2], -0.4f) &&
+          NearlyEqual(clickPlayer.yaw, 0.0f),
+        "click-to-move advances toward its destination and faces it");
+
     for (int direction = 0; direction < 4; ++direction)
     {
         PlayerController::State moving;
@@ -301,6 +384,13 @@ void TestPlayerControllerMovement()
     Check(ZoneCollision::BuildTriangle(floorPoints, false, floor),
         "movement test floor produces valid collision geometry");
     collision.AddTriangle(floor, PlayerController::kCollisionRadius);
+    const float rayOrigin[3] = { 0.0f, -5.0f, 0.0f };
+    const float rayDirection[3] = { 0.0f, 1.0f, 0.0f };
+    float rayPoint[3] = {};
+    float rayNormal[3] = {};
+    Check(ZoneCollision::Raycast(collision, rayOrigin, rayDirection, 20.0f,
+        rayPoint, rayNormal) && NearlyEqual(rayPoint[1], 0.0f),
+        "click-to-move raycast finds a walkable collision surface");
 
     PlayerController::SetPose(player, 0.0f, 0.0f, 0.0f, 0.0f, true);
     PlayerController::SetRespawnPoint(player);
@@ -549,6 +639,22 @@ void TestInputController()
         "G emits the unstick action");
     Check(InputController::KeyDown(input, 'V') == InputController::Action::CycleWeather,
         "V emits the weather-cycle action");
+    Check(InputController::KeyDown(input, 'P') ==
+            InputController::Action::ToggleBumpMapping,
+        "P emits the bump-mapping toggle action");
+    Check(InputController::KeyDown(input, 'P') == InputController::Action::None,
+        "held P does not repeatedly toggle bump mapping");
+    InputController::KeyUp(input, 'P');
+    Check(InputController::KeyDown(input, 'P') ==
+            InputController::Action::ToggleBumpMapping,
+        "P toggles bump mapping again after release");
+    InputController::KeyUp(input, 'P');
+    Check(InputController::KeyDown(input, VK_OEM_4) ==
+            InputController::Action::DecreaseBumpMappingIntensity,
+        "left bracket emits the decrease-bump-intensity action");
+    Check(InputController::KeyDown(input, VK_OEM_6) ==
+            InputController::Action::IncreaseBumpMappingIntensity,
+        "right bracket emits the increase-bump-intensity action");
     Check(InputController::KeyDown(input, 'T') ==
             InputController::Action::ToggleCameraDebugOverlay,
         "T emits the camera-debug toggle action");
@@ -559,6 +665,16 @@ void TestInputController()
             InputController::Action::ToggleCameraDebugOverlay,
         "T toggles camera debug telemetry again after release");
     InputController::KeyUp(input, 'T');
+    Check(InputController::KeyDown(input, 'M') ==
+            InputController::Action::ToggleZoneMap,
+        "M emits the zone-map toggle action");
+    Check(InputController::KeyDown(input, 'M') == InputController::Action::None,
+        "held M does not repeatedly toggle the zone map");
+    InputController::KeyUp(input, 'M');
+    Check(InputController::KeyDown(input, 'M') ==
+            InputController::Action::ToggleZoneMap,
+        "M toggles the zone map again after release");
+    InputController::KeyUp(input, 'M');
     Check(InputController::KeyDown(input, 0x1B) == InputController::Action::None,
         "Escape does not emit a program exit action");
     Check(InputController::KeyDown(input, 0x08) == InputController::Action::Back,
@@ -607,21 +723,21 @@ void TestInputController()
 void TestInteractionController()
 {
     InteractionController::State interaction;
-    Check(InteractionController::IsEditMode(interaction) &&
-          !InteractionController::IsGameMode(interaction),
-        "interaction controller starts in edit mode");
+    Check(InteractionController::IsGameMode(interaction) &&
+          !InteractionController::IsEditMode(interaction),
+        "interaction controller starts in game mode");
     Check(interaction.gameMusicId == 0,
         "interaction controller starts without selected game music");
 
     InteractionController::ModeTransition transition = InteractionController::SetMode(
-        interaction, InteractionController::Mode::Game);
-    Check(transition.changed && transition.playerCameraActive &&
-          InteractionController::IsGameMode(interaction),
-        "entering game mode reports a changed transition and active player camera");
+        interaction, InteractionController::Mode::Edit);
+    Check(transition.changed && !transition.playerCameraActive &&
+          !InteractionController::IsGameMode(interaction),
+        "entering edit mode reports a changed transition and inactive player camera");
     transition = InteractionController::SetMode(
         interaction, InteractionController::Mode::Game);
-    Check(!transition.changed && transition.playerCameraActive,
-        "reapplying game mode retains the required camera state");
+    Check(transition.changed && transition.playerCameraActive,
+        "entering game mode reports an active player camera");
     transition = InteractionController::ToggleMode(interaction);
     Check(transition.changed && !transition.playerCameraActive &&
           InteractionController::IsEditMode(interaction),
@@ -969,6 +1085,12 @@ void TestOrbitCameraInputOperations()
     OrbitCamera::Rotate(camera, 0, 1000);
     Check(NearlyEqual(camera.pitch, -1.55f), "orbit rotation clamps minimum pitch");
 
+    camera.yaw = 0.0f;
+    camera.pitch = -0.25f;
+    OrbitCamera::RotateByTrackpadScroll(camera, 1.0f, -1.0f);
+    Check(NearlyEqual(camera.yaw, -0.18f) && NearlyEqual(camera.pitch, -0.07f),
+        "trackpad scroll rotates the camera without a held mouse button");
+
     camera.distance = 5.0f;
     OrbitCamera::Zoom(camera, 1.0f);
     Check(NearlyEqual(camera.distance, 4.4f), "orbit zoom applies one wheel step");
@@ -985,6 +1107,23 @@ void TestOrbitCameraInputOperations()
           !NearlyEqual(camera.target[1], oldTargetY) ||
           !NearlyEqual(camera.target[2], oldTargetZ),
         "orbit panning changes the camera target");
+
+    camera.target[0] = camera.target[1] = camera.target[2] = 0.0f;
+    const float followTarget[3] = { 10.0f, -4.0f, 6.0f };
+    OrbitCamera::FollowTarget(camera, followTarget, 1.0f / 60.0f);
+    Check(camera.target[0] > 0.0f && camera.target[0] < followTarget[0] &&
+          camera.target[1] < 0.0f && camera.target[1] > followTarget[1] &&
+          camera.target[2] > 0.0f && camera.target[2] < followTarget[2],
+        "camera follow eases toward the player target");
+    const float beforeInvalidDt = camera.target[0];
+    OrbitCamera::FollowTarget(camera, followTarget, 0.0f);
+    Check(NearlyEqual(camera.target[0], beforeInvalidDt),
+        "camera follow ignores non-positive frame times");
+    OrbitCamera::FollowTarget(camera, followTarget, 10.0f);
+    Check(camera.target[0] > beforeInvalidDt && camera.target[0] < followTarget[0] &&
+          camera.target[1] < 0.0f && camera.target[1] > followTarget[1] &&
+          camera.target[2] > 0.0f && camera.target[2] < followTarget[2],
+        "camera follow converges without overshooting after a long frame");
 }
 }
 
@@ -1065,8 +1204,10 @@ int main()
     }
     TestCollisionRegressions();
     TestDefaultState();
+    TestBumpMappingIntensity();
     TestResolutionOptions();
     TestWindowModes();
+    TestMovementStyles();
     TestSoundOptions();
     TestDrawDistanceOptions();
     TestQualityModes();

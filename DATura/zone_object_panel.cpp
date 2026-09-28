@@ -14,6 +14,7 @@
 #include "zone_object_tree_builder.h"
 #include "zone_object_tree_view.h"
 #include "win32_panel_controls.h"
+#include "win32_theme.h"
 #include "win32_tool_window.h"
 
 #include <commctrl.h>
@@ -60,31 +61,31 @@ void CreateControls(State& state, const HWND window)
         0, 0, 8, 500, 440, 18);
 
     state.placedShowAllButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Show Placed", BS_PUSHBUTTON,
+        window, "BUTTON", "Show Placed", BS_OWNERDRAW,
         IDC_ZONE_PLACED_SHOW_ALL, 8, 626, 90, 24);
     state.placedHideAllButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Hide Placed", BS_PUSHBUTTON,
+        window, "BUTTON", "Hide Placed", BS_OWNERDRAW,
         IDC_ZONE_PLACED_HIDE_ALL, 104, 626, 90, 24);
     state.unreferencedShowAllButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Show Raw", BS_PUSHBUTTON,
+        window, "BUTTON", "Show Raw", BS_OWNERDRAW,
         IDC_ZONE_UNREF_SHOW_ALL, 608, 626, 90, 24);
     state.unreferencedHideAllButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Hide Raw", BS_PUSHBUTTON,
+        window, "BUTTON", "Hide Raw", BS_OWNERDRAW,
         IDC_ZONE_UNREF_HIDE_ALL, 704, 626, 90, 24);
     state.showSelectedButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Show Only Selected", BS_PUSHBUTTON,
+        window, "BUTTON", "Show Only Selected", BS_OWNERDRAW,
         IDC_ZONE_SHOW_SELECTED, 8, 466, 160, 26);
     state.hideSelectedButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Hide Selected", BS_PUSHBUTTON,
+        window, "BUTTON", "Hide Selected", BS_OWNERDRAW,
         IDC_ZONE_HIDE_SELECTED, 174, 466, 110, 26);
     state.highlightSelectedButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Highlight Selected", BS_PUSHBUTTON,
+        window, "BUTTON", "Highlight Selected", BS_OWNERDRAW,
         IDC_ZONE_HIGHLIGHT_SELECTED, 290, 466, 128, 26);
     state.centerSelectedButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Center Camera", BS_PUSHBUTTON,
+        window, "BUTTON", "Center Camera", BS_OWNERDRAW,
         IDC_ZONE_CENTER_SELECTED, 424, 466, 112, 26);
     state.combineTreeButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Combine Lists", BS_PUSHBUTTON,
+        window, "BUTTON", "Combine Lists", BS_OWNERDRAW,
         IDC_ZONE_COMBINE_TREE_TOGGLE, 1200, 34, 120, 24);
 
     state.placedObjectList = Win32PanelControls::AddPanelControl(
@@ -143,7 +144,7 @@ void CreateControls(State& state, const HWND window)
             WS_EX_CLIENTEDGE, false);
     }
     state.unreferencedApplyButton = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Apply Transform", BS_PUSHBUTTON,
+        window, "BUTTON", "Apply Transform", BS_OWNERDRAW,
         IDC_ZONE_UNREF_APPLY, 510, 516, 130, 26, 0, false);
 
     const char* const toolLabels[kToolButtonCount] =
@@ -156,15 +157,15 @@ void CreateControls(State& state, const HWND window)
     for (int index = 0; index < kToolButtonCount; ++index)
     {
         state.toolButtons[index] = Win32PanelControls::AddPanelControl(
-            window, "BUTTON", toolLabels[index], BS_PUSHBUTTON, toolIds[index],
+            window, "BUTTON", toolLabels[index], BS_OWNERDRAW, toolIds[index],
             8, 670 + index * 28, 142, 26);
     }
 
     state.statusLabel = Win32PanelControls::AddPanelControl(
         window, "STATIC", "", 0, IDC_ZONE_STATUS_LABEL, 168, 830, 650, 20);
     state.collisionVisibleCheck = Win32PanelControls::AddPanelControl(
-        window, "BUTTON", "Show collision mesh", BS_AUTOCHECKBOX,
-        IDC_ZONE_COLLISION_VISIBLE, 10, 540, 420, 24, 0, false);
+        window, "BUTTON", "Show collision mesh", BS_OWNERDRAW,
+        IDC_ZONE_COLLISION_VISIBLE, 10, 540, 420, 28, 0, false);
     SendMessageA(state.collisionVisibleCheck, BM_SETCHECK,
         state.creationCollisionVisible ? BST_CHECKED : BST_UNCHECKED, 0);
 }
@@ -311,12 +312,19 @@ bool HandleNotification(State& state, const LPARAM lParam)
         Emit(state, event);
         handled = true;
     }
-    if ((listView->uNewState & LVIS_SELECTED) != 0)
+    const bool wasSelected = (listView->uOldState & LVIS_SELECTED) != 0;
+    const bool isSelected = (listView->uNewState & LVIS_SELECTED) != 0;
+    if (wasSelected != isSelected)
     {
-        ZoneObjectListSelection::ClearOtherMapObjectListSelection(
-            list, state.placedObjectList, state.unreferencedObjectList);
+        if (isSelected && !state.preservingMapObjectSelection)
+        {
+            ZoneObjectListSelection::ClearOtherMapObjectListSelection(
+                list, state.placedObjectList, state.unreferencedObjectList);
+        }
         Event event = {};
         event.type = EventType::MapObjectSelectionChanged;
+        event.mapObjectIndex = ZoneObjectListSelection::GetMapObjectIndex(
+            list, listView->iItem);
         Emit(state, event);
         handled = true;
     }
@@ -341,9 +349,10 @@ LRESULT CALLBACK WindowProcedure(const HWND window, const UINT message,
     switch (message)
     {
     case WM_CREATE:
-        if (!state)
+        if (!state || !state->theme)
             return -1;
         CreateControls(*state, window);
+        Win32Theme::ApplyWindowTheme(window, *state->theme);
         SetEditingEnabled(*state, state->creationEditingEnabled);
         return 0;
 
@@ -394,69 +403,138 @@ LRESULT CALLBACK WindowProcedure(const HWND window, const UINT message,
         break;
 
     case WM_CTLCOLORSTATIC:
-        if (state)
+        if (state && state->theme)
         {
-            ZoneObjectPanelStyle::EnsureBrushes(state->brushes);
             HDC hdc = reinterpret_cast<HDC>(wParam);
-            SetTextColor(hdc, ZoneObjectPanelStyle::TextColor());
-            SetBkColor(hdc, ZoneObjectPanelStyle::PanelColor());
-            return reinterpret_cast<LRESULT>(state->brushes.panel);
+            SetTextColor(hdc, Win32Theme::TextColor(state->theme->dark));
+            SetBkMode(hdc, TRANSPARENT);
+            return reinterpret_cast<LRESULT>(state->theme->resources.controlBrush);
         }
         break;
 
     case WM_CTLCOLOREDIT:
-        if (state)
+        if (state && state->theme)
         {
-            ZoneObjectPanelStyle::EnsureBrushes(state->brushes);
             HDC hdc = reinterpret_cast<HDC>(wParam);
-            SetTextColor(hdc, ZoneObjectPanelStyle::TextColor());
-            SetBkColor(hdc, ZoneObjectPanelStyle::EditColor());
-            return reinterpret_cast<LRESULT>(state->brushes.edit);
+            SetTextColor(hdc, Win32Theme::TextColor(state->theme->dark));
+            SetBkColor(hdc, Win32Theme::EditColor(state->theme->dark));
+            return reinterpret_cast<LRESULT>(state->theme->resources.editBrush);
         }
         break;
 
     case WM_CTLCOLORLISTBOX:
     case WM_CTLCOLORBTN:
-        if (state)
+        if (state && state->theme)
         {
-            ZoneObjectPanelStyle::EnsureBrushes(state->brushes);
             HDC hdc = reinterpret_cast<HDC>(wParam);
-            SetTextColor(hdc, ZoneObjectPanelStyle::TextColor());
-            SetBkColor(hdc, ZoneObjectPanelStyle::ControlColor());
-            return reinterpret_cast<LRESULT>(state->brushes.control);
+            SetTextColor(hdc, Win32Theme::TextColor(state->theme->dark));
+            SetBkColor(hdc, Win32Theme::ControlColor(state->theme->dark));
+            return reinterpret_cast<LRESULT>(state->theme->resources.controlBrush);
+        }
+        break;
+
+    case WM_DRAWITEM:
+        if (state && state->theme)
+        {
+            const DRAWITEMSTRUCT* draw = reinterpret_cast<const DRAWITEMSTRUCT*>(lParam);
+            if (draw && draw->CtlID == IDC_ZONE_COLLISION_VISIBLE)
+            {
+                FillRect(draw->hDC, &draw->rcItem, state->theme->resources.controlBrush);
+                const bool checked = SendMessageA(draw->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED;
+                const bool disabled = (draw->itemState & ODS_DISABLED) != 0;
+                RECT box = {draw->rcItem.left + 3, draw->rcItem.top + 5,
+                    draw->rcItem.left + 19, draw->rcItem.top + 21};
+                const HBRUSH boxBrush = CreateSolidBrush(checked ? RGB(62, 151, 245) :
+                    Win32Theme::EditColor(state->theme->dark));
+                const HPEN boxPen = CreatePen(PS_SOLID, 1, checked ? RGB(104, 180, 255) :
+                    (state->theme->dark ? RGB(108, 118, 128) : RGB(135, 145, 155)));
+                const HGDIOBJ oldBrush = SelectObject(draw->hDC, boxBrush);
+                const HGDIOBJ oldPen = SelectObject(draw->hDC, boxPen);
+                Rectangle(draw->hDC, box.left, box.top, box.right, box.bottom);
+                if (checked)
+                {
+                    const HPEN checkPen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
+                    SelectObject(draw->hDC, checkPen);
+                    MoveToEx(draw->hDC, box.left + 3, box.top + 8, nullptr);
+                    LineTo(draw->hDC, box.left + 7, box.bottom - 3);
+                    LineTo(draw->hDC, box.right - 3, box.top + 3);
+                    SelectObject(draw->hDC, boxPen);
+                    DeleteObject(checkPen);
+                }
+                SelectObject(draw->hDC, oldPen);
+                SelectObject(draw->hDC, oldBrush);
+                DeleteObject(boxPen);
+                DeleteObject(boxBrush);
+
+                char text[160] = {};
+                GetWindowTextA(draw->hwndItem, text, sizeof(text));
+                RECT textRect = draw->rcItem;
+                textRect.left = box.right + 8;
+                const HFONT oldFont = reinterpret_cast<HFONT>(SelectObject(
+                    draw->hDC, state->theme->resources.font));
+                SetBkMode(draw->hDC, TRANSPARENT);
+                SetTextColor(draw->hDC, disabled ?
+                    Win32Theme::MutedTextColor(state->theme->dark) :
+                    Win32Theme::TextColor(state->theme->dark));
+                DrawTextA(draw->hDC, text, -1, &textRect,
+                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                SelectObject(draw->hDC, oldFont);
+                return TRUE;
+            }
+            Win32Theme::DrawButton(draw, state->theme->dark,
+                state->theme->resources.font, false);
+            return TRUE;
         }
         break;
 
     case WM_ERASEBKGND:
-        if (state)
+        if (state && state->theme)
         {
-            ZoneObjectPanelStyle::EnsureBrushes(state->brushes);
             RECT client = {};
             GetClientRect(window, &client);
             HDC hdc = reinterpret_cast<HDC>(wParam);
-            FillRect(hdc, &client, state->brushes.panel);
-            if (!state->combinedObjectTree)
-            {
-                int placedX = 0;
-                int placedWidth = 0;
-                int rawX = 0;
-                int rawWidth = 0;
-                int collisionX = 0;
-                int collisionWidth = 0;
-                ZoneObjectPanelLayout::ComputeZonePaneLayout(
-                    client.right - client.left, state->paneWidths,
-                    &placedX, &placedWidth, &rawX, &rawWidth,
-                    &collisionX, &collisionWidth);
-                HBRUSH splitterBrush = CreateSolidBrush(RGB(88, 94, 98));
-                RECT first = { placedX + placedWidth + 4, 56,
-                               placedX + placedWidth + 6, client.bottom - 230 };
-                RECT second = { rawX + rawWidth + 4, 56,
-                                rawX + rawWidth + 6, client.bottom - 230 };
-                FillRect(hdc, &first, splitterBrush);
-                FillRect(hdc, &second, splitterBrush);
-                DeleteObject(splitterBrush);
-            }
+            FillRect(hdc, &client, state->theme->resources.windowBrush);
             return 1;
+        }
+        break;
+
+    case WM_PAINT:
+        if (state && state->theme)
+        {
+            PAINTSTRUCT paint = {};
+            HDC hdc = BeginPaint(window, &paint);
+            RECT client = {};
+            GetClientRect(window, &client);
+            FillRect(hdc, &client, state->theme->resources.windowBrush);
+            const int listBottom = client.bottom - 270;
+            int placedX = 0, placedWidth = 0, rawX = 0, rawWidth = 0;
+            int collisionX = 0, collisionWidth = 0;
+            ZoneObjectPanelLayout::ComputeZonePaneLayout(client.right, state->paneWidths,
+                &placedX, &placedWidth, &rawX, &rawWidth, &collisionX, &collisionWidth);
+            if (state->combinedObjectTree)
+            {
+                const RECT panel = {8, 30, client.right - 8, listBottom + 36};
+                Win32Theme::DrawPanel(hdc, panel, "DAT File Contents", state->theme->dark,
+                    state->theme->resources.sectionFont);
+            }
+            else
+            {
+                const RECT panels[] = {
+                    {placedX, 30, placedX + placedWidth, listBottom + 36},
+                    {rawX, 30, rawX + rawWidth, listBottom + 36},
+                    {collisionX, 30, collisionX + collisionWidth, listBottom + 36}
+                };
+                const char* titles[] = {"Placed Geometry",
+                    "Unreferenced Geometry / Draw Batches", "Collision Meshes"};
+                for (int i = 0; i < 3; ++i)
+                    Win32Theme::DrawPanel(hdc, panels[i], titles[i], state->theme->dark,
+                        state->theme->resources.sectionFont);
+            }
+            const RECT tools = {8, listBottom + 42, client.right - 8, client.bottom - 30};
+            Win32Theme::DrawPanel(hdc, tools, "Object Tools / Transform", state->theme->dark,
+                state->theme->resources.sectionFont);
+            EndPaint(window, &paint);
+            return 0;
         }
         break;
 
@@ -479,7 +557,16 @@ LRESULT CALLBACK WindowProcedure(const HWND window, const UINT message,
             case IDC_ZONE_HIGHLIGHT_SELECTED: EmitCommand(*state, Command::ToggleHighlight); return 0;
             case IDC_ZONE_CENTER_SELECTED: EmitCommand(*state, Command::CenterSelected); return 0;
             case IDC_ZONE_UNREF_APPLY: EmitCommand(*state, Command::ApplyTransform); return 0;
-            case IDC_ZONE_COLLISION_VISIBLE: EmitCommand(*state, Command::SetCollisionVisibility); return 0;
+            case IDC_ZONE_COLLISION_VISIBLE:
+            {
+                const bool checked = SendMessageA(state->collisionVisibleCheck,
+                    BM_GETCHECK, 0, 0) == BST_CHECKED;
+                SendMessageA(state->collisionVisibleCheck, BM_SETCHECK,
+                    checked ? BST_UNCHECKED : BST_CHECKED, 0);
+                InvalidateRect(state->collisionVisibleCheck, nullptr, TRUE);
+                EmitCommand(*state, Command::SetCollisionVisibility);
+                return 0;
+            }
             }
         }
         break;
@@ -510,10 +597,11 @@ LRESULT CALLBACK WindowProcedure(const HWND window, const UINT message,
 }
 }
 
-void Initialize(State& state, const HWND owner,
+void Initialize(State& state, const HWND owner, Win32Theme::State& theme,
                 const EventHandler eventHandler, void* const eventContext)
 {
     state.owner = owner;
+    state.theme = &theme;
     state.eventHandler = eventHandler;
     state.eventContext = eventContext;
 }
@@ -541,6 +629,30 @@ int SelectedMapObjectIndex(const State& state) noexcept
         state.treeSelectedMapObjectIndex);
 }
 
+std::vector<int> SelectedMapObjectIndices(const State& state)
+{
+    return ZoneObjectListSelection::GetSelectedMapObjectIndices(
+        state.placedObjectList, state.unreferencedObjectList);
+}
+
+void SelectMapObject(State& state, const int mapObjectIndex,
+                     const bool additive, const bool selectionWillRefresh)
+{
+    state.treeSelectedMapObjectIndex = -1;
+    state.pendingMapObjectSelection = mapObjectIndex;
+    state.preservingMapObjectSelection = additive;
+    const bool selectedList = ZoneObjectListSelection::SelectMapObjectIndex(
+        state.placedObjectList, state.unreferencedObjectList, mapObjectIndex, additive);
+    state.preservingMapObjectSelection = false;
+    const bool selectedTree = ZoneObjectTreeView::SelectMapObjectIndex(
+        state.dataTree, mapObjectIndex) ||
+        ZoneObjectTreeView::SelectMapObjectIndex(state.rawDataTree, mapObjectIndex);
+    if (!selectionWillRefresh && (selectedList || selectedTree))
+    {
+        state.pendingMapObjectSelection = -1;
+    }
+}
+
 void SetTreeSelectedMapObjectIndex(
     State& state, const int mapObjectIndex) noexcept
 {
@@ -565,12 +677,11 @@ void Show(State& state, const char* const zoneLabel,
     state.creationZoneLabel = zoneLabel ? zoneLabel : "";
     state.creationCollisionVisible = collisionVisible;
     state.creationEditingEnabled = editingEnabled;
-    ZoneObjectPanelStyle::EnsureBrushes(state.brushes);
     Win32ToolWindow::Spec spec =
     {
         WindowProcedure, kWindowClassName, kWindowTitle, kWindowWidth, kWindowHeight,
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME,
-        state.brushes.panel
+        state.theme ? state.theme->resources.windowBrush : state.brushes.panel
     };
     spec.createParameter = &state;
     state.window = Win32ToolWindow::Create(state.owner, spec);
@@ -789,10 +900,20 @@ void Refresh(State& state, const RefreshData& data)
             data.modelTextureCount, data.modelMaterialCount, data.modelBoneCount);
         SetWindowTextA(state.statusLabel, statusText);
     }
-    const int selectedMapObjectIndex = ZoneObjectListSelection::GetSelectedMapObjectIndex(
-        state.placedObjectList, state.unreferencedObjectList,
-        state.treeSelectedMapObjectIndex);
-    PopulateTransformFields(state, selectedMapObjectIndex, *data.overrides);
+    if (state.pendingMapObjectSelection >= 0)
+    {
+        ZoneObjectListSelection::SelectMapObjectIndex(
+            state.placedObjectList, state.unreferencedObjectList,
+            state.pendingMapObjectSelection);
+        if (!ZoneObjectTreeView::SelectMapObjectIndex(
+                state.dataTree, state.pendingMapObjectSelection))
+        {
+            ZoneObjectTreeView::SelectMapObjectIndex(
+                state.rawDataTree, state.pendingMapObjectSelection);
+        }
+        state.pendingMapObjectSelection = -1;
+    }
+    PopulateTransformFields(state, SelectedMapObjectIndex(state), *data.overrides);
     for (const HWND control : redrawControls)
     {
         SendMessageA(control, WM_SETREDRAW, TRUE, 0);

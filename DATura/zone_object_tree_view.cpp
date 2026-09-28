@@ -68,6 +68,46 @@ void ZoneTreeDeleteChildren(const HWND tree, const HTREEITEM item)
     }
 }
 
+namespace
+{
+HTREEITEM FindMapObjectItem(const HWND tree, HTREEITEM item,
+                            const int mapObjectIndex)
+{
+    while (item)
+    {
+        TVITEMA treeItem = {};
+        treeItem.mask = TVIF_PARAM;
+        treeItem.hItem = item;
+        if (SendMessageA(tree, TVM_GETITEMA, 0, (LPARAM)&treeItem) &&
+            GetZoneTreeParamType(treeItem.lParam) == kZoneTreeNode_MapObject &&
+            GetZoneTreeParamIndex(treeItem.lParam) == mapObjectIndex)
+        {
+            return item;
+        }
+        if (const HTREEITEM found = FindMapObjectItem(
+                tree, TreeView_GetChild(tree, item), mapObjectIndex))
+        {
+            return found;
+        }
+        item = TreeView_GetNextSibling(tree, item);
+    }
+    return NULL;
+}
+}
+
+bool SelectMapObjectIndex(const HWND tree, const int mapObjectIndex)
+{
+    if (!tree || mapObjectIndex < 0)
+        return false;
+    const HTREEITEM item = FindMapObjectItem(
+        tree, TreeView_GetRoot(tree), mapObjectIndex);
+    if (!item)
+        return false;
+    TreeView_SelectItem(tree, item);
+    TreeView_EnsureVisible(tree, item);
+    return true;
+}
+
 void AddZoneTreeField(const HWND tree, const HTREEITEM parent, const char* name, const char* value)
 {
     char text[512] = {};

@@ -215,6 +215,15 @@ struct ff11GeneratorRecord_t
     float particleFadeNear;
     float particleFadeFar;
     bool hasAnimatedScale; // unsupported moving shoreline geometry; do not flatten into the water surface pass
+    bool hasPointLightSetup;
+    float pointLightRange;
+    float pointLightPower;
+    float pointLightRangeRatio;
+    float pointLightPowerRatio;
+    char pointLightPowerKeyframe[8];
+    char pointLightRangeKeyframe[8];
+    char pointLightPowerRatioKeyframe[8];
+    char pointLightRangeRatioKeyframe[8];
 };
 
 extern std::vector<ff11GeneratorRecord_t> gFF11LastGeneratorRecords;

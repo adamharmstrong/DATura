@@ -147,6 +147,8 @@
     <ClCompile Include="d3d9_device.cpp" />
     <ClCompile Include="renderer_backend.cpp" />
       <ClCompile Include="d3d_math.cpp" />
+      <ClCompile Include="d3d_bump_mapping.cpp" />
+      <ClCompile Include="custom_texture_assets.cpp" />
     <ClCompile Include="zone_door_interaction.cpp" />
       <ClCompile Include="d3d_model_buffers.cpp" />
       <ClCompile Include="d3d_model_render_state.cpp" />
@@ -245,6 +247,7 @@
     <ClCompile Include="zone_object_list_columns.cpp" />
     <ClCompile Include="zone_object_list_rows.cpp" />
     <ClCompile Include="zone_object_list_selection.cpp" />
+    <ClCompile Include="zone_object_picker.cpp" />
     <ClCompile Include="zone_object_visibility.cpp" />
     <ClCompile Include="zone_object_tree_view.cpp" />
     <ClCompile Include="zone_object_tree_population.cpp" />
@@ -259,6 +262,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ffxi_bitmap_font.h" />
+    <ClInclude Include="ffxi_chat_assets.h" />
     <ClInclude Include="ffxi_nameplate_font.h" />
     <ClInclude Include="ffxi_player_icons.h" />
     <ClInclude Include="application_menu.h" />
@@ -272,9 +276,12 @@
     <ClInclude Include="d3d9_device.h" />
     <ClInclude Include="renderer_backend.h" />
       <ClInclude Include="d3d_math.h" />
+      <ClInclude Include="d3d_bump_mapping.h" />
+      <ClInclude Include="custom_texture_assets.h" />
     <ClInclude Include="zone_door_interaction.h" />
     <ClInclude Include="zone_transition.h" />
-    <ClInclude Include="zone_elevator.h" />
+      <ClInclude Include="zone_elevator.h" />
+      <ClInclude Include="zone_elevator_audio.h" />
       <ClInclude Include="d3d_model_buffers.h" />
       <ClInclude Include="d3d_model_render_state.h" />
       <ClInclude Include="model_renderer.h" />
@@ -376,6 +383,7 @@
     <ClInclude Include="zone_diagnostics_dialog.h" />
     <ClInclude Include="dat_replacement_dialog.h" />
     <ClInclude Include="ffxi_dat_resolver.h" />
+    <ClInclude Include="character_save_data.h" />
     <ClInclude Include="zone_model_render_metadata.h" />
     <ClInclude Include="zone_environment_identity.h" />
     <ClInclude Include="zone_environment_state.h" />
@@ -393,6 +401,7 @@
     <ClInclude Include="zone_object_list_columns.h" />
     <ClInclude Include="zone_object_list_rows.h" />
     <ClInclude Include="zone_object_list_selection.h" />
+    <ClInclude Include="zone_object_picker.h" />
     <ClInclude Include="zone_object_visibility.h" />
     <ClInclude Include="zone_object_tree_view.h" />
     <ClInclude Include="zone_object_tree_population.h" />

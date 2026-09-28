@@ -172,7 +172,6 @@ HMENU Build(State& state, const ApplicationSettings::State& settings, const bool
         "Vegetation Animation: Smooth");
 
     AppendMenuA(viewMenu, MF_STRING, ViewToggleGameMode, "Toggle Edit/Game Mode\tF");
-    AppendMenuA(viewMenu, MF_STRING, ViewZoneObjects, "Zone Objects...");
     AppendMenuA(viewMenu, MF_STRING, ViewCycleWeather, "Cycle Zone Weather\tV");
 
     AppendMenuA(resourceMenu, MF_STRING, ResourceCurrentZone, "Current Zone Dialog / NPCs...");
@@ -323,6 +322,7 @@ HMENU Build(State& state, const ApplicationSettings::State& settings, const bool
     AppendMenuA(assetsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(monsterMenu), "Monsters");
     AppendMenuA(assetsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(companionMenu), "Companions");
     AppendMenuA(toolsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(resourceMenu), "Resources");
+    AppendMenuA(toolsMenu, MF_STRING, ViewZoneObjects, "Zone Objects...");
     AppendMenuA(toolsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(imageMenu), "Images / Textures");
     AppendMenuA(toolsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(audioMenu), "Audio");
     AppendMenuA(menuBar, MF_POPUP, reinterpret_cast<UINT_PTR>(fileMenu), "File");

@@ -10,12 +10,15 @@ namespace ZoneElevator
 {
 inline constexpr int kMetalworksZone = 237;
 inline constexpr float kLegPeriod = 18.25f;
+// Metalworks mv01/mv10 schedules author 480 frames at 60 Hz.
 inline constexpr float kTravelTime = 8.0f;
-inline constexpr float kBottomY = -13.10f;
-inline constexpr float kTopY = 2.00f;
+// RID @6l0/@6l1: landing = rect.y + signed height / 256.
+inline constexpr float kBottomY = 1.9625f;       // -13.1 + 3856 / 256
+inline constexpr float kTopY = -9.9828125f;      // -13.1 + 798 / 256
 inline constexpr float kPlatformX = -56.0f;
-inline constexpr float kPlatformHalfWidth = 3.8f;
-inline constexpr float kPlatformHalfDepth = 3.8f;
+// RID hit checks normalize against sx/sz and admit coordinates in (-0.5, 0.5).
+inline constexpr float kPlatformHalfWidth = 2.55f;
+inline constexpr float kPlatformHalfDepth = 2.55f;
 inline constexpr float kRideHeightTolerance = 1.5f;
 
 struct Platform
@@ -32,8 +35,8 @@ struct State
     float elapsed = 0.0f;
     Platform platforms[2] =
     {
-        { 12.014f, true, kTopY, {}, kTopY },
-        { -12.020f, false, kBottomY, {}, kBottomY },
+        { 12.014f, false, kBottomY, {}, kBottomY },
+        { -12.020f, true, kTopY, {}, kTopY },
     };
 };
 
@@ -45,8 +48,8 @@ inline float PlatformY(const float elapsed, const bool startsAtTop)
     const float startY = legStartsAtTop ? kTopY : kBottomY;
     const float endY = legStartsAtTop ? kBottomY : kTopY;
 
-    if (legIndex == 0 || legTime >= kTravelTime)
-        return legTime >= kTravelTime && legIndex != 0 ? endY : startY;
+    if (legTime >= kTravelTime)
+        return endY;
 
     const float travel = legTime / kTravelTime;
     return startY + (endY - startY) * travel;

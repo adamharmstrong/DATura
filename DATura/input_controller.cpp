@@ -1,4 +1,6 @@
 #include "input_controller.h"
+#include "application_settings.h"
+#include <cstdio>
 
 namespace
 {
@@ -36,42 +38,78 @@ void ClearMovementKeys(InputController::State& state)
     state.up = false;
     state.down = false;
     state.boost = false;
+    state.autoRunToggleHeld = false;
     state.altHeld = false;
     state.slow = false;
     state.cameraDebugToggle = false;
+    state.zoneMapToggleHeld = false;
+    state.bumpMappingToggleHeld = false;
+    state.bumpMappingInversionToggleHeld = false;
     state.jumpHeld = false;
     state.jumpRequested = false;
 }
 
 void SetKeyState(InputController::State& state, const unsigned int keyCode, const bool down)
 {
-    switch (keyCode)
+    const ApplicationSettings::State defaults;
+    const ApplicationSettings::State& keys = state.settings ? *state.settings : defaults;
+    if (keyCode == static_cast<unsigned int>(keys.keyForward)) state.forward = down;
+    else if (keyCode == static_cast<unsigned int>(keys.keyBackward)) state.backward = down;
+    else if (keyCode == static_cast<unsigned int>(keys.keyLeft)) state.left = down;
+    else if (keyCode == static_cast<unsigned int>(keys.keyRight)) state.right = down;
+    else if (keyCode == static_cast<unsigned int>(keys.keyAutoRun))
     {
-    case 'W': state.forward = down; break;
-    case 'S': state.backward = down; break;
-    case 'A': state.left = down; break;
-    case 'D': state.right = down; break;
-    case 'Q': state.up = down; break;
-    case 'E': state.down = down; break;
-    case 0x20:
+        if (down && !state.autoRunToggleHeld)
+            state.autoRun = !state.autoRun;
+        state.autoRunToggleHeld = down;
+    }
+    else if (keyCode == static_cast<unsigned int>(keys.keyJump))
+    {
         if (down && !state.jumpHeld) state.jumpRequested = true;
         state.jumpHeld = down;
-        break;
-    case kKeyShift:
+    }
+    else if (keyCode == static_cast<unsigned int>(keys.keyRunToggle))
+    {
         if (down && !state.boost) state.running = !state.running;
         state.boost = down;
-        break;
-    case VK_MENU:
+    }
+    else if (keyCode == VK_MENU)
+    {
         if (down && !state.altHeld) state.fastRunning = !state.fastRunning;
         state.altHeld = down;
-        break;
-    case kKeyControl: state.slow = down; break;
     }
+    else if (keyCode == 'Q') state.up = down;
+    else if (keyCode == 'E') state.down = down;
+    else if (keyCode == kKeyControl) state.slow = down;
 }
 }
 
 namespace InputController
 {
+void SetCursorStyle(State& state, const int style, const char* ffxiRoot)
+{
+    if (state.customCursor)
+    {
+        DestroyCursor(state.customCursor);
+        state.customCursor = NULL;
+    }
+    const char* file = style == ApplicationSettings::MouseCursorFfxiAnimated ? "mousenor.ani" :
+        style == ApplicationSettings::MouseCursorFfxiStatic ? "mousenor.cur" :
+        style == ApplicationSettings::MouseCursorFfxiInteraction ? "mousehit.ani" : nullptr;
+    if (file && ffxiRoot)
+    {
+        char path[MAX_PATH] = {};
+        sprintf_s(path, "%s%s", ffxiRoot, file);
+        state.customCursor = LoadCursorFromFileA(path);
+    }
+    const HCURSOR cursor = state.customCursor ? state.customCursor : LoadCursor(NULL, IDC_ARROW);
+    if (state.window)
+    {
+        SetClassLongPtrA(state.window, GCLP_HCURSOR, reinterpret_cast<LONG_PTR>(cursor));
+        SetCursor(cursor);
+    }
+}
+
 void Initialize(State& state, HWND window, const bool hardwareCursorEnabled)
 {
     state = {};
@@ -80,9 +118,17 @@ void Initialize(State& state, HWND window, const bool hardwareCursorEnabled)
     state.hardwareCursorEnabled = hardwareCursorEnabled;
 }
 
+void SetKeyBindings(State& state, const ApplicationSettings::State& settings)
+{
+    state.settings = &settings;
+    ClearMovementKeys(state);
+}
+
 void Shutdown(State& state)
 {
     FocusLost(state);
+    if (state.customCursor)
+        DestroyCursor(state.customCursor);
     state.window = nullptr;
 }
 
@@ -105,6 +151,16 @@ void BeginOrbit(State& state, const int x, const int y)
 void BeginPan(State& state, const int x, const int y)
 {
     state.dragMode = DragMode::Pan;
+    state.lastMouse = { x, y };
+    state.wantsCursorHidden = false;
+    if (state.window)
+        SetCapture(state.window);
+    ApplyCursorVisibility(state);
+}
+
+void BeginLightAzimuth(State& state, const int x, const int y)
+{
+    state.dragMode = DragMode::LightAzimuth;
     state.lastMouse = { x, y };
     state.wantsCursorHidden = false;
     if (state.window)
@@ -165,35 +221,69 @@ void MouseLeft(State& state)
 Action KeyDown(State& state, const unsigned int keyCode)
 {
     SetKeyState(state, keyCode, true);
-    if (keyCode == 'T')
+    const ApplicationSettings::State defaults;
+    const ApplicationSettings::State& keys = state.settings ? *state.settings : defaults;
+    if (keyCode == static_cast<unsigned int>(keys.keyBumpMapping))
+    {
+        if (state.bumpMappingToggleHeld)
+            return Action::None;
+        state.bumpMappingToggleHeld = true;
+        return Action::ToggleBumpMapping;
+    }
+    if (keyCode == static_cast<unsigned int>(keys.keyCameraDebug))
     {
         if (state.cameraDebugToggle)
             return Action::None;
         state.cameraDebugToggle = true;
         return Action::ToggleCameraDebugOverlay;
     }
+    if (keyCode == static_cast<unsigned int>(keys.keyZoneMap))
+    {
+        if (state.zoneMapToggleHeld)
+            return Action::None;
+        state.zoneMapToggleHeld = true;
+        return Action::ToggleZoneMap;
+    }
+    if (keyCode == static_cast<unsigned int>(keys.keyGameMode)) return Action::ToggleGameMode;
+    if (keyCode == static_cast<unsigned int>(keys.keyUnstick)) return Action::UnstickPlayer;
+    if (keyCode == static_cast<unsigned int>(keys.keyCycleWeather)) return Action::CycleWeather;
     switch (keyCode)
     {
     case kKeyBack: return Action::Back;
     case kKeyEnter: return Action::Confirm;
-    case 'O': return state.slow ? Action::OpenDat : Action::None;
-    case 'F': return Action::ToggleGameMode;
-    case 'G': return Action::UnstickPlayer;
-    case 'V': return Action::CycleWeather;
-    default: return Action::None;
+    case 'O':
+        if (state.slow)
+            return Action::OpenDat;
+        if (state.bumpMappingInversionToggleHeld)
+            return Action::None;
+        state.bumpMappingInversionToggleHeld = true;
+        return Action::ToggleBumpMappingInversion;
+    case VK_OEM_4: return Action::DecreaseBumpMappingIntensity;
+    case VK_OEM_6: return Action::IncreaseBumpMappingIntensity;
+    default: break;
     }
+    return Action::None;
 }
 
 void KeyUp(State& state, const unsigned int keyCode)
 {
     SetKeyState(state, keyCode, false);
-    if (keyCode == 'T')
+    const ApplicationSettings::State defaults;
+    const ApplicationSettings::State& keys = state.settings ? *state.settings : defaults;
+    if (keyCode == static_cast<unsigned int>(keys.keyCameraDebug))
         state.cameraDebugToggle = false;
+    if (keyCode == static_cast<unsigned int>(keys.keyZoneMap))
+        state.zoneMapToggleHeld = false;
+    if (keyCode == static_cast<unsigned int>(keys.keyBumpMapping))
+        state.bumpMappingToggleHeld = false;
+    if (keyCode == 'O')
+        state.bumpMappingInversionToggleHeld = false;
 }
 
 MovementSnapshot Movement(const State& state)
 {
     MovementSnapshot movement;
+    movement.autoRun = state.autoRun;
     movement.right = (state.right ? 1.0f : 0.0f) - (state.left ? 1.0f : 0.0f);
     movement.forward = (state.forward ? 1.0f : 0.0f) - (state.backward ? 1.0f : 0.0f);
     movement.vertical = (state.up ? 1.0f : 0.0f) - (state.down ? 1.0f : 0.0f);

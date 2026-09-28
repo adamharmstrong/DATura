@@ -5,6 +5,15 @@
 
 namespace
 {
+float WrapAngle(float angle)
+{
+    constexpr float pi = 3.14159265358979323846f;
+    constexpr float twoPi = pi * 2.0f;
+    while (angle > pi) angle -= twoPi;
+    while (angle < -pi) angle += twoPi;
+    return angle;
+}
+
 bool UsesRunAnimation(const PlayerController::InputSnapshot& input)
 {
     return (input.boost || input.fastRunning) && input.forward > 0.0f && input.strafe == 0.0f;
@@ -138,11 +147,50 @@ UpdateResult UpdateMovement(State& state, const InputSnapshot& input, float dt,
         moveSpeed *= kSlowMultiplier;
 
     state.yaw += input.turn * turnSpeed * dt;
-    const float magnitude = std::sqrt(input.forward * input.forward + input.strafe * input.strafe);
-    const float step = moveSpeed * dt / (magnitude > 1.0f ? magnitude : 1.0f);
-    const float deltaX = (-std::sin(state.yaw) * input.forward + std::cos(state.yaw) * input.strafe) * step;
-    const float deltaZ = (-std::cos(state.yaw) * input.forward - std::sin(state.yaw) * input.strafe) * step;
-
+    float forward = input.forward;
+    float strafe = input.strafe;
+    if (input.autoRun)
+        forward = 1.0f;
+    float clickDistance = 0.0f;
+    if (input.clickToMove)
+    {
+        const float toTargetX = input.clickTarget[0] - state.position[0];
+        const float toTargetZ = input.clickTarget[2] - state.position[2];
+        clickDistance = std::sqrt(toTargetX * toTargetX + toTargetZ * toTargetZ);
+        if (clickDistance <= 0.18f)
+        {
+            forward = 0.0f;
+            strafe = 0.0f;
+        }
+        else
+        {
+            state.yaw = std::atan2(-toTargetX, -toTargetZ);
+            forward = 1.0f;
+            strafe = 0.0f;
+        }
+    }
+    const float magnitude = std::sqrt(forward * forward + strafe * strafe);
+    const float step = input.clickToMove ? (std::min)(moveSpeed * dt, clickDistance) :
+        moveSpeed * dt / (magnitude > 1.0f ? magnitude : 1.0f);
+    // Controller (retail) movement is platformer-style: the input vector is
+    // resolved relative to the camera's current orientation, then the
+    // character faces that travel vector. The camera itself remains free.
+    const float movementYaw = input.retail ? input.cameraYaw : state.yaw;
+    const float deltaX = input.clickToMove ?
+        ((input.clickTarget[0] - state.position[0]) / (clickDistance > 0.0001f ? clickDistance : 1.0f)) * step :
+        (-std::sin(movementYaw) * forward + std::cos(movementYaw) * strafe) * step;
+    const float deltaZ = input.clickToMove ?
+        ((input.clickTarget[2] - state.position[2]) / (clickDistance > 0.0001f ? clickDistance : 1.0f)) * step :
+        (-std::cos(movementYaw) * forward - std::sin(movementYaw) * strafe) * step;
+    if (input.retail && magnitude > 0.0f)
+    {
+        constexpr float turnRate = 8.0f;
+        const float desiredYaw = std::atan2(-deltaX, -deltaZ);
+        const float yawDelta = WrapAngle(desiredYaw - state.yaw);
+        const float maxTurn = turnRate * dt;
+        state.yaw += yawDelta * ((std::fabs(yawDelta) <= maxTurn) ? 1.0f : maxTurn / std::fabs(yawDelta));
+        state.yaw = WrapAngle(state.yaw);
+    }
     if (context.beforeHorizontalMove)
         context.beforeHorizontalMove(state, deltaX, deltaZ, dt);
 
@@ -207,6 +255,8 @@ UpdateResult UpdateMovement(State& state, const InputSnapshot& input, float dt,
 const char* MovementAnimation(const State& state, const InputSnapshot& input)
 {
     if (state.jumping) return "jmp";
+    if (input.retail && (input.forward != 0.0f || input.strafe != 0.0f))
+        return (input.boost || input.fastRunning) ? "run_relaxed" : "wlk_relaxed";
     // DAT motion names use the opposite left/right convention to player input.
     if (input.strafe < 0.0f) return "mvr";
     if (input.strafe > 0.0f) return "mvl";

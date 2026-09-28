@@ -5,6 +5,7 @@
 #include "npc_monster_dat_table.h"
 #include "companion_dat_table.h"
 #include "win32_panel_controls.h"
+#include "win32_theme.h"
 #include "win32_tool_window.h"
 
 namespace
@@ -21,6 +22,7 @@ struct State
     HWND window = nullptr;
     HWND owner = nullptr;
     const char* ffxiRoot = nullptr;
+    Win32Theme::State* theme = nullptr;
     FFXICompanionBrowser::LoadCallback loadCallback = nullptr;
     void* callbackContext = nullptr;
 };
@@ -97,29 +99,25 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     {
     case WM_CREATE:
     {
-        HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        if (!g_state.theme)
+            return -1;
         HWND title = Win32PanelControls::AddPanelControl(window, "STATIC",
             "Browse pets, mounts, and summoned companions.", 0, -1,
-            14, 14, 390, 20);
+            22, 34, 374, 20);
         HWND categoryLabel = Win32PanelControls::AddPanelControl(window, "STATIC", "Category:", 0, -1,
-            14, 44, 72, 18);
-        HWND category = Win32PanelControls::AddPanelCombo(window, kCategoryId, 88, 40, 316);
+            22, 64, 72, 18);
+        HWND category = Win32PanelControls::AddPanelCombo(window, kCategoryId, 96, 60, 300);
         HWND list = Win32PanelControls::AddPanelControl(window, "LISTBOX", "",
             WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY, kListId,
-            14, 76, 390, 292, WS_EX_CLIENTEDGE);
+            22, 94, 374, 272, WS_EX_CLIENTEDGE);
         HWND path = Win32PanelControls::AddPanelControl(window, "STATIC", "", SS_LEFT, kPathId,
-            14, 378, 390, 42);
+            22, 378, 374, 42);
         HWND load = Win32PanelControls::AddPanelControl(window, "BUTTON", "Load in Viewer",
-            BS_DEFPUSHBUTTON | WS_TABSTOP, kLoadId, 178, 430, 128, 28);
+            BS_OWNERDRAW | WS_TABSTOP, kLoadId, 178, 442, 128, 30);
         HWND close = Win32PanelControls::AddPanelControl(window, "BUTTON", "Close",
-            BS_PUSHBUTTON | WS_TABSTOP, kCloseId, 314, 430, 90, 28);
+            BS_OWNERDRAW | WS_TABSTOP, kCloseId, 314, 442, 82, 30);
 
-        const HWND controls[] = { title, categoryLabel, category, list, path, load, close };
-        for (HWND control : controls)
-        {
-            if (control)
-                SendMessageA(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        }
+        Win32Theme::ApplyWindowTheme(window, *g_state.theme);
 
         for (int i = 0; i < kFFXICompanionGroupCount; ++i)
             SendMessageA(category, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(kFFXICompanionGroups[i].name));
@@ -127,6 +125,57 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         PopulateList(window);
         return 0;
     }
+    case WM_DRAWITEM:
+        if (g_state.theme)
+        {
+            const DRAWITEMSTRUCT* draw = reinterpret_cast<const DRAWITEMSTRUCT*>(lParam);
+            Win32Theme::DrawButton(draw, g_state.theme->dark,
+                g_state.theme->resources.font, LOWORD(wParam) == kLoadId);
+            return TRUE;
+        }
+        break;
+    case WM_CTLCOLORSTATIC:
+        if (g_state.theme)
+        {
+            HDC dc = reinterpret_cast<HDC>(wParam);
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, Win32Theme::TextColor(g_state.theme->dark));
+            return reinterpret_cast<LRESULT>(g_state.theme->resources.controlBrush);
+        }
+        break;
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLOREDIT:
+        if (g_state.theme)
+        {
+            HDC dc = reinterpret_cast<HDC>(wParam);
+            SetBkColor(dc, Win32Theme::EditColor(g_state.theme->dark));
+            SetTextColor(dc, Win32Theme::TextColor(g_state.theme->dark));
+            return reinterpret_cast<LRESULT>(g_state.theme->resources.editBrush);
+        }
+        break;
+    case WM_ERASEBKGND:
+        if (g_state.theme)
+        {
+            RECT client = {};
+            GetClientRect(window, &client);
+            FillRect(reinterpret_cast<HDC>(wParam), &client,
+                g_state.theme->resources.windowBrush);
+            return 1;
+        }
+        break;
+    case WM_PAINT:
+        if (g_state.theme)
+        {
+            PAINTSTRUCT paint = {};
+            HDC dc = BeginPaint(window, &paint);
+            FillRect(dc, &paint.rcPaint, g_state.theme->resources.windowBrush);
+            const RECT panel = { 8, 8, 412, 430 };
+            Win32Theme::DrawPanel(dc, panel, "Companions", g_state.theme->dark,
+                g_state.theme->resources.sectionFont);
+            EndPaint(window, &paint);
+            return 0;
+        }
+        break;
     case WM_COMMAND:
         if (LOWORD(wParam) == kCategoryId && HIWORD(wParam) == CBN_SELCHANGE)
         {
@@ -165,11 +214,13 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
 
 namespace FFXICompanionBrowser
 {
-void Show(const HWND owner, const char* ffxiRoot, const LoadCallback loadCallback,
+void Show(const HWND owner, const char* ffxiRoot, Win32Theme::State& theme,
+          const LoadCallback loadCallback,
           void* callbackContext)
 {
     g_state.owner = owner;
     g_state.ffxiRoot = ffxiRoot;
+    g_state.theme = &theme;
     g_state.loadCallback = loadCallback;
     g_state.callbackContext = callbackContext;
 
@@ -186,8 +237,9 @@ void Show(const HWND owner, const char* ffxiRoot, const LoadCallback loadCallbac
         kWindowClassName,
         "Companion Browser",
         438,
-        512
+        526
     };
+    spec.backgroundBrush = theme.resources.windowBrush;
     spec.x = ownerRect.left + 32;
     spec.y = ownerRect.top + 64;
     g_state.window = Win32ToolWindow::Create(owner, spec);
