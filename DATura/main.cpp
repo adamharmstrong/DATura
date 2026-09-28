@@ -1502,6 +1502,7 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
     case ConfigDialog::Command::MipMappingChanged:
     case ConfigDialog::Command::BumpMappingChanged:
         SaveExtendedGraphicsSettings();
+        [[fallthrough]];
     case ConfigDialog::Command::LightingQualityChanged:
     case ConfigDialog::Command::ShadowSettingsChanged:
     case ConfigDialog::Command::LightDirectionChanged:
