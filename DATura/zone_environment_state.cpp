@@ -6,6 +6,7 @@
 #include "zone_environment_identity.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cmath>
 #include <cstring>
@@ -177,6 +178,31 @@ int CurrentMinuteOfDay()
     int minute = (int)(vanadielMinutes % 1440LL);
     if (minute < 0)
         minute += 1440;
+    return minute;
+}
+
+double CurrentMinuteOfDayPrecise()
+{
+    if (g_timeOverride >= 0)
+        return static_cast<double>(g_timeOverride);
+
+    // Retain subsecond precision without converting the large epoch value to
+    // float. Lighting otherwise jumps one Vana'diel minute every 2.4 seconds.
+    const double unixSeconds = std::chrono::duration<double>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    if (g_useLocalSystemTime)
+    {
+        const double wholeSeconds = std::floor(unixSeconds);
+        const std::time_t now = static_cast<std::time_t>(wholeSeconds);
+        std::tm local = {};
+        if (localtime_s(&local, &now) == 0)
+            return local.tm_hour * 60.0 + local.tm_min +
+                (local.tm_sec + unixSeconds - wholeSeconds) / 60.0;
+    }
+    constexpr double kVanadielEpoch = 1009810800.0;
+    double minute = std::fmod((unixSeconds - kVanadielEpoch) * 25.0 / 60.0, 1440.0);
+    if (minute < 0.0)
+        minute += 1440.0;
     return minute;
 }
 

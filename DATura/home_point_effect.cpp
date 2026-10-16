@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "home_point_effect.h"
 #include "d3d_math.h"
 #include "ffxi_model_lifetime.h"
@@ -7,6 +8,8 @@
 #include "home_point_data.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
+#include "tower_portal_data.h"
+#include "ffxi_parser_diagnostics.h"
 
 namespace HomePoint
 {
@@ -59,9 +62,10 @@ struct Effect::Impl
 {
     FFXIModelLifetime::OwnedModel asset;
     Data data;
+    std::unique_ptr<Effect> activation;
     Audio audio;
-    IDirect3DVertexShader9 *vs = nullptr;
-    IDirect3DPixelShader9 *ps = nullptr;
+    RendererBackend::Shader*vs = nullptr;
+    RendererBackend::Shader*ps = nullptr;
     struct Mesh
     {
         std::vector<FFXIVertex> vertices;
@@ -71,41 +75,19 @@ struct Effect::Impl
     ~Impl()
     {
         if (vs)
-            vs->Release();
+            delete vs;
         if (ps)
-            ps->Release();
+            delete ps;
     }
     bool Shaders(IDirect3DDevice9 *device)
     {
-        ID3DBlob *bytecode = nullptr;
-        ID3DBlob *errors = nullptr;
-        HRESULT hr = D3DCompile(Shader, strlen(Shader), "HomePoint", nullptr, nullptr, "vs", "vs_3_0", 0, 0,
-                                &bytecode, &errors);
-        if (errors)
-        {
-            OutputDebugStringA((const char *)errors->GetBufferPointer());
-            errors->Release();
-            errors = nullptr;
-        }
-        if (FAILED(hr))
-            return false;
-        hr = device->CreateVertexShader((const DWORD *)bytecode->GetBufferPointer(), &vs);
-        bytecode->Release();
-        bytecode = nullptr;
-        if (FAILED(hr))
-            return false;
-        hr = D3DCompile(Shader, strlen(Shader), "HomePoint", nullptr, nullptr, "ps", "ps_3_0", 0, 0,
-                        &bytecode, &errors);
-        if (errors)
-        {
-            OutputDebugStringA((const char *)errors->GetBufferPointer());
-            errors->Release();
-        }
-        if (FAILED(hr))
-            return false;
-        hr = device->CreatePixelShader((const DWORD *)bytecode->GetBufferPointer(), &ps);
-        bytecode->Release();
-        return SUCCEEDED(hr);
+        D3D9Graphics::Context graphics(device);
+        vs = graphics.CreateShader({RendererBackend::ShaderStage::Vertex,
+            Shader, strlen(Shader), "HomePoint", "vs", "vs_3_0"});
+        if (!vs) return false;
+        ps = graphics.CreateShader({RendererBackend::ShaderStage::Pixel,
+            Shader, strlen(Shader), "HomePoint", "ps", "ps_3_0"});
+        return ps != nullptr;
     }
 };
 Effect::Effect() : impl_(std::make_unique<Impl>())
@@ -193,49 +175,45 @@ void Effect::Draw(IDirect3DDevice9 *device, const D3DMATRIX &world, const float 
     if (!device || !impl_->asset)
         return;
     auto particles = Evaluate(impl_->data, seconds, activatedAt);
-    IDirect3DStateBlock9 *saved = nullptr;
-    if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &saved)))
+    auto* saved = D3D9Graphics::Context(device).CapturePipelineState();
+    if (!saved)
         return;
-    saved->Capture();
     D3DMATRIX view, proj;
-    device->GetTransform(D3DTS_VIEW, &view);
-    device->GetTransform(D3DTS_PROJECTION, &proj);
+    D3D9Graphics::Context(device).QueryTransform(RendererBackend::Transform::View, &view._11);
+    D3D9Graphics::Context(device).QueryTransform(RendererBackend::Transform::Projection, &proj._11);
     auto vp = D3DMath::Multiply(view, proj);
-    device->SetVertexShader(impl_->vs);
-    device->SetPixelShader(impl_->ps);
-    device->SetFVF(FFXI_VERTEX_FVF);
-    device->SetVertexShaderConstantF(4, &vp._11, 4);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Vertex, impl_->vs);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, impl_->ps);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model);
+    D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Vertex, 4, &vp._11, 4);
     float eye4[4] = {eye[0], eye[1], eye[2], 1};
-    device->SetVertexShaderConstantF(8, eye4, 1);
-    DWORD fogEnabled = 0, fogNear = 0, fogFar = 0, fogColor = 0;
-    device->GetRenderState(D3DRS_FOGENABLE, &fogEnabled);
-    device->GetRenderState(D3DRS_FOGSTART, &fogNear);
-    device->GetRenderState(D3DRS_FOGEND, &fogFar);
-    device->GetRenderState(D3DRS_FOGCOLOR, &fogColor);
-    float nearValue, farValue;
-    memcpy(&nearValue, &fogNear, 4);
-    memcpy(&farValue, &fogFar, 4);
+    D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Vertex, 8, eye4, 1);
+    RendererBackend::FogState fogState;
+    D3D9Graphics::Context(device).QueryFogState(fogState);
+    const float nearValue=fogState.start, farValue=fogState.end;
+    const bool fogEnabled=fogState.enabled;
+    const uint32_t fogColor=fogState.color;
     float fog[4] = {nearValue, farValue > nearValue ? 1 / (farValue - nearValue) : 0,
                     (float)(fogEnabled != 0), 0};
     float fogRgb[4] = {((fogColor >> 16) & 255) / 255.f, ((fogColor >> 8) & 255) / 255.f,
                        (fogColor & 255) / 255.f, 1};
-    device->SetPixelShaderConstantF(4, fog, 1);
-    device->SetPixelShaderConstantF(5, fogRgb, 1);
-    device->SetRenderState(D3DRS_FOGENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZENABLE, TRUE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-    device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+    D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Pixel, 4, fog, 1);
+    D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Pixel, 5, fogRgb, 1);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fog, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, true);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, true);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blendOperation, RendererBackend::BlendOperation::Add);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::separateAlphaBlend, false);
     for (int sampler = 0; sampler < 2; ++sampler)
     {
-        device->SetSamplerState(sampler, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
-        device->SetSamplerState(sampler, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
-        device->SetSamplerState(sampler, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-        device->SetSamplerState(sampler, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-        device->SetSamplerState(sampler, D3DSAMP_MIPFILTER, mipMapping ? D3DTEXF_LINEAR : D3DTEXF_NONE);
+        D3D9Graphics::Context(device).SetSamplerField(sampler, &RendererBackend::SamplerState::addressU, RendererBackend::TextureAddress::Wrap);
+        D3D9Graphics::Context(device).SetSamplerField(sampler, &RendererBackend::SamplerState::addressV, RendererBackend::TextureAddress::Wrap);
+        D3D9Graphics::Context(device).SetSamplerField(sampler, &RendererBackend::SamplerState::minFilter, RendererBackend::TextureFilter::Linear);
+        D3D9Graphics::Context(device).SetSamplerField(sampler, &RendererBackend::SamplerState::magFilter, RendererBackend::TextureFilter::Linear);
+        D3D9Graphics::Context(device).SetSamplerField(sampler, &RendererBackend::SamplerState::mipFilter, mipMapping ? RendererBackend::TextureFilter::Linear : RendererBackend::TextureFilter::None);
     }
     // Sort alpha layers back to front using their authored spawn positions.
     std::stable_sort(particles.begin(), particles.end(), [&](const Particle &a, const Particle &b) {
@@ -257,14 +235,15 @@ void Effect::Draw(IDirect3DDevice9 *device, const D3DMATRIX &world, const float 
         if (it == impl_->meshes.end())
             continue;
         const auto &mesh = it->second;
-        if (!mesh.texture || !mesh.texture->pD3DTex || mesh.vertices.empty())
+        if (!mesh.texture || !D3D9Graphics::NativeTexture(mesh.texture->gpuTexture) || mesh.vertices.empty())
             continue;
         const float age = particle.age, phase = std::clamp(age / g.life, 0.f, 1.f);
-        Vec position = g.position, rotation = g.rotation, scale = g.scale;
+        Vec position = g.position, rotation = g.rotation, scale = g.scale, spin = {};
         for (int a = 0; a < 3; ++a)
         {
             position[a] += (g.velocity[a] + g.variance[a] * Random(particle.serial, a)) * age;
-            rotation[a] += (float)std::fmod((double)g.rotationSpeed[a] * age, 6.283185307179586);
+            spin[a] = (float)std::fmod((double)g.rotationSpeed[a] * age, 6.283185307179586);
+            if (!g.localSpin) rotation[a] += spin[a];
             scale[a] = std::max(0.f, scale[a] + g.scaleSpeed[a] * age +
                                          g.scaleAcceleration[a] * age * (age + 1) * .5f);
             if (!g.scaleCurves[a].empty())
@@ -277,9 +256,7 @@ void Effect::Draw(IDirect3DDevice9 *device, const D3DMATRIX &world, const float 
         auto local = D3DMath::BuildIdentity();
         for (int a = 0; a < 3; ++a)
             local.m[a][a] = scale[a];
-        local = D3DMath::Multiply(local, D3DMath::BuildRotationX(rotation[0]));
-        local = D3DMath::Multiply(local, D3DMath::BuildRotationY(rotation[1]));
-        local = D3DMath::Multiply(local, D3DMath::BuildRotationZ(rotation[2]));
+        local = ApplyMeshRotation(local, rotation, spin, g.localSpin);
         local._41 = position[0];
         local._42 = position[1];
         local._43 = position[2];
@@ -290,10 +267,12 @@ void Effect::Draw(IDirect3DDevice9 *device, const D3DMATRIX &world, const float 
                 for (int b = 0; b < 3; ++b)
                     transform.m[a][b] = view.m[b][a] * scale[a];
         }
-        device->SetVertexShaderConstantF(0, &transform._11, 4);
+        D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Vertex, 0, &transform._11, 4);
         auto color = g.color;
         if (g.alphaAnimated)
             color[3] = CurveValue(impl_->data, g.alphaCurve, phase, 0) * 2;
+        if (impl_->data.repeatIdleMeshes && g.fadeStart >= 0 && g.fadeEnd > g.fadeStart)
+            color[3] *= std::clamp((g.fadeEnd-age)/(g.fadeEnd-g.fadeStart),0.f,1.f);
         if (!g.redCurve.empty())
             color[0] = CurveValue(impl_->data, g.redCurve, phase, color[0] * .5f) * 2;
         if (!g.greenCurve.empty())
@@ -303,15 +282,15 @@ void Effect::Draw(IDirect3DDevice9 *device, const D3DMATRIX &world, const float 
                            mesh.texture->texType == NOESISTEX_DXT3 ? 1.f : 0.f};
         float light[4] = {g.specularDirection[0], g.specularDirection[1], g.specularDirection[2],
                           g.specularPower};
-        device->SetPixelShaderConstantF(0, color.data(), 1);
-        device->SetPixelShaderConstantF(1, params, 1);
-        device->SetPixelShaderConstantF(2, light, 1);
-        device->SetPixelShaderConstantF(3, g.specularColor.data(), 1);
-        device->SetTexture(0, mesh.texture->pD3DTex);
+        D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Pixel, 0, color.data(), 1);
+        D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Pixel, 1, params, 1);
+        D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Pixel, 2, light, 1);
+        D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Pixel, 3, g.specularColor.data(), 1);
+        D3D9Graphics::Context(device).BindTexture(0, mesh.texture->gpuTexture);
         auto *shine = Texture(impl_->asset.Model(), g.specularTexture.empty() ? "nami" : g.specularTexture);
-        device->SetTexture(1, shine ? shine->pD3DTex : mesh.texture->pD3DTex);
-        device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-        device->SetRenderState(D3DRS_DESTBLEND, g.blend == 0x44 ? D3DBLEND_INVSRCALPHA : D3DBLEND_ONE);
+        D3D9Graphics::Context(device).BindTexture(1, shine ? shine->gpuTexture : mesh.texture->gpuTexture);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, g.blend == 0x44 ? RendererBackend::BlendFactor::InverseSourceAlpha : RendererBackend::BlendFactor::One);
         const FFXIVertex *vertices = mesh.vertices.data();
         size_t count = mesh.vertices.size();
         if (g.type == 0x0e && count >= 6)
@@ -321,10 +300,10 @@ void Effect::Draw(IDirect3DDevice9 *device, const D3DMATRIX &world, const float 
             vertices += frame * 6;
             count = 6;
         }
-        device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)(count / 3), vertices, sizeof(FFXIVertex));
+        D3D9Graphics::Context(device).DrawImmediate(RendererBackend::Primitive::TriangleList, (UINT)(count / 3), vertices, sizeof(FFXIVertex));
     }
-    saved->Apply();
-    saved->Release();
+    saved->Restore();
+    delete saved;
 }
 void Effect::UpdateSound(const std::vector<Instance> &i, const float *l, const float *r, bool allowed,
                          int max)
@@ -338,6 +317,73 @@ void Effect::ActivateSound(const Instance &i, const float *l, const float *r)
 void Effect::StopSound()
 {
     impl_->audio.Stop();
+}
+bool Effect::LoadTowerPortal(IDirect3DDevice9* device, const char* root, int zone, bool compression, bool upperFloor)
+{
+    if (!device || !root || (zone!=239 && zone!=242)) return false;
+    auto read=[root](const char* relative,std::vector<uint8_t>& bytes) {
+        return FFXIResource::ReadBytes((std::string(root)+"/"+relative).c_str(),bytes);
+    };
+    std::vector<uint8_t> common,placement,activationBytes,geometry;
+    auto next=std::make_unique<Impl>();
+    if (!read("ROM/0/0.DAT",common) ||
+        !read(zone==239 ? "ROM/0/79.DAT" : upperFloor ? "ROM/2/63.DAT" : "ROM/2/62.DAT",placement) ||
+        !read("ROM/16/75.DAT",activationBytes) ||
+        !TowerPortal::RingData(placement,next->data) ||
+        !TowerPortal::Geometry(common,true,geometry)) return false;
+    // Keep parser diagnostics belonging to the loaded terrain intact.
+    FFXIParserDiagnostics::ScopedSnapshot diagnostics;
+    auto loadModel=[device,compression](Impl& target,std::vector<uint8_t>& bytes) {
+        target.asset.Adopt(nullptr,new noeRAPI_t(device));
+        auto* rapi=target.asset.ParserContext();
+        rapi->SetTextureCompressionEnabled(compression);
+        ff11Opts_t options={}; options.renderEffectMeshes=true;
+        struct Restore { ff11Opts_t* previous; ~Restore(){gpFF11Opts=previous;} } restore{gpFF11Opts};
+        gpFF11Opts=&options;
+        int count=0;
+        auto* model=Model_FF11_LoadDAT(bytes.data(),(int)bytes.size(),count,rapi);
+        if (!model || !count) return false;
+        target.asset.AttachModel(model);
+        for (const auto& sub : model->submeshes)
+        {
+            const std::string prefix="effect: ";
+            if (sub.objectName.compare(0,prefix.size(),prefix)) continue;
+            auto resource=sub.objectName.substr(prefix.size());
+            while (!resource.empty() && resource.back()==' ') resource.pop_back();
+            auto& mesh=target.meshes[resource];
+            auto* mat=model->pMatData ? model->pMatData->FindMaterial(sub.materialName.c_str()) : nullptr;
+            if (mat && mat->texIdx>=0 && mat->texIdx<model->pMatData->texCount)
+                mesh.texture=model->pMatData->textures[mat->texIdx];
+            for (auto index : sub.cpuIndices)
+            {
+                if (index>=sub.cpuVerts.size()) return false;
+                mesh.vertices.push_back(sub.cpuVerts[index]);
+            }
+        }
+        return !target.meshes.empty() && target.Shaders(device);
+    };
+    if (!loadModel(*next,geometry)) return false;
+    for (const auto& [name,g] : next->data.generators)
+    {
+        const auto mesh=next->meshes.find(g.resource);
+        if (mesh==next->meshes.end() || !mesh->second.texture || mesh->second.vertices.empty())
+            return false;
+    }
+    next->activation=std::make_unique<Effect>();
+    auto& active=*next->activation->impl_;
+    if (!TowerPortal::ActivationData(activationBytes,active.data) ||
+        !TowerPortal::Geometry(activationBytes,false,geometry) || !loadModel(active,geometry))
+        return false;
+    // The activation resource's scheduler, not a guessed sound ID, supplies 16001.
+    next->audio.Load(root,zone==239 ? 2063 : 2184,active.data.sounds.at("6001"));
+    impl_=std::move(next);
+    return true;
+}
+void Effect::DrawActivation(IDirect3DDevice9* device,const D3DMATRIX& world,const float* eye,
+                            double seconds,double activatedAt,bool mipMapping)
+{
+    if (impl_->activation)
+        impl_->activation->Draw(device,world,eye,seconds,activatedAt,mipMapping);
 }
 size_t Effect::LayerCount() const
 {

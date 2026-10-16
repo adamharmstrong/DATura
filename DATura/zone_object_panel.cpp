@@ -42,8 +42,100 @@ State* StateForWindow(const HWND window)
         GetWindowLongPtrA(window, GWLP_USERDATA));
 }
 
+void UpdateLoading(State& state, const char* stage, const bool force = false)
+{
+    const ULONGLONG now = GetTickCount64();
+    if (!force && now - state.loadingUpdated < 100)
+        return;
+    state.loadingUpdated = now;
+    SetWindowPos(state.loadingOverlay, HWND_TOP, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    const int percent = state.loadingTotal > 0
+        ? static_cast<int>(100LL * state.loadingCompleted / state.loadingTotal) : 0;
+    char text[256] = {};
+    const double elapsed = (now - state.loadingStarted) / 1000.0;
+    if (state.loadingCompleted > 0 && elapsed >= 1.0 && percent < 100)
+    {
+        const int remaining = static_cast<int>(ceil(elapsed *
+            (state.loadingTotal - state.loadingCompleted) / state.loadingCompleted));
+        sprintf_s(text, "%s - %d%% (about %dm %ds remaining)",
+            stage, percent, remaining / 60, remaining % 60);
+    }
+    else
+        sprintf_s(text, "%s - %d%%", stage, percent);
+    SetWindowTextA(state.loadingLabel, text);
+    SendMessageA(state.loadingProgress, PBM_SETPOS, percent, 0);
+    // Paint only: dispatching commands here could reenter a refresh or unload
+    // the model while its entries are being traversed.
+    MSG message = {};
+    while (PeekMessageA(&message, NULL, WM_PAINT, WM_PAINT, PM_REMOVE))
+        DispatchMessageA(&message);
+    RedrawWindow(state.loadingOverlay, NULL, NULL,
+        RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+}
+
+void StartLoading(State& state, const int total)
+{
+    state.loadingCompleted = 0;
+    state.loadingTotal = total;
+    state.loadingStarted = GetTickCount64();
+    state.loadingUpdated = 0;
+    ShowWindow(state.loadingOverlay, SW_SHOW);
+    BringWindowToTop(state.loadingOverlay);
+    ShowWindow(state.loadingLabel, SW_SHOW);
+    ShowWindow(state.loadingProgress, SW_SHOW);
+    BringWindowToTop(state.loadingLabel);
+    BringWindowToTop(state.loadingProgress);
+    UpdateLoading(state, "Preparing Zone Objects", true);
+}
+
+void AdvanceLoading(void* context, const char* stage)
+{
+    State& state = *static_cast<State*>(context);
+    ++state.loadingCompleted;
+    UpdateLoading(state, stage);
+}
+
+void FinishLoading(State& state)
+{
+    state.loadingCompleted = state.loadingTotal;
+    UpdateLoading(state, "Zone Objects ready", true);
+    ShowWindow(state.loadingLabel, SW_HIDE);
+    ShowWindow(state.loadingProgress, SW_HIDE);
+    ShowWindow(state.loadingOverlay, SW_HIDE);
+}
+
+int TreeLoadingWork()
+{
+    return static_cast<int>(gFF11LastDatChunks.size()) +
+        Model_FF11_GetLastMapObjectCount() + Model_FF11_GetLastCollisionMeshCount();
+}
+
+LRESULT CALLBACK LoadingOverlayProcedure(HWND window, UINT message,
+    WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR reference)
+{
+    State& state = *reinterpret_cast<State*>(reference);
+    if (message == WM_ERASEBKGND)
+    {
+        RECT client = {};
+        GetClientRect(window, &client);
+        FillRect(reinterpret_cast<HDC>(wParam), &client, state.brushes.panel);
+        return 1;
+    }
+    if (message == WM_CTLCOLORSTATIC)
+    {
+        HDC dc = reinterpret_cast<HDC>(wParam);
+        SetTextColor(dc, ZoneObjectPanelStyle::TextColor());
+        SetBkColor(dc, ZoneObjectPanelStyle::PanelColor());
+        return reinterpret_cast<LRESULT>(state.brushes.panel);
+    }
+    return DefSubclassProc(window, message, wParam, lParam);
+}
+
 void CreateControls(State& state, const HWND window)
 {
+    INITCOMMONCONTROLSEX commonControls = { sizeof(commonControls), ICC_PROGRESS_CLASS };
+    InitCommonControlsEx(&commonControls);
     ZoneObjectPanelStyle::EnsureBrushes(state.brushes);
     state.zoneLabel = Win32PanelControls::AddPanelControl(
         window, "STATIC", state.creationZoneLabel ? state.creationZoneLabel : "",
@@ -86,7 +178,7 @@ void CreateControls(State& state, const HWND window)
         IDC_ZONE_CENTER_SELECTED, 424, 466, 112, 26);
     state.combineTreeButton = Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Combine Lists", BS_OWNERDRAW,
-        IDC_ZONE_COMBINE_TREE_TOGGLE, 1200, 34, 120, 24);
+        IDC_ZONE_COMBINE_TREE_TOGGLE, 1200, 4, 128, 24);
 
     state.placedObjectList = Win32PanelControls::AddPanelControl(
         window, WC_LISTVIEWA, "", LVS_REPORT | LVS_SHOWSELALWAYS,
@@ -106,7 +198,7 @@ void CreateControls(State& state, const HWND window)
     ZoneObjectPanelStyle::ApplyListColors(state.drawBatchList, false);
 
     const DWORD treeStyle =
-        TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS;
+        TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS | WS_CLIPSIBLINGS;
     state.dataTree = Win32PanelControls::AddPanelControl(
         window, WC_TREEVIEWA, "", treeStyle, IDC_ZONE_DATA_TREE,
         8, 56, 820, 360, WS_EX_CLIENTEDGE);
@@ -124,9 +216,17 @@ void CreateControls(State& state, const HWND window)
         ZoneObjectPanelStyle::ApplyTreeColors(tree);
     }
 
+    state.loadingOverlay = Win32PanelControls::AddPanelControl(
+        window, "STATIC", "", WS_BORDER | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+        0, 8, 56, 520, 88, 0, false);
+    SetWindowSubclass(state.loadingOverlay, LoadingOverlayProcedure, 1,
+        reinterpret_cast<DWORD_PTR>(&state));
     state.loadingLabel = Win32PanelControls::AddPanelControl(
-        window, "STATIC", "Loading Object List...", SS_CENTER | SS_CENTERIMAGE,
-        IDC_ZONE_LOADING_LABEL, 18, 58, 220, 32, WS_EX_CLIENTEDGE, false);
+        state.loadingOverlay, "STATIC", "Loading Object List...", SS_CENTER | SS_CENTERIMAGE,
+        IDC_ZONE_LOADING_LABEL, 12, 12, 496, 28, 0, false);
+    state.loadingProgress = Win32PanelControls::AddPanelControl(
+        state.loadingOverlay, PROGRESS_CLASSA, "", PBS_SMOOTH, 0, 12, 48, 496, 20, 0, false);
+    SendMessageA(state.loadingProgress, PBM_SETRANGE32, 0, 100);
 
     const char* const fieldLabels[6] =
         { "X", "Y", "Z", "Position", "Rotation", "Scale" };
@@ -188,6 +288,8 @@ void Arrange(State& state, const int clientWidth, const int clientHeight)
     controls.rawDataTree = state.rawDataTree;
     controls.collisionDataTree = state.collisionDataTree;
     controls.loadingLabel = state.loadingLabel;
+    controls.loadingOverlay = state.loadingOverlay;
+    controls.loadingProgress = state.loadingProgress;
     controls.placedShowAllButton = state.placedShowAllButton;
     controls.placedHideAllButton = state.placedHideAllButton;
     controls.unreferencedShowAllButton = state.unreferencedShowAllButton;
@@ -513,16 +615,16 @@ LRESULT CALLBACK WindowProcedure(const HWND window, const UINT message,
                 &placedX, &placedWidth, &rawX, &rawWidth, &collisionX, &collisionWidth);
             if (state->combinedObjectTree)
             {
-                const RECT panel = {8, 30, client.right - 8, listBottom + 36};
+                const RECT panel = {8, ZoneObjectPanelLayout::kPaneTop, client.right - 8, listBottom + 36};
                 Win32Theme::DrawPanel(hdc, panel, "DAT File Contents", state->theme->dark,
                     state->theme->resources.sectionFont);
             }
             else
             {
                 const RECT panels[] = {
-                    {placedX, 30, placedX + placedWidth, listBottom + 36},
-                    {rawX, 30, rawX + rawWidth, listBottom + 36},
-                    {collisionX, 30, collisionX + collisionWidth, listBottom + 36}
+                    {placedX, ZoneObjectPanelLayout::kPaneTop, placedX + placedWidth, listBottom + 36},
+                    {rawX, ZoneObjectPanelLayout::kPaneTop, rawX + rawWidth, listBottom + 36},
+                    {collisionX, ZoneObjectPanelLayout::kPaneTop, collisionX + collisionWidth, listBottom + 36}
                 };
                 const char* titles[] = {"Placed Geometry",
                     "Unreferenced Geometry / Draw Batches", "Collision Meshes"};
@@ -551,7 +653,10 @@ LRESULT CALLBACK WindowProcedure(const HWND window, const UINT message,
             case IDC_ZONE_PLACED_HIDE_ALL: EmitCommand(*state, Command::HidePlaced); return 0;
             case IDC_ZONE_UNREF_SHOW_ALL: EmitCommand(*state, Command::ShowRaw); return 0;
             case IDC_ZONE_UNREF_HIDE_ALL: EmitCommand(*state, Command::HideRaw); return 0;
-            case IDC_ZONE_COMBINE_TREE_TOGGLE: EmitCommand(*state, Command::ToggleCombinedTree); return 0;
+            case IDC_ZONE_COMBINE_TREE_TOGGLE:
+                StartLoading(*state, TreeLoadingWork() + 1);
+                EmitCommand(*state, Command::ToggleCombinedTree);
+                return 0;
             case IDC_ZONE_SHOW_SELECTED: EmitCommand(*state, Command::ShowOnlySelected); return 0;
             case IDC_ZONE_HIDE_SELECTED: EmitCommand(*state, Command::HideSelected); return 0;
             case IDC_ZONE_HIGHLIGHT_SELECTED: EmitCommand(*state, Command::ToggleHighlight); return 0;
@@ -711,7 +816,6 @@ void SetEditingEnabled(State& state, const bool enabled)
         state.hideSelectedButton,
         state.highlightSelectedButton,
         state.centerSelectedButton,
-        state.combineTreeButton,
         state.unreferencedApplyButton,
         state.collisionVisibleCheck
     };
@@ -722,6 +826,9 @@ void SetEditingEnabled(State& state, const bool enabled)
         state.toolButtons, kToolButtonCount, enabled);
     ZoneObjectPanelEditControls::SetControlsEnabled(
         state.unreferencedEdits, kUnreferencedFieldCount, enabled);
+    // Combining and splitting are viewer actions, available outside edit mode.
+    if (state.combineTreeButton)
+        EnableWindow(state.combineTreeButton, TRUE);
 }
 
 void SetHighlightActive(const State& state, const bool active)
@@ -759,6 +866,12 @@ void PopulateTransformFields(
 
 void RebuildTree(State& state, const char* const zoneLabel)
 {
+    const bool standalone = !state.populatingObjectList;
+    if (standalone)
+    {
+        state.populatingObjectList = true;
+        StartLoading(state, TreeLoadingWork() + 1);
+    }
     ZoneObjectTreeBuilder::Context context = {};
     context.placedObjectList = state.placedObjectList;
     context.unreferencedObjectList = state.unreferencedObjectList;
@@ -767,7 +880,14 @@ void RebuildTree(State& state, const char* const zoneLabel)
     context.collisionDataTree = state.collisionDataTree;
     context.combinedObjectTree = state.combinedObjectTree;
     context.loadedZoneLabel = zoneLabel ? zoneLabel : "";
+    context.progress = AdvanceLoading;
+    context.progressContext = &state;
     ZoneObjectTreeBuilder::Build(context);
+    if (standalone)
+    {
+        FinishLoading(state);
+        state.populatingObjectList = false;
+    }
 }
 
 void BeginRefresh(State& state, const char* const zoneLabel)
@@ -781,6 +901,7 @@ void BeginRefresh(State& state, const char* const zoneLabel)
 
     if (state.zoneLabel)
         SetWindowTextA(state.zoneLabel, zoneLabel ? zoneLabel : "");
+    StartLoading(state, 0);
     ZoneObjectListColumns::SetupMapObjectColumns(
         state.placedObjectList, state.placedColumnMode, 0);
     ZoneObjectListColumns::SetupMapObjectColumns(
@@ -796,12 +917,6 @@ void BeginRefresh(State& state, const char* const zoneLabel)
     TreeView_DeleteAllItems(state.dataTree);
     TreeView_DeleteAllItems(state.rawDataTree);
     TreeView_DeleteAllItems(state.collisionDataTree);
-    if (state.loadingLabel)
-    {
-        SetWindowTextA(state.loadingLabel, "Loading Object List...");
-        ShowWindow(state.loadingLabel, SW_SHOW);
-        BringWindowToTop(state.loadingLabel);
-    }
     UpdateWindow(state.window);
     PostMessageA(state.window, kPopulateMessage, 0, 0);
 }
@@ -823,6 +938,8 @@ void Refresh(State& state, const RefreshData& data)
         state.rawDataTree, state.collisionDataTree
     };
     state.populatingObjectList = true;
+    StartLoading(state, TreeLoadingWork() + Model_FF11_GetLastMapObjectCount() +
+        Model_FF11_GetLastCollisionMeshCount() + Model_FF11_GetLastMapGeoDrawBatchCount() + 1);
     state.treeSelectedMapObjectIndex = -1;
     for (const HWND control : redrawControls)
         SendMessageA(control, WM_SETREDRAW, FALSE, 0);
@@ -856,13 +973,20 @@ void Refresh(State& state, const RefreshData& data)
         ZoneObjectListRows::InsertMapObjectRow(
             unreferenced ? state.unreferencedObjectList : state.placedObjectList,
             index, *data.overrides, *data.hiddenObjectNames);
+        AdvanceLoading(&state, "Loading geometry lists");
     }
     const int collisionMeshCount = Model_FF11_GetLastCollisionMeshCount();
     for (int index = 0; index < collisionMeshCount; ++index)
+    {
         ZoneObjectListRows::InsertCollisionRow(state.collisionObjectList, index);
+        AdvanceLoading(&state, "Loading collision list");
+    }
     const int drawBatchCount = Model_FF11_GetLastMapGeoDrawBatchCount();
     for (int index = 0; index < drawBatchCount; ++index)
+    {
         ZoneObjectListRows::InsertDrawBatchRow(state.drawBatchList, index);
+        AdvanceLoading(&state, "Loading draw batches");
+    }
     RebuildTree(state, data.zoneLabel);
 
     state.populatingObjectList = false;
@@ -919,8 +1043,7 @@ void Refresh(State& state, const RefreshData& data)
         SendMessageA(control, WM_SETREDRAW, TRUE, 0);
         InvalidateRect(control, NULL, TRUE);
     }
-    if (state.loadingLabel)
-        ShowWindow(state.loadingLabel, SW_HIDE);
+    FinishLoading(state);
 }
 
 void ResetControls(State& state)
@@ -939,6 +1062,10 @@ void ResetControls(State& state)
     state.rawDataTree = NULL;
     state.collisionDataTree = NULL;
     state.loadingLabel = NULL;
+    state.loadingOverlay = NULL;
+    state.loadingProgress = NULL;
+    state.loadingCompleted = state.loadingTotal = 0;
+    state.loadingStarted = state.loadingUpdated = 0;
     state.placedShowAllButton = NULL;
     state.placedHideAllButton = NULL;
     state.unreferencedShowAllButton = NULL;

@@ -2,6 +2,140 @@
 
 DATura is an open-source FINAL FANTASY XI DAT exploration and visualization project.
 
+## DAT hex reader
+
+Open **Tools > DAT Hex Reader...** to inspect and modify a DAT buffer. The file
+picker starts in the current FFXI folder from Settings, with the standard
+PlayOnline installation path as the fallback.
+
+- Browse 64 KB pages, jump to an offset, or select a block by start and length.
+- The Go box accepts absolute offsets and signed relative distances (`+20`,
+  `-0x10`), using the selected offset base. Navigation offers start/end jumps,
+  select-to-start/end, next/previous modified bytes with wraparound, and copy offset.
+  Ctrl+Home/End jumps to the file boundaries; Ctrl+Shift+Home/End extends to them.
+  Alt+Insert copies the offset (with `0x` for hex).
+- Choose 8, 16, or 32 bytes per row, hexadecimal or decimal offsets, and ASCII or
+  Shift-JIS (CP932), Windows-1252, DOS-437, EBCDIC-500, or Macintosh-10000 text. Offset and length inputs use the selected base; a `0x`
+  prefix always means hexadecimal.
+- View offers 1/2/4/8/16-byte grouping and combined, hex-only, or decoded-text-only
+  displays. Grouping changes spacing without changing byte order. Selection,
+  navigation, inspector values, and modified-byte highlights work in every mode.
+- The selected display encoding is also used by Text search/replacement and
+  Copy decoded text. EBCDIC/Macintosh require their Windows code pages to be
+  installed; unsupported selections retain the previous encoding.
+- Search for hex bytes, encoded text, signed/unsigned 8/16/24/32/64-bit integers,
+  or Float32/Float64 values using the selected endian. Numeric inputs are decimal
+  unless prefixed with `0x`. UTF-8 and UTF-16 little/big endian text searches
+  are also available, without automatically adding a byte-order mark. Replace match uses the same type for the replacement
+  and requires equal byte lengths; use Find first to select a match.
+- Binary-byte search accepts complete groups of 8 bits, whitespace, and an
+  optional `0b` prefix. Find/Find All and equal-length replacement support this type.
+  The inspector also shows both Windows/network GUID layouts and LE/BE FILETIME.
+- Search the whole file, including matches across page
+  boundaries. Find Next wraps around; Cancel stops a background search.
+- Replace All applies equal-length replacements across the whole buffer as one
+  undoable operation. Matches are processed from the beginning without overlaps;
+  inserted replacement bytes are not searched again. Cancel applies no changes.
+  Exceeding 100,000 matches or 1 MB of replacement bytes rejects the whole operation.
+- Choose whole-file or selection-only search. Find Next/Previous preserve the
+  original search block and wrap within it; Find All and Replace All also obey
+  the chosen scope. Matches must fit completely inside the range. Start a fresh
+  Find to capture a new selection or scope.
+- Find Previous (Shift+F3) wraps backward through matches. Find All counts every
+  overlapping match and lists the first 10,000 offsets for navigation; edits clear
+  the list. Searches run in the background and can be cancelled.
+- Byte statistics show whole-buffer frequencies for all 256 byte values and
+  Shannon entropy in bits per byte. Analysis includes edits and supports Cancel.
+- After Byte statistics finishes, Distribution chart opens a resizable graph of
+  all 256 byte counts. Hover for the byte, count, and percentage. The graph is a
+  labeled snapshot of the analyzed whole file or selection; edits clear the
+  chart-launch result, while open snapshots remain available for comparison.
+- Select bytes in the hex or text columns, then copy hex or decoded text. The
+  inspector shows binary, signed/unsigned integers and floating-point values
+  in little or big endian (including 24-bit integers), Windows-layout GUIDs,
+  UTC FILETIME timestamps, and CRC-32 for selections up to 64 KB.
+- Edited bytes appear in red in both columns; undo restores their original color
+  when their values return to the source bytes.
+- Copy selections as C byte arrays, escaped bytes (`\xNN`), or Base64 using
+  Copy formatted or the right-click Copy as menu (up to 1 MB).
+- Fill pattern repeats the hex bytes in the overwrite input across the selected
+  block (up to 64 KB), truncating the final repetition at the selection boundary.
+  Each fill is one undoable operation and preserves the file size.
+- Apply byte operations to a selected block (up to 64 KB): invert bits, AND/OR/XOR
+  with a repeating hex mask from the overwrite/fill box, reverse the whole block,
+  or swap byte order within 16/32/64-bit words. Word swapping requires a length
+  divisible by the word size. Each operation supports undo/redo and preserves size.
+- Bookmark selected blocks and return to them during the current file session.
+  Ctrl+Shift+0–9 sets or reassigns a numbered bookmark; Ctrl+0–9 restores its block.
+  Numbered slots appear in the bookmark list, Navigation, and the right-click menu.
+  Removing a numbered bookmark frees its slot; opening another DAT clears all slots.
+- Compare the current buffer with another binary file and navigate to the next
+  differing byte. Size differences identify bytes missing from either file.
+- Choose CRC-32, Adler-32, MD5, SHA-1, SHA-256, SHA-512, or CRC-32 + SHA-256
+  checksums of the current buffer, including edits. Choose whole-file or selection
+  analysis for both checksums and byte statistics; reports identify the byte range.
+  Comparison and checksums run in the background and support Cancel.
+- Additional checksum presets: additive 8/16/32/64-bit byte sums (modulo the
+  chosen width), CRC-16/CCITT-FALSE, CRC-16/X-25, and CRC-64/ECMA-182. These
+  support file/selection analysis, expected-value verification, and reports.
+  CRC parameters and check vectors follow the [CRC RevEng catalogue](https://reveng.sourceforge.io/crc-catalogue/all.htm).
+- Paste an expected hex checksum and use Verify checksum to compare it with the
+  current whole-file or selection result. Reports show MATCH/MISMATCH and the range.
+  The combined CRC-32 + SHA-256 option verifies the expected SHA-256 value.
+- Copy a calculated checksum directly, or export completed analysis reports as
+  new UTF-8 text files. Reports include the source path and whether the buffer
+  contains edits. New calculations and edits clear previous exportable results.
+- Copy/export source-code byte arrays for Pascal, Java, C#, and VB.NET in addition
+  to C. Java output casts hex values to signed bytes; all formats preserve the
+  original byte values. Source-code exports are declaration snippets for embedding.
+- Export C byte arrays (`.h`), escaped bytes, or Base64 (`.txt`) to new files
+  from Export selection or the right-click menu (up to 1 MB, including edits).
+- Copy a selected hex table through **Copy as > Hex table with offsets and decoded text**,
+  or export it as a new UTF-8 plain-text file from **Export selection**. Tables
+  include original offsets and the chosen decoded-text encoding (up to 1 MB).
+- Export Rich Text (`.rtf`) with decoded text and Unicode-safe escaping, or a
+  standalone LaTeX (`.tex`) document containing an ASCII hex/offset table.
+  Both support selections up to 1 MB and create new files only.
+- Export Motorola S-record (S0/S3/S7, 32-bit offsets, record checksums) or an HTML
+  hex table containing original offsets and decoded text in the chosen encoding.
+  Both export up to 1 MB to new files; HTML escapes source paths and text.
+- Export a selected block as a new binary file, or Intel HEX-386 text (up to 1 MB).
+  Intel HEX preserves original file offsets, splits records at 64 KB boundaries,
+  and includes record checksums and EOF. Offsets must fit in 32 bits.
+- Enable editing to type hex byte pairs directly, paste hex with Paste Overwrite,
+  overwrite a selected block with hex bytes or fill it with
+  one byte. Undo and Redo work on the buffer. Editing preserves file size.
+  Direct typing commits after two digits; Esc cancels an incomplete byte.
+  Paste overwrites from the selection start, up to 64 KB, and cannot extend EOF.
+- **Save Copy...** creates a new binary DAT. **Export page...** creates a new
+  UTF-8 text file. Neither action can overwrite **any existing file**, including
+  official DATs, the original, or a previously saved copy. Every save needs a
+  new filename. The original is opened only for reading and is never modified.
+
+In the byte display, Ctrl+C copies hex, Ctrl+F focuses search, Ctrl+G focuses
+Go to offset, F3 finds the next match, Ctrl+Z/Ctrl+Y undo/redo, and Ctrl+S invokes
+Save Copy. Ctrl+V pastes hex in overwrite mode, Ctrl+B bookmarks a block, and
+Ctrl+A selects the entire file. Arrow keys move by byte/row; Page Up/Down moves
+by 64 KB. Enter applies Go to offset, search, or the replacement-byte field.
+Right-click provides copy, paste, bookmark, binary export and Save Copy commands. Null bytes display
+as underscores; other nonprintable bytes display as dots. Shift-JIS pairs decode
+within each row. This tool does not interpret DAT structures; it supports fixed
+size byte changes rather than inserting or deleting bytes.
+
+Intel HEX format reference: [Keil documentation](https://www.keil.com/support/docs/1584/_hlp_hexfile.htm).
+
+The real shell-dialog smoke test is optional (`DATURA_TEST_NATIVE_PICKER=1`);
+normal regression runs test picker configuration and STA/MTA routing without
+opening an interactive dialog.
+
+Regression checks: build `tests/DatHexEditorTests.vcxproj` (Release, x64) and run
+`tests/bin/x64/Release/DatHexEditorTests.exe` from the repository root. Tests use
+new fixture folders under `artifacts/dat-hex-tests` and check original protection,
+hard-link/case aliases, save races, failed-save cleanup, search, selection,
+inspector values, direct typing/paste, bookmarks, checksums, comparison, binary
+exports and undo/redo. Creating hard-link test fixtures may require a
+run outside the filesystem sandbox.
+
 ## DAT replacements
 
 Preview edited DATs from a separate folder using **Resources > DAT Replacements
@@ -230,3 +364,88 @@ Except for separately identified third-party material, DATura is free software l
 Third-party components and reference material retain their respective copyright and license terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the currently identified material.
 
 The DATura license does not grant permission to copy or redistribute FINAL FANTASY XI game data or other assets owned by their respective rights holders.
+
+Long-running searches and analysis show elapsed time. Checksums, statistics,
+full scans, replacements, and comparisons show percentage, bytes scanned, scan
+speed, and estimated seconds remaining once enough progress is available.
+Estimates use average scan speed; Cancel remains available during each job.
+
+**Export selection > Join file before/after buffer (new copy)** concatenates
+the entire current buffer (including edits) with another file in the chosen
+order. Joining streams in the background with progress and cancellation; it
+creates a new binary copy and never changes either input or replaces an existing
+output. Cancelling removes the unfinished output.
+
+**Export selection > Split buffer into new copies** writes the entire edited
+buffer as numbered `.part0001`, `.part0002`, ... binary files, using 64 KB,
+1 MB or 16 MB parts (up to 1,024 files). The final part may be smaller.
+Splitting runs in the background with progress and cancellation. Any collision,
+failure or cancellation rolls back the newly created set using owned file handles;
+existing files and the source DAT are preserved.
+
+In the hex view, **Ctrl+Left/Right** navigates individual hex digits (nibbles),
+including across rows and pages. In edit mode, typing replaces the selected digit
+while preserving the other digit, then advances. Each digit edit supports undo.
+**Esc**, normal byte navigation, or clicking the view returns to byte mode;
+digit navigation is unavailable in text-only view. Saving still creates a new copy.
+
+Additional checksum presets: CRC-32C (Castagnoli), CRC-32/BZIP2, CRC-16/ARC,
+and CRC-16/MODBUS. Each supports whole-file/selection calculations, expected
+checksum verification, copying, and reports. Standard test vectors and parameters
+are documented in the [CRC RevEng catalogue](https://reveng.sourceforge.io/crc-catalogue/all.htm).
+
+Right-click the byte view and choose **Paste overwrite as** to paste decoded
+text in the chosen encoding, UTF-8 text, or Base64 bytes. Pastes accept up to
+64 KB of decoded bytes, require edit mode, preserve file size and support one-step
+undo. Invalid Base64, unrepresentable text and invalid Unicode are rejected.
+Ctrl+V continues to paste hex byte pairs. Saving always creates a new copy.
+
+Clipboard options also support copying binary digits (eight per byte), pasting
+binary digits, and pasting escaped bytes (`\x00\xFF`). Invalid or incomplete
+bytes are rejected. All paste formats retain the 64 KB decoded limit and undo.
+
+The data inspector shows floats with enough significant digits to preserve their
+value (9 for Float32, 17 for Float64). Right-click the byte view to copy the
+complete inspector readout, or use **Export selection > Data inspector report**
+to create a UTF-8 snapshot with the source, edit status, byte order and offset.
+Reports always use a new filename.
+
+The inspector additionally decodes signed LEB128, unsigned ULEB128 (up to
+64 bits, showing consumed byte counts) and little-endian DOS time/date fields.
+Variable integers report truncated/overflowing encodings. DOS dates are validated
+and show that their timezone is unspecified. These appear in inspector reports.
+
+Search types include signed LEB128 and unsigned ULEB128 (decimal or `0x`
+integers, up to 64 bits). Searches use the canonical shortest encoding and ignore
+the byte-order setting. Forward/backward/find-all and range selection work as
+usual. Replacement remains limited to values with equal encoded byte lengths.
+
+The **Navigation** menu and byte-view context menu can follow 16/24/32/64-bit
+pointers at the current byte, using the chosen endianness. Unsigned pointers
+are absolute offsets; signed pointers are displacements from the current byte.
+Truncated and out-of-file destinations are rejected, including overflow.
+Navigation changes no bytes, and destinations at EOF are supported.
+
+Hex-reader controls are grouped into **View & copy**, **Edit & select**,
+**Search & replace**, **Navigation**, and **Analysis** tabs. Open, Save Copy,
+Undo/Redo, editing, byte order, Cancel and export/file tools remain visible.
+Ctrl+F and Ctrl+G open the appropriate tab. The hex view and inspector remain
+visible while switching tabs; settings and entered values are preserved.
+
+The hex view uses blue headers and offset addresses, alternating black and
+reddish-brown byte columns (or groups), and bold red modified bytes in both
+hex and decoded text. Colors are streamed in one update to keep paging responsive.
+
+**Navigation > Next/Previous value by size** moves by 1, 2, 3, 4, 8 or
+16 bytes and selects the complete destination value. The byte-view context menu
+has the same options. Movement works across pages, preserves array alignment
+relative to the starting offset, and keeps the selection when no full value fits.
+
+The hex reader defaults to **32 bytes per row**, which aligns the entries in
+many FFXI DAT tables. The View & copy tab still offers 8 and 16 bytes per row
+for files with different layouts. Row width is a display choice, not a format assumption.
+
+**View & copy > View > Hexadecimal integers in data inspector** switches integer
+interpretations between decimal and hexadecimal. Signed hex values retain their
+sign (for example, `-0x1`); raw hex remains available separately. This display
+setting changes no bytes and is included in copied/exported inspector reports.

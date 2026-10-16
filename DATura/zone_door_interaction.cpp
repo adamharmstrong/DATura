@@ -106,7 +106,7 @@ void State::Initialize(noesisModel_t *model, bool mirrorX)
         return;
     model->UpdateSubmeshBounds();
     std::set<std::string> claimedMeshes;
-    for (const auto &object : gFF11LastMapObjects)
+    for (auto &object : gFF11LastMapObjects)
     {
         if (object.replacedByRoom || !IsDoorObjectName(object.objectName))
             continue;
@@ -147,6 +147,7 @@ void State::Initialize(noesisModel_t *model, bool mirrorX)
             continue;
         door.minY = lo[1];
         door.maxY = hi[1];
+        Model_FF11_CollectMovingObjectCollision(model, object, mirrorX);
         door.collisionStart = object.visualCollisionStart;
         door.collisionCount = object.visualCollisionCount;
         doors.push_back(door);

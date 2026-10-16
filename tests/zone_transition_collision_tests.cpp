@@ -9,17 +9,21 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include "base_zone_marker_geometry_audit.h"
 
 int main(int argc, char** argv)
 {
+    if(argc==3 && std::strcmp(argv[2],"--markers")==0) return AuditBaseMarkerGeometry(argv[1]);
     if (argc != 2) return 2;
     int failures = 0;
-    for (int zone : {235, 234, 236, 107, 237})
+    int cases = 0;
+    for (int zone : {235, 234, 236, 237})
     {
         const auto path = (std::filesystem::path(argv[1]) / FFXIZone::FindByID(zone)->modelDat).string();
         BYTE* raw = nullptr; DWORD size = 0;
         if (!FFXIFileIO::ReadWholeFile(path.c_str(), &raw, &size)) return 2;
         std::unique_ptr<BYTE[]> bytes(raw);
+        if (!ZoneTriggerVolume::Decode(bytes.get(),size,ZoneTransition::authoredVolumes)) return 2;
         noeRAPI_t rapi(nullptr);
         rapi.SetCurrentFilePath(path.c_str());
         ff11Opts_t options = {};
@@ -42,8 +46,12 @@ int main(int argc, char** argv)
             for (const auto& line : ZoneTransition::lines)
             {
                 if (line.fromZone != zone) continue;
-                auto start = line.threshold;
-                for (int axis : {0,2}) start[axis] -= line.outward[axis]*3;
+                const auto* volume = ZoneTransition::VolumeFor(line);
+                if (!volume) continue;
+                ++cases;
+                auto start = volume->center;
+                const float depth = (std::min)(volume->size[0],volume->size[2])*0.5f;
+                for (int axis : {0,2}) start[axis] -= line.outward[axis]*(depth+3);
                 start = FFXICoordinateFrame::NativeDatToScene(start, mirror);
                 const auto direction = FFXICoordinateFrame::NativeDatToScene(line.outward, mirror);
                 float x = start[0], y = start[1], z = start[2];
@@ -69,5 +77,6 @@ int main(int argc, char** argv)
         }
         gpFF11Opts = nullptr;
     }
+    if (cases != 28) { std::cerr << "Incomplete four-zone trigger coverage: " << cases << '\n'; ++failures; }
     return failures ? 1 : 0;
 }

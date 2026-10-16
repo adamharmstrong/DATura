@@ -1,3 +1,4 @@
+#include "d3d9_graphics.h"
 #include "stdafx.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
@@ -250,7 +251,9 @@ void TestSyntheticRendering(IDirect3DDevice9* device, const std::filesystem::pat
     }
     gpuTexture->UnlockRect(0);
     noesisTex_t texture;
-    texture.pD3DTex = gpuTexture.ptr;
+    gpuTexture->AddRef();
+    D3D9Graphics::Texture resource(gpuTexture.ptr);
+    texture.gpuTexture = &resource;
     texture.texType = NOESISTEX_RGBA32;
     noesisMaterial_t opaque, liquid;
     char opaqueName[] = "opaque", liquidName[] = "water";
@@ -614,7 +617,7 @@ void TestInstalledDat(IDirect3DDevice9* device, const std::filesystem::path& roo
         Check(mesh.softBlend && !mesh.environmentObject && mesh.hasBounds,
             "installed water is visible world geometry in the transparent draw set");
         if (mesh.pResolvedMaterial && mesh.pResolvedMaterial->texIdx >= 0)
-            Check(mesh.pResolvedTexture && mesh.pResolvedTexture->pD3DTex,
+            Check(mesh.pResolvedTexture && mesh.pResolvedTexture->gpuTexture,
                 "installed water resolves its authored texture to a live GPU resource");
         Check(std::any_of(gFF11LastMapObjects.begin(), gFF11LastMapObjects.end(),
             [&](const auto& object) { return mesh.objectName == object.displayName; }),

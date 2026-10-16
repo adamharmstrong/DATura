@@ -25,6 +25,7 @@ enum class Action
     CycleWeather,
     ToggleCameraDebugOverlay,
     ToggleZoneMap,
+    ToggleCollisionMap,
     ToggleBumpMapping,
     ToggleBumpMappingInversion,
     DecreaseBumpMappingIntensity,
@@ -79,6 +80,7 @@ struct State
     bool slow = false;
     bool cameraDebugToggle = false;
     bool zoneMapToggleHeld = false;
+    bool collisionMapToggleHeld = false;
     bool bumpMappingToggleHeld = false;
     bool bumpMappingInversionToggleHeld = false;
     bool jumpHeld = false;

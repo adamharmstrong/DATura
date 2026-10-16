@@ -41,6 +41,9 @@
   <ItemGroup>
     <ClCompile Include="home_point_tests.cpp" />
     <ClCompile Include="..\DATura\home_point_effect.cpp" />
+    <ClCompile Include="..\DATura\ffxi_parser_diagnostics.cpp" />
+    <ClCompile Include="..\DATura\ffxi_event_table.cpp" />
+    <ClCompile Include="..\DATura\ffxi_event_messages.cpp" />
     <ClCompile Include="..\DATura\ffxi_model_lifetime.cpp" />
     <ClCompile Include="..\DATura\ffxi_resource.cpp" />
     <ClCompile Include="..\DATura\bgw_player.cpp" />
@@ -59,6 +62,8 @@
     <ClCompile Include="..\DATura\zone_object_list_selection.cpp" />
     <ClCompile Include="..\DATura\zone_render_frustum.cpp" />
     <ClCompile Include="..\DATura\d3d_math.cpp" />
+    <ClCompile Include="..\DATura\zone_environment_animation.cpp" />
+    <ClCompile Include="..\DATura\d3d_bump_mapping.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

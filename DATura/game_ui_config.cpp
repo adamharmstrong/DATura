@@ -131,6 +131,10 @@ void GameUiConfig_SetDefaults(GameUiConfig &config)
     config.chatLogHeightPercent = 25;
     CopyText(config.chatLogFont, sizeof(config.chatLogFont), "FFXI");
     config.chatLogFontSize = 17;
+    config.chatLogFontColor = RGB(255, 255, 255);
+    CopyText(config.playerNameplate.font, sizeof(config.playerNameplate.font), "FFXI");
+    config.playerNameplate.fontSize = 16;
+    config.playerNameplate.fontColor = RGB(255, 255, 255);
     config.playerNameplate.enabled = true;
     config.playerNameplate.linkshellColor = RGB(160, 128, 224);
     config.playerNameplate.subtitleMode = PlayerSubtitleMode::Linkshell;
@@ -213,7 +217,11 @@ bool GameUiConfig_Load(GameUiConfig &config)
     config.chatLogTimeoutSeconds = std::clamp(ReadInt(p, "ChatLog", "TimeoutSeconds", 15), 1, 300);
     ReadString(p, "ChatLog", "Font", "FFXI", config.chatLogFont, sizeof(config.chatLogFont));
     config.chatLogFontSize = std::clamp(ReadInt(p, "ChatLog", "FontSize", 17), 10, 32);
+    config.chatLogFontColor = ReadRgb(p, "ChatLog", "FontColor", config.chatLogFontColor);
     auto& player = config.playerNameplate;
+    ReadString(p, "Player.Nameplate", "Font", "FFXI", player.font, sizeof(player.font));
+    player.fontSize = std::clamp(ReadInt(p, "Player.Nameplate", "FontSize", 16), 10, 32);
+    player.fontColor = ReadRgb(p, "Player.Nameplate", "FontColor", player.fontColor);
     player.enabled = ReadInt(p, "Player.Nameplate", "Enabled", 1) != 0;
     ReadString(p, "Player.Nameplate", "Name", "", player.name, sizeof(player.name));
     ReadString(p, "Player.Nameplate", "Icon", "none", player.icon, sizeof(player.icon));
@@ -365,9 +373,12 @@ bool GameUiConfig_SaveChatLog(const GameUiConfig &config)
         config.chatLogFont[0] ? config.chatLogFont : "FFXI", path) != FALSE;
     const bool fontSizeSaved = WritePrivateProfileStringA("ChatLog", "FontSize",
         std::to_string(std::clamp(config.chatLogFontSize, 10, 32)).c_str(), path) != FALSE;
+    char color[32]{};
+    sprintf_s(color, "%u,%u,%u", GetRValue(config.chatLogFontColor), GetGValue(config.chatLogFontColor), GetBValue(config.chatLogFontColor));
+    const bool colorSaved = WritePrivateProfileStringA("ChatLog", "FontColor", color, path) != FALSE;
     return WritePrivateProfileStringA("ChatLog", "TimeoutSeconds",
         std::to_string(std::clamp(config.chatLogTimeoutSeconds, 1, 300)).c_str(), path) != FALSE &&
-        widthSaved && heightSaved && fontSaved && fontSizeSaved;
+        widthSaved && heightSaved && fontSaved && fontSizeSaved && colorSaved;
 }
 
 bool GameUiConfig_SavePlayerNameplate(const GameUiConfig &config)
@@ -399,6 +410,10 @@ bool GameUiConfig_SavePlayerNameplate(const GameUiConfig &config)
     sprintf_s(color, "%u,%u,%u", GetRValue(player.linkshellColor),
         GetGValue(player.linkshellColor), GetBValue(player.linkshellColor));
     write("LinkshellColor", color);
+    write("Font", player.font);
+    write("FontSize", std::to_string(std::clamp(player.fontSize, 10, 32)).c_str());
+    sprintf_s(color, "%u,%u,%u", GetRValue(player.fontColor), GetGValue(player.fontColor), GetBValue(player.fontColor));
+    write("FontColor", color);
     write("MainJob", FFXIStats::JobName(static_cast<FFXIStats::Job>(player.mainJob)));
     write("SubJob", FFXIStats::JobName(static_cast<FFXIStats::Job>(player.subJob)));
     write("MainLevel", std::to_string(player.mainLevel).c_str());

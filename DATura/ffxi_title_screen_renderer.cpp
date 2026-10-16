@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "ffxi_title_screen_renderer.h"
 
 #include "d3d9_device.h"
@@ -30,7 +31,7 @@ void DrawTextures(const Context& context)
         context.logoMarkModel, ui.atlasTexture);
     noesisTex_t* logoGraphicTexture = FFXITitleAssets::FindTitleTexture(
         context.logoMarkModel, "xilogo");
-    if (titleAtlasTexture && titleAtlasTexture->pD3DTex)
+    if (titleAtlasTexture && titleAtlasTexture->gpuTexture)
     {
         const float sourceX = ui.logoSourceX;
         const float sourceY = ui.logoSourceY;
@@ -43,7 +44,7 @@ void DrawTextures(const Context& context)
         const float logoY = (float)height * ui.logoYRatio +
             logoHeight * ui.logoYOffsetByHeight;
         D3DUiRenderer::DrawTexturedQuadUV(
-            context.device, context.enableMipMapping, titleAtlasTexture->pD3DTex,
+            context.device, context.enableMipMapping, titleAtlasTexture->gpuTexture,
             logoX, logoY, logoWidth, logoHeight,
             sourceX / (float)titleAtlasTexture->w,
             sourceY / (float)titleAtlasTexture->h,
@@ -52,7 +53,7 @@ void DrawTextures(const Context& context)
             0xFFFFFFFF, D3DUiRenderer::UsesFfxiDxt3Alpha(titleAtlasTexture),
             ui.logoAlphaScale, ui.logoMaximumOpacity);
     }
-    else if (logoGraphicTexture && logoGraphicTexture->pD3DTex)
+    else if (logoGraphicTexture && logoGraphicTexture->gpuTexture)
     {
         const float graphicWidth = (float)std::max(650, (width * 55) / 100);
         const float graphicHeight = graphicWidth *
@@ -65,7 +66,7 @@ void DrawTextures(const Context& context)
             0xFFFFFFFF);
     }
 
-    if (!titleAtlasTexture && logoTextTexture && logoTextTexture->pD3DTex)
+    if (!titleAtlasTexture && logoTextTexture && logoTextTexture->gpuTexture)
     {
         const float logoWidth = (float)std::max(560, (width * 48) / 100);
         const float logoHeight = logoWidth *
@@ -131,7 +132,7 @@ void DrawTextures(const Context& context)
         context.titleUiModel, "buttonto");
     if (!buttonTexture)
         buttonTexture = FFXITitleAssets::FindTitleTexture(context.titleUiModel, "lrbutton");
-    if (buttonTexture && buttonTexture->pD3DTex)
+    if (buttonTexture && buttonTexture->gpuTexture)
     {
         const GameUiTitleMenuMetrics menuMetrics =
             GameUiConfig_GetTitleMenuMetrics(ui, width, height);
@@ -154,7 +155,7 @@ void DrawTextures(const Context& context)
         }
     }
 
-    if (titleAtlasTexture && titleAtlasTexture->pD3DTex)
+    if (titleAtlasTexture && titleAtlasTexture->gpuTexture)
     {
         const GameUiTitleMenuMetrics menuMetrics =
             GameUiConfig_GetTitleMenuMetrics(ui, width, height);

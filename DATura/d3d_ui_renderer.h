@@ -1,6 +1,7 @@
 #pragma once
 
 #include <d3d9.h>
+#include "renderer_resources.h"
 
 struct noesisTex_t;
 
@@ -9,7 +10,7 @@ namespace D3DUiRenderer
     bool UsesFfxiDxt3Alpha(const noesisTex_t* texture);
 
     void DrawTexturedQuadUV(IDirect3DDevice9* device, bool enableMipMapping,
-                            IDirect3DTexture9* texture,
+                            RendererBackend::Texture* texture,
                             float x, float y, float width, float height,
                             float u0, float v0, float u1, float v1, DWORD color,
                             bool expandDxt3Alpha, float alphaScale = 1.0f,

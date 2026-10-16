@@ -8,6 +8,7 @@
     <ClInclude Include="ffxi_player_icons.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="zone_door_interaction.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="zone_transition.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="zone_trigger_volume.h"><Filter>Header Files</Filter></ClInclude>
     <Filter Include="Source Files">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
@@ -388,6 +389,18 @@
     <ClInclude Include="renderer_backend.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="renderer_interface.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer_resources.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer_materials.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="d3d9_graphics.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="d3d_math.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -398,6 +411,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="d3d_bump_mapping.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="directional_shadow_map.inl">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="model_renderer.h">
@@ -718,7 +734,25 @@
     <ClInclude Include="title_scene_assets.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="title_camera_rail.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="creation_model_loader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="application_settings_store.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="npc_event_runtime.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="npc_conversation_controller.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="character_creation_flow.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="character_roster_controller.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="player_model_loader.h">
@@ -753,13 +787,30 @@
     <ClInclude Include="zone_coverage.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="zone_scene_diagnostics.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="zone_diagnostics_dialog.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dat_hex_reader.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dat_hex_document.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="dat_hex_analysis.h"><Filter>Header Files</Filter></ClInclude>
     <ClCompile Include="zone_coverage.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="application_settings_store.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="npc_event_runtime.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="npc_conversation_controller.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="menu.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="menu_cursor.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="query.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClInclude Include="menu.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="menu_cursor.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="ui_backbuffer.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="query.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="character_creation_flow.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="character_roster_controller.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="zone_scene_diagnostics.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="zone_diagnostics_dialog.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="dat_hex_reader.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="dat_replacement_dialog.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClInclude Include="dat_replacement_dialog.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="ffxi_dat_resolver.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="character_save_data.h"><Filter>Header Files</Filter></ClInclude>
+    <ClCompile Include="title_camera_rail.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="npc_starter_quests.csv" />
@@ -768,6 +819,7 @@
     <ClCompile Include="home_point_effect.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClInclude Include="home_point_effect.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="home_point_data.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="tower_portal_data.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="home_point_audio.h"><Filter>Header Files</Filter></ClInclude>
     <ClInclude Include="effect_model_layout.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>

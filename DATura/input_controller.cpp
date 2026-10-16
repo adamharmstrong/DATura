@@ -43,6 +43,7 @@ void ClearMovementKeys(InputController::State& state)
     state.slow = false;
     state.cameraDebugToggle = false;
     state.zoneMapToggleHeld = false;
+    state.collisionMapToggleHeld = false;
     state.bumpMappingToggleHeld = false;
     state.bumpMappingInversionToggleHeld = false;
     state.jumpHeld = false;
@@ -237,6 +238,13 @@ Action KeyDown(State& state, const unsigned int keyCode)
         state.cameraDebugToggle = true;
         return Action::ToggleCameraDebugOverlay;
     }
+    if (keyCode == 'N')
+    {
+        if (state.collisionMapToggleHeld)
+            return Action::None;
+        state.collisionMapToggleHeld = true;
+        return Action::ToggleCollisionMap;
+    }
     if (keyCode == static_cast<unsigned int>(keys.keyZoneMap))
     {
         if (state.zoneMapToggleHeld)
@@ -274,6 +282,8 @@ void KeyUp(State& state, const unsigned int keyCode)
         state.cameraDebugToggle = false;
     if (keyCode == static_cast<unsigned int>(keys.keyZoneMap))
         state.zoneMapToggleHeld = false;
+    if (keyCode == 'N')
+        state.collisionMapToggleHeld = false;
     if (keyCode == static_cast<unsigned int>(keys.keyBumpMapping))
         state.bumpMappingToggleHeld = false;
     if (keyCode == 'O')

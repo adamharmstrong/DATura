@@ -145,8 +145,6 @@ Result LoadDat(IDirect3DDevice9* device, const char* path, const DatOptions& opt
         parserOptions.renderWater = options.renderEnvironment || options.userContentLoad;
         parserOptions.collectCollision =
             options.userContentLoad || options.renderEnvironment;
-        parserOptions.collectCollisionUnreferenced =
-            options.userContentLoad || options.renderEnvironment;
         activeOptions = &parserOptions;
     }
 

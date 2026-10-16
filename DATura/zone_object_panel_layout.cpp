@@ -10,7 +10,6 @@ constexpr int kMargin = 8;
 constexpr int kGap = 10;
 constexpr int kMinimumTotalWidth = 300;
 constexpr int kDefaultMinimumPaneWidth = 220;
-constexpr int kHeaderHeight = 56;
 constexpr int kBottomHeight = 270;
 
 int GetTotalPaneWidth(const int clientWidth)
@@ -70,7 +69,7 @@ int HitZonePaneSplitter(const int clientWidth, const int clientHeight, int paneW
                         const int x, const int y)
 {
     const int listBottom = clientHeight > 0 ? clientHeight - kBottomHeight : 0;
-    if (y < kHeaderHeight || y > listBottom)
+    if (y < kTreeTop || y > listBottom)
         return 0;
 
     int placedX = 0;

@@ -174,7 +174,7 @@ Capture DrawWeather(IDirect3DDevice9 *device, noesisModel_t *model, const char *
     device->EndScene();
     return CaptureTarget(device,output);
 }
-void Fixture(IDirect3DDevice9 *device,const std::filesystem::path &root,const char *relative,const char *weather,const float eye[3])
+void Fixture(IDirect3DDevice9 *device,const std::filesystem::path &root,const char *relative,const char *weather,const float eye[3],int expectedActiveGenerators=-1)
 {
     BYTE *raw=nullptr;DWORD size=0;
     const auto file=root/relative;
@@ -193,8 +193,12 @@ void Fixture(IDirect3DDevice9 *device,const std::filesystem::path &root,const ch
         Check(rain || g.hasLinearVelocity,"authored velocity decoded");
     }
     Check(spriteGenerators>0,"fixture has authored sprite emitters");
+    if(expectedActiveGenerators>=0)
+        Check(spriteGenerators==expectedActiveGenerators,"rain fixture preserves the zone-authored active generator set");
     Check(!model->weatherSprites.empty(),"shared sprite resource loaded without overwriting zone metadata");
-    const auto out=std::filesystem::path("tests/bin/weather-rendering/captures")/std::filesystem::path(weather).filename();
+    std::string captureName(weather);
+    std::replace(captureName.begin(),captureName.end(),'/','-');
+    const auto out=std::filesystem::path("tests/bin/weather-rendering/captures")/captureName;
     std::filesystem::create_directories(out);
     const auto blank=DrawWeather(device,model,"none",generators,curves,eye,2,false);
     const auto enabled=DrawWeather(device,model,weather,generators,curves,eye,2,false,out/"enabled.bmp");
@@ -237,6 +241,8 @@ int main(int argc,char **argv)
     Fixture(device.device.ptr,argv[1],"ROM/0/90.DAT","f_ko/weat/dust",dustEye);
     Fixture(device.device.ptr,argv[1],"ROM/0/122.DAT","f_no/weat/snow",snowEye);
     Fixture(device.device.ptr,argv[1],"ROM/1/19.DAT","h_ga/weat/bliz",blizEye);
-    Fixture(device.device.ptr,argv[1],"ROM/0/115.DAT","f_la/weat/rain",dustEye);
+    Fixture(device.device.ptr,argv[1],"ROM/0/115.DAT","f_la/weat/rain",dustEye,8);
+    Fixture(device.device.ptr,argv[1],"ROM/0/125.DAT","f_or/weat/rain",dustEye,2);
+    Fixture(device.device.ptr,argv[1],"ROM/0/126.DAT","f_ro/weat/rain",dustEye,4);
     std::cout<<"Weather rendering failures: "<<failures<<'\n';return failures?1:0;
 }

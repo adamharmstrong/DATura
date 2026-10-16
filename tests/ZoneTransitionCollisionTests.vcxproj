@@ -51,5 +51,6 @@
     <ClCompile Include="..\DATura\d3d_math.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ItemGroup><ClInclude Include="base_zone_marker_geometry_audit.h" /></ItemGroup>
 </Project>
 

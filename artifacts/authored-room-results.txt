@@ -1,0 +1,57 @@
+ROM3/0/25.DAT: embedded city, meshes=2224
+ROM4/0/2.DAT: embedded city, meshes=10707
+ROM4/0/3.DAT: rooms=11 meshes=13214->15619 objects=2817->4671 collision=197828->296357 unresolved-room-materials=0
+  replaced objects=11 LOD variant meshes=9496
+ROM4/0/6.DAT: rooms=1 meshes=3584->3759 objects=875->1022 collision=63605->74343 unresolved-room-materials=0
+  replaced objects=1 LOD variant meshes=2112
+ROM5/0/0.DAT: embedded city, meshes=4368
+ROM5/0/7.DAT: embedded city, meshes=3453
+ROM5/0/14.DAT: embedded city, meshes=4619
+ROM/1/31.DAT: rooms=18 meshes=3522->5143 objects=1692->2728 collision=106462->200281 unresolved-room-materials=0
+  replaced objects=18 LOD variant meshes=0
+ROM/1/32.DAT: rooms=13 meshes=4286->5713 objects=1916->2786 collision=58970->131573 unresolved-room-materials=0
+  replaced objects=13 LOD variant meshes=894
+ROM/0/113.DAT: rooms=6 meshes=1331->1710 objects=576->838 collision=39870->69035 unresolved-room-materials=0
+  replaced objects=6 LOD variant meshes=254
+ROM/1/33.DAT: rooms=6 meshes=1830->2099 objects=1218->1456 collision=34112->36262 unresolved-room-materials=0
+  replaced objects=6 LOD variant meshes=0
+ROM/1/34.DAT: rooms=13 meshes=1943->2937 objects=1543->2372 collision=53325->103791 unresolved-room-materials=0
+  replaced objects=14 LOD variant meshes=65
+ROM/1/35.DAT: rooms=14 meshes=2821->4372 objects=1040->2274 collision=66537->144636 unresolved-room-materials=0
+  replaced objects=30 LOD variant meshes=1006
+ROM/1/36.DAT: rooms=9 meshes=1518->2064 objects=694->1018 collision=50841->90946 unresolved-room-materials=0
+  replaced objects=14 LOD variant meshes=467
+ROM/1/37.DAT: rooms=19 meshes=1164->2074 objects=645->1305 collision=73241->146874 unresolved-room-materials=0
+  replaced objects=21 LOD variant meshes=0
+ROM/0/78.DAT: rooms=21 meshes=3049->5575 objects=1703->3486 collision=103465->235465 unresolved-room-materials=0
+  replaced objects=47 LOD variant meshes=0
+ROM/0/79.DAT: rooms=6 meshes=2336->2869 objects=1414->1721 collision=86466->115692 unresolved-room-materials=0
+  replaced objects=6 LOD variant meshes=0
+ROM/0/80.DAT: rooms=7 meshes=2011->2657 objects=1015->1439 collision=87744->123036 unresolved-room-materials=0
+  replaced objects=6 LOD variant meshes=0
+ROM/0/81.DAT: rooms=8 meshes=2482->3333 objects=1263->1790 collision=74139->119307 unresolved-room-materials=0
+  replaced objects=10 LOD variant meshes=0
+ROM/1/38.DAT: rooms=4 meshes=604->993 objects=175->406 collision=32935->49678 unresolved-room-materials=0
+  replaced objects=2 LOD variant meshes=0
+ROM/1/39.DAT: rooms=10 meshes=1754->2148 objects=886->1142 collision=68128->112505 unresolved-room-materials=0
+  replaced objects=11 LOD variant meshes=127
+ROM/1/40.DAT: rooms=10 meshes=1720->2884 objects=685->1459 collision=55150->117947 unresolved-room-materials=0
+  replaced objects=10 LOD variant meshes=0
+ROM/1/41.DAT: rooms=13 meshes=1627->3020 objects=726->1580 collision=48305->119963 unresolved-room-materials=0
+  replaced objects=13 LOD variant meshes=0
+ROM/1/42.DAT: rooms=14 meshes=1635->2524 objects=673->1131 collision=96491->161885 unresolved-room-materials=0
+  replaced objects=15 LOD variant meshes=0
+ROM2/12/123.DAT: embedded city, meshes=2750
+ROM/1/43.DAT: rooms=5 meshes=1129->1758 objects=758->1215 collision=44865->79364 unresolved-room-materials=0
+  replaced objects=5 LOD variant meshes=0
+ROM/1/44.DAT: rooms=6 meshes=1775->2394 objects=1166->1661 collision=34885->70004 unresolved-room-materials=0
+  replaced objects=11 LOD variant meshes=470
+ROM2/0/25.DAT: rooms=8 meshes=2762->3748 objects=1568->2206 collision=83896->112722 unresolved-room-materials=0
+  replaced objects=8 LOD variant meshes=0
+ROM2/0/27.DAT: rooms=2 meshes=1131->1445 objects=884->1191 collision=35436->46069 unresolved-room-materials=0
+  replaced objects=2 LOD variant meshes=46
+ROM9/0/3.DAT: rooms=4 meshes=10244->10769 objects=3630->4034 collision=236873->259619 unresolved-room-materials=0
+  replaced objects=0 LOD variant meshes=1088
+ROM9/0/4.DAT: rooms=2 meshes=5927->6124 objects=3849->3962 collision=124741->134177 unresolved-room-materials=0
+  replaced objects=0 LOD variant meshes=373
+PASS: room loading checks

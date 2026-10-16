@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "ffxi_title_ui_primitives.h"
 
 #include "d3d_ui_renderer.h"
@@ -10,7 +11,7 @@ void DrawButton(IDirect3DDevice9* device, const bool enableMipMapping,
                 noesisTex_t* texture, const float x, const float y,
                 const float width, const float height, const bool hover)
 {
-    if (!texture || !texture->pD3DTex || texture->w <= 0 || texture->h <= 0)
+    if (!texture || !texture->gpuTexture || texture->w <= 0 || texture->h <= 0)
         return;
 
     // Compose the title button from atlas layers. The circular button is used as
@@ -43,18 +44,18 @@ void DrawButton(IDirect3DDevice9* device, const bool enableMipMapping,
 
     // Left cap uses the left half of the circular source.
     D3DUiRenderer::DrawTexturedQuadUV(
-        device, enableMipMapping, texture->pD3DTex, x, y, destinationCapWidth, height,
+        device, enableMipMapping, texture->gpuTexture, x, y, destinationCapWidth, height,
         capOuterU0, v0, capMidU, v1, color, expandDxt3Alpha);
 
     // Center stretches only the flat middle of the long source button.
     D3DUiRenderer::DrawTexturedQuadUV(
-        device, enableMipMapping, texture->pD3DTex,
+        device, enableMipMapping, texture->gpuTexture,
         x + destinationCapWidth, y, width - destinationCapWidth * 2.0f, height,
         bodyU0, v0, bodyU1, v1, color, expandDxt3Alpha);
 
     // Right cap mirrors the rounded outer half of the circular source.
     D3DUiRenderer::DrawTexturedQuadUV(
-        device, enableMipMapping, texture->pD3DTex,
+        device, enableMipMapping, texture->gpuTexture,
         x + width - destinationCapWidth, y, destinationCapWidth, height,
         capMidU, v0, capOuterU0, v1, color, expandDxt3Alpha);
 }

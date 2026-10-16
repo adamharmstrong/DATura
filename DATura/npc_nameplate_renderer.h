@@ -22,6 +22,9 @@ struct DrawItem
     std::uint32_t iconColor = 0xFFFFFFFF;
     bool jobMaster = false;
     bool starterQuestAvailable = false;
+    std::string font = "FFXI";
+    int fontSize = 16;
+    std::uint32_t titleColor = 0xFFD2DCE6;
 };
 
 void Draw(IDirect3DDevice9* device, std::vector<DrawItem>& items);

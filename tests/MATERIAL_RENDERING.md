@@ -19,3 +19,10 @@ that shader restores vertex color. The unchanged tests then passed 157/157.
 
 These tests establish DATura's material and depth contract; they are not a retail
 screenshot comparison or a claim of universal FFXI lighting fidelity.
+
+Fog follow-up (2026-10-16): `--materials-only <output>` runs the material and fog
+checks without the independent shadow suite (226 assertions passed).
+`--zone-fog <FFXI-root> <output>` captures six installed zones under fair weather
+and mist at midnight/noon, paired with fog disabled under the same lighting
+(277 assertions passed). See `Markdown Documents/ZONE_FOG.md` for scope and
+the separate five grazing-ground shadow failures in the broader suite.

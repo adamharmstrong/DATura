@@ -162,6 +162,9 @@ struct State
     bool enableWeatherEffects = true;
     bool mirrorWorldZones = false;
     bool showCollisionGeometry = false;
+    bool showZoneTriggerVolumes = false;
+    bool showZoneArrivalVolumes = false;
+    bool showZoneLineMarkers = true;
     int movementStyle = MovementDATura;
     int renderingBackend = RenderingBackendDirectX9;
     int titleBackgroundMode = TitleBackgroundRandom;

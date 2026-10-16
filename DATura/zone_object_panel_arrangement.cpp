@@ -2,6 +2,7 @@
 #include "zone_object_panel_arrangement.h"
 
 #include "zone_object_panel_layout.h"
+#include <algorithm>
 
 namespace ZoneObjectPanelArrangement
 {
@@ -12,7 +13,7 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
 
     const Controls& controls = context.controls;
     const int margin = 8;
-    const int headerHeight = 56;
+    const int headerHeight = ZoneObjectPanelLayout::kTreeTop;
     const int bottomHeight = 270;
     const int listBottom = clientHeight - bottomHeight;
     int placedX = 0;
@@ -36,12 +37,12 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
     const int transformEditWidth = 76;
 
     if (controls.zoneLabel)
-        MoveWindow(controls.zoneLabel, margin, 8, clientWidth - margin * 2, 20, TRUE);
+        MoveWindow(controls.zoneLabel, margin, 8, clientWidth - margin * 2 - 140, 20, TRUE);
     if (controls.combineTreeButton)
     {
         SetWindowTextA(controls.combineTreeButton,
                        context.combinedObjectTree ? "Split Lists" : "Combine Lists");
-        MoveWindow(controls.combineTreeButton, clientWidth - margin - 128, 32, 128, 24, TRUE);
+        MoveWindow(controls.combineTreeButton, clientWidth - margin - 128, 4, 128, 24, TRUE);
     }
     if (controls.drawBatchListLabel) ShowWindow(controls.drawBatchListLabel, SW_HIDE);
     if (controls.placedObjectList) ShowWindow(controls.placedObjectList, SW_HIDE);
@@ -54,7 +55,7 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
         {
             SetWindowTextA(controls.placedListLabel, "DAT File Contents");
             ShowWindow(controls.placedListLabel, SW_HIDE);
-            MoveWindow(controls.placedListLabel, margin, 36, clientWidth - margin * 2 - 140, 18, TRUE);
+            MoveWindow(controls.placedListLabel, margin, ZoneObjectPanelLayout::kPaneTop + 6, clientWidth - margin * 2 - 140, 18, TRUE);
         }
         if (controls.unreferencedListLabel) ShowWindow(controls.unreferencedListLabel, SW_HIDE);
         if (controls.collisionListLabel) ShowWindow(controls.collisionListLabel, SW_HIDE);
@@ -77,17 +78,17 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
         {
             SetWindowTextA(controls.placedListLabel, "Placed Geometry");
             ShowWindow(controls.placedListLabel, SW_HIDE);
-            MoveWindow(controls.placedListLabel, placedX, 36, placedWidth, 18, TRUE);
+            MoveWindow(controls.placedListLabel, placedX, ZoneObjectPanelLayout::kPaneTop + 6, placedWidth, 18, TRUE);
         }
         if (controls.unreferencedListLabel)
         {
             ShowWindow(controls.unreferencedListLabel, SW_HIDE);
-            MoveWindow(controls.unreferencedListLabel, rawX, 36, rawWidth, 18, TRUE);
+            MoveWindow(controls.unreferencedListLabel, rawX, ZoneObjectPanelLayout::kPaneTop + 6, rawWidth, 18, TRUE);
         }
         if (controls.collisionListLabel)
         {
             ShowWindow(controls.collisionListLabel, SW_HIDE);
-            MoveWindow(controls.collisionListLabel, collisionX, 36, collisionWidth, 18, TRUE);
+            MoveWindow(controls.collisionListLabel, collisionX, ZoneObjectPanelLayout::kPaneTop + 6, collisionWidth, 18, TRUE);
         }
         if (controls.dataTree)
         {
@@ -110,7 +111,13 @@ void Arrange(const Context& context, const int clientWidth, const int clientHeig
         if (controls.unreferencedHideAllButton) MoveWindow(controls.unreferencedHideAllButton, rawX + 96, paneButtonTop, 90, 24, TRUE);
         if (controls.collisionVisibleCheck) MoveWindow(controls.collisionVisibleCheck, collisionX, paneButtonTop - 2, collisionWidth, 28, TRUE);
     }
-    if (controls.loadingLabel) MoveWindow(controls.loadingLabel, 18, 58, 220, 32, TRUE);
+    const int loadingInset = margin + 24;
+    const int loadingWidth = std::max(120, clientWidth - loadingInset * 2);
+    const int loadingX = (clientWidth - loadingWidth) / 2;
+    const int loadingY = headerHeight + std::max(0, (treeHeight - 88) / 2);
+    if (controls.loadingOverlay) MoveWindow(controls.loadingOverlay, loadingX, loadingY, loadingWidth, 88, TRUE);
+    if (controls.loadingLabel) MoveWindow(controls.loadingLabel, 12, 12, loadingWidth - 24, 28, TRUE);
+    if (controls.loadingProgress) MoveWindow(controls.loadingProgress, 12, 48, loadingWidth - 24, 20, TRUE);
 
     for (int index = 0; index < controls.toolButtonCount; ++index)
     {

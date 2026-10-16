@@ -1,11 +1,12 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "d3d_bump_mapping.h"
 
 namespace D3DBumpMapping
 {
 namespace
 {
-IDirect3DPixelShader9* g_texturePixelShader = nullptr;
+RendererBackend::Shader* g_texturePixelShader = nullptr;
 bool g_texturePixelShaderTried = false;
 
 bool EnsureTexturePixelShader(IDirect3DDevice9* device)
@@ -33,31 +34,11 @@ bool EnsureTexturePixelShader(IDirect3DDevice9* device)
         "    return float4(saturate(2.0 * texel.rgb * diffuse.rgb * ColorScale.rgb * bumpScale), saturate(alpha));\n"
         "}\n";
 
-    ID3DBlob* byteCode = nullptr;
-    ID3DBlob* errors = nullptr;
-    const HRESULT compileHr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1,
-        "DATuraFfxiTexture", nullptr, nullptr, "main", "ps_2_0", 0, 0,
-        &byteCode, &errors);
-    if (FAILED(compileHr))
-    {
-        if (errors)
-            OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
-        if (errors)
-            errors->Release();
+    D3D9Graphics::Context graphics(device);
+    g_texturePixelShader = graphics.CreateShader({ RendererBackend::ShaderStage::Pixel,
+        kShaderSource, sizeof(kShaderSource) - 1, "DATuraFfxiTexture", "main", "ps_2_0" });
+    if (!g_texturePixelShader)
         return false;
-    }
-
-    const HRESULT shaderHr = device->CreatePixelShader(
-        static_cast<const DWORD*>(byteCode->GetBufferPointer()), &g_texturePixelShader);
-    byteCode->Release();
-    if (errors)
-        errors->Release();
-    if (FAILED(shaderHr))
-    {
-        g_texturePixelShader = nullptr;
-        OutputDebugStringA("WARNING: Unable to create FFXI texture/bump pixel shader.\n");
-        return false;
-    }
     return true;
 }
 }
@@ -71,7 +52,7 @@ bool ApplyTextureShader(IDirect3DDevice9* device, const bool useAuthoredAlpha,
     if (!EnsureTexturePixelShader(device))
     {
         if (device)
-            device->SetPixelShader(nullptr);
+            D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
         return false;
     }
 
@@ -98,11 +79,12 @@ bool ApplyTextureShader(IDirect3DDevice9* device, const bool useAuthoredAlpha,
         0.0f
     };
 
-    device->SetPixelShader(g_texturePixelShader);
-    device->SetPixelShaderConstantF(0, alphaParams, 1);
-    device->SetPixelShaderConstantF(1,
+    D3D9Graphics::Context graphics(device);
+    graphics.BindShader(RendererBackend::ShaderStage::Pixel, g_texturePixelShader);
+    graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 0, alphaParams, 1);
+    graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 1,
         colorScale ? authoredColorScale : defaultColorScale, 1);
-    device->SetPixelShaderConstantF(2, bumpParams, 1);
+    graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 2, bumpParams, 1);
     return true;
 }
 
@@ -110,7 +92,7 @@ void Release()
 {
     if (g_texturePixelShader)
     {
-        g_texturePixelShader->Release();
+        delete g_texturePixelShader;
         g_texturePixelShader = nullptr;
     }
     g_texturePixelShaderTried = false;

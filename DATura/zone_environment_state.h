@@ -50,6 +50,8 @@ struct Cache
 
 void Invalidate(Cache &cache, bool clearWeatherGroups);
 int CurrentMinuteOfDay();
+// Fractional minute on the same clock/epoch; fixed-time overrides remain exact.
+double CurrentMinuteOfDayPrecise();
 void SetUseLocalSystemTime(bool enabled);
 void SetTimeOverride(int minuteOfDay);
 void ClearTimeOverride();

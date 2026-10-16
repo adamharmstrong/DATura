@@ -14,6 +14,7 @@
 #include <iostream>
 #include <memory>
 #include <vector>
+#include <string_view>
 
 namespace
 {
@@ -187,23 +188,23 @@ void TestInstalledZone(const std::filesystem::path& root)
     }
     Check(waterMeshes > 0 && roomMeshes > 0, "real scene includes water and companion-room vertices");
 
-    // Room visual collision is exported from the placed triangles. Validate
-    // its coordinates against the actual rendered mesh, before any reflection.
+    // Room collision is authored separately from its visible mesh. Verify that
+    // companion DAT collision survives merging, without requiring it to match
+    // the tessellation of the rendered surface.
     size_t alignedRooms = 0;
-    for (const auto& object : gFF11LastMapObjects)
+    size_t authoredTriangles = 0;
+    for (const auto& mesh : gFF11LastCollisionMeshes)
     {
-        if (!object.roomObject || !object.visualCollisionCount ||
-            object.visualCollisionStart >= gFF11LastCollisionTriangles.size()) continue;
-        const auto& triangle = gFF11LastCollisionTriangles[object.visualCollisionStart];
-        bool matches[3] = {};
-        for (const auto& mesh : model->submeshes)
-            if (mesh.objectName == object.displayName)
-                for (const auto& vertex : mesh.cpuVerts)
-                    for (int i = 0; i < 3; ++i) matches[i] = matches[i] || Same(vertex.pos, triangle.p[i]);
-        Check(matches[0] && matches[1] && matches[2], "room collision and rendered placement share native coordinates");
-        if (++alignedRooms == 16) break;
+        Check(mesh.triStart >= 0 && mesh.triCount >= 0 &&
+              static_cast<size_t>(mesh.triStart) + mesh.triCount <= gFF11LastCollisionTriangles.size(),
+              "authored collision ranges survive room merging");
+        authoredTriangles += mesh.triCount;
+        if (std::string_view(mesh.displayName).starts_with("room ")) ++alignedRooms;
     }
-    Check(alignedRooms > 0, "room collision-to-render alignment is exercised");
+    Check(alignedRooms > 0 && authoredTriangles == gFF11LastCollisionTriangles.size(),
+          "room and outdoor collision come entirely from authored meshes");
+    for (const auto& object : gFF11LastMapObjects)
+        Check(object.visualCollisionCount == 0, "room merging does not invent static collision");
 
     const auto catalog = std::filesystem::path(__FILE__).parent_path().parent_path() / "DATura/npc_placements.csv";
     Check(FFXINpcPlacement::LoadCatalogForZone(235, catalog.string().c_str()), "load real Bastok NPC placements");

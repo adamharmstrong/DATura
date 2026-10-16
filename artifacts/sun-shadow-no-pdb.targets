@@ -1,0 +1,3 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<ItemDefinitionGroup><Link><GenerateDebugInformation>false</GenerateDebugInformation></Link><ClCompile><DebugInformationFormat>None</DebugInformationFormat></ClCompile></ItemDefinitionGroup>
+</Project>

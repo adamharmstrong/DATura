@@ -190,3 +190,51 @@ bool TestNameplateConfig()
     puts("PASS: Config dropdown selection, legacy alias, Job Master, reopen, persistence and save failure.");
     return true;
 }
+
+// Focused coverage for the staged font/color controls and persisted RGB values.
+bool TestFontConfig()
+{
+    Fixture f;
+    GameUiConfig_SetDefaults(f.config);
+    if (f.config.chatLogFontColor != RGB(255,255,255) ||
+        f.config.playerNameplate.fontSize != 16 || strcmp(f.config.playerNameplate.font, "FFXI")) return false;
+    Win32Theme::RecreateResources(f.theme.resources, true);
+    f.owner = CreateWindowExA(0, "STATIC", "Font config test", WS_POPUP,
+        -10000, -10000, 640, 716, nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
+    ConfigDialog::Initialize(f.dialog, f.owner, "", f.settings, f.theme, f.config, Changed, nullptr, &f);
+    ConfigDialog::Show(f.dialog);
+    HWND window = f.dialog.window;
+    if (!window) return false;
+    ShowWindow(window, SW_HIDE);
+    SendMessageA(window, WM_COMMAND, MAKEWPARAM(8354, BN_CLICKED), 0);
+    for (int id : {8500,8501,8502,8503,8504,8505})
+    {
+        HWND control = GetDlgItem(window,id);
+        if (!control || !(GetWindowLongPtrA(control,GWL_STYLE) & WS_VISIBLE)) return false;
+        RECT bounds{}; GetWindowRect(control,&bounds);
+        MapWindowPoints(HWND_DESKTOP,window,reinterpret_cast<POINT*>(&bounds),2);
+        if (bounds.top < 200 || bounds.bottom > 478) return false;
+    }
+    SendDlgItemMessageA(window,8501,CB_SETCURSEL,2,0);
+    SendMessageA(window,WM_COMMAND,MAKEWPARAM(8501,CBN_SELCHANGE),0);
+    SetDlgItemTextA(window,8502,"24");
+    SendMessageA(window,WM_COMMAND,MAKEWPARAM(8502,EN_KILLFOCUS),0);
+    if (strcmp(f.dialog.gameUi->playerNameplate.font,"Segoe UI") || f.dialog.gameUi->playerNameplate.fontSize != 24) return false;
+    if (strcmp(f.config.playerNameplate.font,"FFXI") || f.config.playerNameplate.fontSize != 16) return false;
+    auto saved = *f.dialog.gameUi;
+    saved.chatLogFontColor = RGB(10,20,30);
+    saved.playerNameplate.fontColor = RGB(40,50,60);
+    char directory[MAX_PATH]{};
+    if (!GetTempPathA(MAX_PATH,directory) || !GetTempFileNameA(directory,"FNT",0,f.temporary)) return false;
+    strcpy_s(saved.loadedPath,f.temporary);
+    if (!GameUiConfig_SaveChatLog(saved) || !GameUiConfig_SavePlayerNameplate(saved)) return false;
+    char value[64]{};
+    GetPrivateProfileStringA("ChatLog","FontColor","",value,sizeof(value),f.temporary);
+    if (strcmp(value,"10,20,30")) return false;
+    GetPrivateProfileStringA("Player.Nameplate","FontColor","",value,sizeof(value),f.temporary);
+    if (strcmp(value,"40,50,60")) return false;
+    GetPrivateProfileStringA("Player.Nameplate","Font","",value,sizeof(value),f.temporary);
+    if (strcmp(value,"Segoe UI") || GetPrivateProfileIntA("Player.Nameplate","FontSize",0,f.temporary)!=24) return false;
+    puts("PASS: Interface font controls, staged edits, defaults, and font/color persistence.");
+    return true;
+}

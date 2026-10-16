@@ -26,6 +26,9 @@ Data Build(const std::string &objectName, int vanadielMinute,
            const std::vector<ff11GeneratorRecord_t> &generators,
            const std::vector<ff11KeyframeRecord_t> &keyframes);
 bool IsCameraShell(const Data &state);
+bool IsCelestial(const Data &state);
+D3DMATRIX BuildCelestialWorld(const Data &state, int minuteOfDay,
+                              float cameraX, float cameraY, float cameraZ);
 D3DMATRIX BuildCameraShellWorld(const Data &state, float cameraX, float cameraY, float cameraZ);
 void ApplyBlendMode(IDirect3DDevice9 *device, unsigned short blendMode);
 void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model, bool enableMipMapping,
@@ -33,5 +36,5 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model, bool enabl
                       const std::vector<ff11GeneratorRecord_t> &generators,
                       const std::vector<ff11KeyframeRecord_t> &keyframes,
                       float cameraX, float cameraY, float cameraZ,
-                      float opacity = 1.0f);
+                      float opacity = 1.0f, int minuteOfDay = -1);
 }

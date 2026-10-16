@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "model_ff11.h"
 #include "model_ff11_internal.h"
@@ -294,16 +294,18 @@ protected:
 			return;
 
 		const int meshOfs = ReadInt32LE(pData, dataSize, 0x08);
-		if (!RangeIsValid(meshOfs, 0x20, dataSize))
+		if (meshOfs == 0 || !RangeIsValid(meshOfs, 0x20, dataSize))
 			return;
 
-		const int gridWidth = 10 * (int)pData[0x0C];
-		const int gridHeight = 10 * (int)pData[0x0D];
+		// Grid dimensions and bucket sizes are authored independently. A bucket
+		// is usually 40 units, but that is not a format constant.
+		const int gridWidth = (int)pData[0x0C] * (int)pData[0x0E] / 4;
+		const int gridHeight = (int)pData[0x0D] * (int)pData[0x0F] / 4;
 		const int meshGridLists = ReadInt32LE(pData, dataSize, meshOfs + 0x0C);
 		const int gridOfs = ReadInt32LE(pData, dataSize, meshOfs + 0x10);
 		if (gridWidth <= 0 || gridHeight <= 0 || gridWidth > 4096 || gridHeight > 4096)
 			return;
-		if (!RangeIsValid(gridOfs, gridWidth * gridHeight * 4, dataSize))
+		if (gridOfs == 0 || !RangeIsValid(gridOfs, gridWidth * gridHeight * 4, dataSize))
 			return;
 		if (meshGridLists < 0 || meshGridLists >= dataSize)
 			return;
@@ -325,23 +327,24 @@ protected:
 		if (!RangeIsValid(entryOfs, 8, dataSize))
 			return;
 
-		// First int stores bucket position/flags. The remaining entries are
-		// {transform offset, geometry offset} pairs, terminated by zero.
+		// The low 14 bits give the exact pair count; the remaining bits encode
+		// the bucket position/flags. This is not a zero-terminated list.
 		const unsigned int bucketFlags = (unsigned int)ReadInt32LE(pData, dataSize, entryOfs);
+		const int pairCount = (int)(bucketFlags & 0x3FFF);
 		entryOfs += 4;
-		for (int pairCount = 0; pairCount < 4096; ++pairCount)
+		if (!RangeIsValid(entryOfs, pairCount * 8, dataSize))
+			return;
+		for (int pairIndex = 0; pairIndex < pairCount; ++pairIndex)
 		{
 			if (!RangeIsValid(entryOfs, 4, dataSize))
 				return;
 			const int transformOfs = ReadInt32LE(pData, dataSize, entryOfs);
 			entryOfs += 4;
-			if (transformOfs == 0)
-				return;
 			if (!RangeIsValid(entryOfs, 4, dataSize))
 				return;
 			const int geometryOfs = ReadInt32LE(pData, dataSize, entryOfs);
 			entryOfs += 4;
-			if (geometryOfs != 0)
+			if (transformOfs != 0 && geometryOfs != 0)
 				CollectOfficialCollisionGridMesh(pData, dataSize, transformOfs, geometryOfs, gridX, gridY, bucketFlags);
 		}
 	}
@@ -361,7 +364,7 @@ protected:
 		const int verticesOfs = ReadInt32LE(pData, dataSize, geometryOfs + 0x00);
 		const int normalsOfs = ReadInt32LE(pData, dataSize, geometryOfs + 0x04);
 		const int trisOfs = ReadInt32LE(pData, dataSize, geometryOfs + 0x08);
-		const int triCount = (int)ReadInt16LE(pData, dataSize, geometryOfs + 0x0C);
+		const int triCount = (int)ReadUInt16LE(pData, dataSize, geometryOfs + 0x0C);
 		if (triCount <= 0 || triCount > 65535)
 			return;
 		if (!RangeIsValid(verticesOfs, 0, dataSize) || !RangeIsValid(normalsOfs, 0, dataSize) ||
@@ -514,32 +517,6 @@ static bool FF11_MapGeoNameUsesHardAlpha(const char *name)
 		FF11_MapGeoNameContains(name, "kusa"))
 	{
 		return true;
-	}
-	return false;
-}
-
-static bool FF11_MapGeoNameLooksLikeCollision(const char *name)
-{
-	static const char *skCollisionTokens[] =
-	{
-		"col",
-		"wall",
-		"floor",
-		"walk",
-		"hit",
-		"bound"
-	};
-
-	char objectName[CFFXIMapHandler::skObjectNameLength + 1];
-	memcpy(objectName, name, CFFXIMapHandler::skObjectNameLength);
-	objectName[CFFXIMapHandler::skObjectNameLength] = 0;
-	for (int i = 0; objectName[i] != 0; ++i)
-		objectName[i] = (char)tolower((unsigned char)objectName[i]);
-
-	for (int i = 0; i < (int)(sizeof(skCollisionTokens) / sizeof(skCollisionTokens[0])); ++i)
-	{
-		if (strstr(objectName, skCollisionTokens[i]))
-			return true;
 	}
 	return false;
 }
@@ -947,11 +924,6 @@ public:
 													   pIndexData[index + pTriWindIdx[2]],
 													   transform))
 								continue;
-							if (!waterOnly) CollectCollisionTriangle(pVertData, vertStride, posOfs,
-								pIndexData[index + pTriWindIdx[0]],
-								pIndexData[index + pTriWindIdx[1]],
-								pIndexData[index + pTriWindIdx[2]],
-								transform, pMapGeoHdr->mObjectName, pMapObject);
 
 							if (emitRender)
 							{
@@ -1002,9 +974,6 @@ public:
 													   triIdx[0], triIdx[1], triIdx[2],
 													   transform))
 								continue;
-							if (!waterOnly) CollectCollisionTriangle(pVertData, vertStride, posOfs,
-								triIdx[pTriWindIdx[0]], triIdx[pTriWindIdx[1]], triIdx[pTriWindIdx[2]],
-								transform, pMapGeoHdr->mObjectName, pMapObject);
 
 							if (emitRender)
 							{
@@ -1061,11 +1030,8 @@ public:
 				unsigned char mask = 0;
 				for (int request = 0; request < 3; ++request)
 					if (selected[request] == selected[level]) mask |= 1 << request;
-				const size_t collisionStart = gFF11LastCollisionTriangles.size();
 				RenderMapObjectGeo(pRapi, selected[level], mapObject.mTransform,
 					mapObject.mBackwardWinding, &mapObject, true, NULL, mask);
-				// Keep only the most detailed available visual collision surface.
-				if (level > 0) gFF11LastCollisionTriangles.resize(collisionStart);
 			}
 			return;
 		}
@@ -1129,47 +1095,6 @@ protected:
 		return MapGeoRangeFits(indexDataOfs, indexCount, sizeof(unsigned short), dataSize);
 	}
 
-
-	static RichVec3 TransformMapPoint(const float *p, const RichMat43 &transform)
-	{
-		RichVec3 out;
-		for (int c = 0; c < 3; ++c)
-		{
-			out[c] = p[0] * transform[0][c] +
-					 p[1] * transform[1][c] +
-					 p[2] * transform[2][c] +
-					 transform[3][c];
-		}
-		return out;
-	}
-
-	static void CollectCollisionTriangle(const unsigned char *pVertData, const int vertStride, const int posOfs,
-										const int idx0, const int idx1, const int idx2,
-										const RichMat43 &transform, const char *objectName,
-										const CFFXIMapHandler::SInterpretedMapObject *pMapObject)
-	{
-		if (!gpFF11Opts || !gpFF11Opts->collectCollision)
-			return;
-
-		const bool placedGeometry = (pMapObject != NULL);
-		const bool unreferencedCandidate =
-			gpFF11Opts->collectCollisionUnreferenced &&
-			FF11_MapGeoNameLooksLikeCollision(objectName);
-		if (!placedGeometry && !unreferencedCandidate)
-			return;
-
-		ff11CollisionTriangle_t tri = {};
-		const RichVec3 p0 = TransformMapPoint((const float *)(pVertData + idx0 * vertStride + posOfs), transform);
-		const RichVec3 p1 = TransformMapPoint((const float *)(pVertData + idx1 * vertStride + posOfs), transform);
-		const RichVec3 p2 = TransformMapPoint((const float *)(pVertData + idx2 * vertStride + posOfs), transform);
-		for (int axis = 0; axis < 3; ++axis)
-		{
-			tri.p[0][axis] = p0[axis];
-			tri.p[1][axis] = p1[axis];
-			tri.p[2][axis] = p2[axis];
-		}
-		gFF11LastCollisionTriangles.push_back(tri);
-	}
 
 	static bool MapTriangleLooksValid(const unsigned char *pVertData, const int vertStride, const int posOfs,
 									const int idx0, const int idx1, const int idx2,

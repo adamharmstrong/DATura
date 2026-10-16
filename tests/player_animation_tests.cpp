@@ -1,3 +1,4 @@
+#include "d3d9_graphics.h"
 #include "stdafx.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
@@ -319,12 +320,12 @@ void TestRace(const char *root, int race, IDirect3DDevice9 *device)
                 if (sm.pVB && !sm.cpuVerts.empty())
                 {
                     void *gpu = nullptr;
-                    Check(SUCCEEDED(sm.pVB->Lock(0, 0, &gpu, D3DLOCK_READONLY)), "read animated buffer");
+                    Check(sm.pVB->Map(0, 0, &gpu, RendererBackend::MapAccess::Read), "read animated buffer");
                     if (gpu)
                     {
                         Check(memcmp(gpu, sm.cpuVerts.data(), sm.cpuVerts.size() * sizeof(FFXIVertex)) == 0,
                             "render buffer matches posed vertices");
-                        sm.pVB->Unlock();
+                        sm.pVB->Unmap();
                     }
                 }
             }

@@ -1,0 +1,3 @@
+const unsigned char data[] = {
+    0xAA, 0xBB, 0xCC
+};

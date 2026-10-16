@@ -1,4 +1,5 @@
 #include "../DATura/application_settings.h"
+#include "../DATura/character_save_data.h"
 #include "../DATura/creation_model_loader.h"
 #include "../DATura/ffxi_dat_set_builder.h"
 #include "../DATura/ffxi_model_lifetime.h"
@@ -42,6 +43,142 @@ bool NearlyEqual(const float left, const float right, const float epsilon = 0.00
     return std::fabs(left - right) <= epsilon;
 }
 
+void TestCharacterHomePoints()
+{
+    CharacterSaveData::Data data;
+    data.homeNationIndex = 1;
+    const CharacterSaveData::HomePoint first = {235, 1001, "Home Point #1"};
+    const CharacterSaveData::HomePoint second = {237, 2002, "Home Point #2"};
+
+    CharacterSaveData::RegisterHomePoint(data, first);
+    CharacterSaveData::RegisterHomePoint(data, first);
+    CharacterSaveData::RegisterHomePoint(data, second);
+    Check(data.activatedHomePoints.size() == 2,
+        "registered Home Points are character-specific and deduplicated");
+    Check(!data.hasHomePoint,
+        "registering a crystal does not change the saved spawn location");
+
+    CharacterSaveData::SetHomePoint(data, second);
+    Check(data.hasHomePoint && data.homePointZoneId == second.zoneId &&
+        data.homePointEntityId == second.entityId,
+        "saving at a Home Point records that crystal as the spawn location");
+    Check(data.activatedHomePoints.size() == 2,
+        "saving at a registered Home Point preserves the destination list");
+}
+
+void TestCharacterStatsPersistence()
+{
+    char temporaryDirectory[MAX_PATH] = {};
+    char path[MAX_PATH] = {};
+    Check(GetTempPathA(MAX_PATH, temporaryDirectory) != 0 &&
+        GetTempFileNameA(temporaryDirectory, "dst", 0, path) != 0,
+        "a temporary character INI can be created");
+
+    CharacterSaveData::Data expected;
+    expected.homeNationIndex = 2;
+    expected.stats.race = FFXIStats::kRace_Mithra;
+    expected.stats.mainJob = FFXIStats::kJob_THF;
+    expected.stats.mainLevel = 42;
+    expected.stats.supportJob = FFXIStats::kJob_NIN;
+    expected.stats.supportLevel = 21;
+    expected.stats.merits[FFXIStats::kAttr_DEX] = 5;
+    expected.stats.gear[FFXIStats::kAttr_AGI] = 17;
+    expected.stats.buffs[FFXIStats::kAttr_STR] = -3;
+    expected.stats.resources = {321, 123, 1750};
+    expected.stats.progression.experience = 9876;
+    expected.stats.progression.meritPoints = 4;
+    expected.stats.progression.masterLevel = 7;
+    expected.stats.skills[FFXIStats::kSkill_Dagger] = 146;
+    expected.stats.skills[FFXIStats::kSkill_Evasion] = 139;
+    expected.stats.elementalResistance[FFXIStats::kElement_Fire] = 12;
+    expected.stats.gearModifiers[FFXIStats::kMod_Accuracy] = 18;
+    expected.stats.traitModifiers[FFXIStats::kMod_DualWield] = 10;
+    expected.stats.effectModifiers[FFXIStats::kMod_Haste] = 1500;
+    expected.inventorySlots.resize(5);
+    expected.inventorySlots[1] = InventorySystem::ItemStack{4112, 3};
+    expected.inventorySlots[3] = InventorySystem::ItemStack{16534, 1};
+    expected.inventorySlots[4] = InventorySystem::ItemStack{12568, 1};
+    expected.equippedItems[InventorySystem::EquipmentSlotIndex(
+        InventorySystem::EquipmentSlot::Main)] = 16534;
+    expected.equippedItems[InventorySystem::EquipmentSlotIndex(
+        InventorySystem::EquipmentSlot::Body)] = 12568;
+
+    Check(CharacterSaveData::Save(path, expected),
+        "character stats save to the character INI");
+    CharacterSaveData::Data actual;
+    Check(CharacterSaveData::Load(path, actual),
+        "character stats load from the character INI");
+    Check(actual.stats.race == expected.stats.race &&
+        actual.stats.mainJob == expected.stats.mainJob &&
+        actual.stats.mainLevel == expected.stats.mainLevel &&
+        actual.stats.supportJob == expected.stats.supportJob &&
+        actual.stats.supportLevel == expected.stats.supportLevel,
+        "race, jobs, and levels round-trip with the character");
+    Check(actual.stats.merits[FFXIStats::kAttr_DEX] == 5 &&
+        actual.stats.gear[FFXIStats::kAttr_AGI] == 17 &&
+        actual.stats.buffs[FFXIStats::kAttr_STR] == -3,
+        "attribute modifiers round-trip with the character");
+    Check(actual.stats.resources.currentHp == 321 && actual.stats.resources.currentMp == 123 &&
+        actual.stats.resources.tp == 1750 && actual.stats.progression.experience == 9876 &&
+        actual.stats.progression.meritPoints == 4 && actual.stats.progression.masterLevel == 7,
+        "resources and progression round-trip with the character");
+    Check(actual.stats.skills[FFXIStats::kSkill_Dagger] == 146 &&
+        actual.stats.skills[FFXIStats::kSkill_Evasion] == 139 &&
+        actual.stats.elementalResistance[FFXIStats::kElement_Fire] == 12 &&
+        actual.stats.gearModifiers[FFXIStats::kMod_Accuracy] == 18 &&
+        actual.stats.traitModifiers[FFXIStats::kMod_DualWield] == 10 &&
+        actual.stats.effectModifiers[FFXIStats::kMod_Haste] == 1500,
+        "skills, resistances, and typed modifiers round-trip with the character");
+    Check(actual.inventorySlots.size() == 5 && !actual.inventorySlots[0] &&
+        actual.inventorySlots[1] && actual.inventorySlots[1]->itemId == 4112 &&
+        actual.inventorySlots[1]->quantity == 3 && !actual.inventorySlots[2] &&
+        actual.inventorySlots[3] && actual.inventorySlots[3]->itemId == 16534 &&
+        actual.inventorySlots[3]->quantity == 1 && actual.inventorySlots[4] &&
+        actual.inventorySlots[4]->itemId == 12568,
+        "inventory slots and stack quantities round-trip with the character");
+    Check(actual.equippedItems[InventorySystem::EquipmentSlotIndex(
+              InventorySystem::EquipmentSlot::Main)] == 16534 &&
+        actual.equippedItems[InventorySystem::EquipmentSlotIndex(
+              InventorySystem::EquipmentSlot::Body)] == 12568 &&
+        actual.equippedItems[InventorySystem::EquipmentSlotIndex(
+              InventorySystem::EquipmentSlot::Head)] == 0,
+        "equipped item IDs round-trip with the character");
+    DeleteFileA(path);
+}
+
+void TestLegacyCharacterMigration()
+{
+    char temporaryDirectory[MAX_PATH] = {};
+    char path[MAX_PATH] = {};
+    GetTempPathA(MAX_PATH, temporaryDirectory);
+    GetTempFileNameA(temporaryDirectory, "dsm", 0, path);
+    WritePrivateProfileStringA("Character", "Version", "2", path);
+    WritePrivateProfileStringA("Character", "HomeNation", "1", path);
+    WritePrivateProfileStringA("HomePoint", "Activated", "0", path);
+    WritePrivateProfileStringA("HomePoint", "ZoneId", "-1", path);
+    WritePrivateProfileStringA("HomePoint", "EntityId", "0", path);
+    WritePrivateProfileStringA("ActivatedHomePoints", "Count", "0", path);
+
+    CharacterSaveData::Data migrated;
+    Check(CharacterSaveData::Load(path, migrated),
+        "a legacy character is loaded and migrated");
+    Check(GetPrivateProfileIntA("Character", "Version", 0, path) == CharacterSaveData::Version,
+        "loading rewrites a legacy character in the current format");
+    Check(GetPrivateProfileIntA("Stats", "MainJob", -1, path) == FFXIStats::kJob_WAR &&
+        GetPrivateProfileIntA("Stats", "MainLevel", -1, path) == 1,
+        "migration writes the default character stats");
+    Check(GetPrivateProfileIntA("Inventory", "SlotCount", -1, path) == 0,
+        "migration writes an empty per-character inventory");
+    Check(GetPrivateProfileIntA("Equipment", "Main", -1, path) == 0 &&
+        GetPrivateProfileIntA("Equipment", "Body", -1, path) == 0,
+        "migration writes an empty equipment loadout");
+    Check(GetPrivateProfileIntA("Resources", "CurrentHP", -1, path) == 1 &&
+        GetPrivateProfileIntA("Skills", "Sword", -1, path) == 0 &&
+        GetPrivateProfileIntA("ElementalResistance", "Fire", -1, path) == 0,
+        "migration writes default resources, skills, and resistances");
+    DeleteFileA(path);
+}
+
 void TestDefaultState()
 {
     const ApplicationSettings::State settings;
@@ -69,6 +206,13 @@ void TestDefaultState()
     Check(settings.enableTextureCompression, "texture compression is enabled by default");
     Check(!settings.mirrorWorldZones, "world-zone mirroring is disabled by default");
     Check(!settings.showCollisionGeometry, "collision geometry is hidden by default");
+    Check(settings.showZoneLineMarkers, "FFXII-style dotted zone lines are enabled by default");
+    auto markerSettings = settings;
+    markerSettings.showZoneTriggerVolumes = true;
+    markerSettings.showZoneArrivalVolumes = true;
+    markerSettings.showZoneLineMarkers = false;
+    Check(!markerSettings.showZoneLineMarkers && markerSettings.showZoneTriggerVolumes &&
+        markerSettings.showZoneArrivalVolumes, "zone markers can be disabled independently of debug volumes");
 }
 
 void TestBumpMappingIntensity()
@@ -675,6 +819,16 @@ void TestInputController()
             InputController::Action::ToggleZoneMap,
         "M toggles the zone map again after release");
     InputController::KeyUp(input, 'M');
+    Check(InputController::KeyDown(input, 'N') ==
+            InputController::Action::ToggleCollisionMap,
+        "N emits the collision-map toggle action");
+    Check(InputController::KeyDown(input, 'N') == InputController::Action::None,
+        "held N does not repeatedly toggle the collision map");
+    InputController::KeyUp(input, 'N');
+    Check(InputController::KeyDown(input, 'N') ==
+            InputController::Action::ToggleCollisionMap,
+        "N toggles the collision map again after release");
+    InputController::KeyUp(input, 'N');
     Check(InputController::KeyDown(input, 0x1B) == InputController::Action::None,
         "Escape does not emit a program exit action");
     Check(InputController::KeyDown(input, 0x08) == InputController::Action::Back,
@@ -1204,6 +1358,9 @@ int main()
     }
     TestCollisionRegressions();
     TestDefaultState();
+    TestCharacterHomePoints();
+    TestCharacterStatsPersistence();
+    TestLegacyCharacterMigration();
     TestBumpMappingIntensity();
     TestResolutionOptions();
     TestWindowModes();

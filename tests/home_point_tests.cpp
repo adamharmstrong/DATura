@@ -5,6 +5,9 @@
 #include "ffxi_file_io.h"
 #include "home_point_data.h"
 #include "home_point_effect.h"
+#include "tower_portal_data.h"
+#include "ffxi_event_table.h"
+#include "ffxi_event_messages.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
 #include <filesystem>
@@ -70,9 +73,36 @@ int main(int argc, char **argv)
     if (argc < 2)
         return 2;
     const std::string root = argv[1];
+    for (const char* path : {"/ROM/0/79.DAT", "/ROM/2/62.DAT", "/ROM/2/63.DAT"})
+    {
+        BYTE* ringRaw=nullptr;
+        DWORD ringSize=0;
+        const bool read=FFXIFileIO::ReadWholeFile((root+path).c_str(),&ringRaw,&ringSize);
+        Check(read,"read installed Tower ring animation");
+        if (!read) continue;
+        HomePoint::Data rings;
+        const bool parsed=TowerPortal::RingData(std::vector<uint8_t>(ringRaw,ringRaw+ringSize),rings);
+        delete[] ringRaw;
+        Check(parsed,"parse Tower ring animation for axis regression");
+        if (!parsed) continue;
+        for (const char* name : {"rig1","rig2","rig3"})
+        {
+            const auto& g=rings.generators.at(name);
+            Check(g.localSpin,"Tower rings use mesh-local spin");
+            for (float age : {0.f,7.f,19.f,37.f,59.f})
+            {
+                HomePoint::Vec spin={};
+                for (int a=0;a<3;++a) spin[a]=g.rotationSpeed[a]*age;
+                const auto m=HomePoint::ApplyMeshRotation(D3DMath::BuildIdentity(),g.rotation,spin,g.localSpin);
+                // Ring geometry lies in local XY: both basis vectors must stay horizontal.
+                Check(std::abs(m._12)<.001f && std::abs(m._22)<.001f,
+                      "animated Tower ring stays parallel to the floor");
+            }
+        }
+    }
     BYTE *raw = nullptr;
     DWORD size = 0;
-    for (int id : {9013, 16023})
+    for (int id : {9013, 16023, 16001})
     {
         char relative[100];
         sprintf_s(relative, "/sound/win/se/se%03d/se%06d.spw", id / 1000, id);
@@ -216,6 +246,90 @@ int main(int argc, char **argv)
               "missing installation fails safely");
         Check(effect.LayerCount() == 7, "failed reload keeps previous asset");
     }
+    for (const auto& location : {std::pair{239,false},std::pair{242,false},std::pair{242,true}})
+    {
+        const auto [zone,upperFloor]=location;
+        HomePoint::Effect portal;
+        Check(portal.LoadTowerPortal(device,root.c_str(),zone,false,upperFloor),"load Tower ring and activation dependencies");
+        Check(portal.LayerCount()==3,"all three portal ring meshes loaded");
+        Check(portal.HasSounds(),"portal activation sound loaded independently of BGM");
+        const float center[3]={upperFloor ? 7.1f : zone==239 ? -.103f : .075f,
+            upperFloor ? -45.f : zone==239 ? -16.803f : -.059f,
+            upperFloor ? -29.7f : zone==239 ? 140.865f : -33.813f};
+        const float eye[3]={center[0]+3,center[1]-4,center[2]+5};
+        auto view=D3DMath::BuildLookAtLH(eye[0],eye[1],eye[2],center[0],center[1],center[2]);
+        auto proj=D3DMath::BuildPerspectiveFovLH(.7f,1,.1f,100);
+        device->SetTransform(D3DTS_VIEW,&view);
+        device->SetTransform(D3DTS_PROJECTION,&proj);
+        auto world=D3DMath::BuildIdentity();
+        std::vector<DWORD> a,b;
+        for (int frame=0;frame<2;++frame)
+        {
+            device->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0xff18202c,1,0);
+            device->BeginScene();
+            portal.Draw(device,world,eye,frame==0 ? 3.0 : 3.2,-1000,true);
+            device->EndScene();
+            auto pixels=Capture(device,(std::string("portal-")+std::to_string(zone)+
+                (upperFloor ? "-upper" : "")+"-"+std::to_string(frame)).c_str());
+            if (frame==0) a=std::move(pixels); else b=std::move(pixels);
+        }
+        size_t drawn=0,changed=0;
+        for (size_t p=0;p<a.size();++p)
+        {
+            if ((a[p]&0xffffff)!=0x18202c) ++drawn;
+            if (p<b.size() && a[p]!=b[p]) ++changed;
+        }
+        std::cout<<"portal zone="<<zone<<" triangles="<<portal.TriangleCount()<<" drawn="<<drawn<<" animated="<<changed<<'\n';
+        Check(drawn>100,"portal rings visible");
+        Check(changed>50,"portal rings animate");
+        device->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0xff18202c,0,0);
+        device->BeginScene(); portal.Draw(device,world,eye,3,-1000,true); device->EndScene();
+        const auto occluded=Capture(device,(std::string("portal-occluded-")+std::to_string(zone)).c_str());
+        Check(std::all_of(occluded.begin(),occluded.end(),[](DWORD p){return (p&0xffffff)==0x18202c;}),
+              "foreground depth occludes portal rings");
+        world._41=center[0]; world._42=center[1]; world._43=center[2];
+        device->Clear(0,nullptr,D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER,0xff18202c,1,0);
+        device->BeginScene(); portal.DrawActivation(device,world,eye,.6,0,true); device->EndScene();
+        const auto activated=Capture(device,(std::string("portal-activation-")+std::to_string(zone)).c_str());
+        Check(std::count_if(activated.begin(),activated.end(),[](DWORD p){return (p&0xffffff)!=0x18202c;})>50,
+              "player-attached activation effect renders");
+        portal.StopSound();
+    }
+    TowerPortal::Interaction interaction;
+    interaction.Begin(); Check(interaction.query && !interaction.activating,"portal asks before warping");
+    interaction.Cancel(&interaction); Check(!interaction.query && interaction.suppressed,"cancel latches portal");
+    interaction.Begin(); interaction.Confirm();
+    Check(!interaction.Tick(.4) && interaction.Tick(.02) && !interaction.Tick(.1),"sound fires once at scheduler frame 25");
+    std::vector<FFXIEventMessages::Entry> messages;
+    Check(FFXIEventMessages::Load((root+"/ROM/25/51.DAT").c_str(),messages) && messages.size()>80,
+          "load original Tower message table");
+    if (messages.size()>80)
+    {
+        std::string prompt; std::vector<std::string> options; std::vector<uint32_t> values;
+        Check(FFXIEventMessages::SplitChoiceText(messages[80],0,prompt,options,values),
+              "parse original upper-floor portal query");
+        Check(prompt=="Do you want to warp to the first floor?" &&
+              options==std::vector<std::string>{"Yes.","Not now."},"original portal text retained");
+    }
+    std::vector<FFXIEventTable::EntityScripts> scripts;
+    Check(FFXIEventTable::Load((root+"/ROM/21/51.DAT").c_str(),scripts),"load original Tower events");
+    bool arrivalChecked=false;
+    for (const auto& actor : scripts)
+        if (actor.entityId==0x7ffffff0 && actor.events.size()>21)
+        {
+            const auto& event=actor.events[21];
+            const auto* pos=event.code.data()+event.entryOffset;
+            Check(pos[0]==0x47 && pos[1]==0,"upper-floor return uses pending XZY position");
+            const int expected[4]={-20902,-8665,500,3792};
+            for (int axis=0;axis<4;++axis)
+            {
+                const auto ref=HomePoint::Read<uint16_t>(pos+2+axis*2);
+                Check((ref&0x8000) && (ref&0x7fff)<event.references.size() &&
+                      int32_t(event.references[ref&0x7fff])==expected[axis],"upper-floor return reference matches installed event");
+            }
+            arrivalChecked=true;
+        }
+    Check(arrivalChecked,"verified system actor's first-floor return block");
     device->Release();
     d3d->Release();
     DestroyWindow(window);

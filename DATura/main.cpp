@@ -4,11 +4,14 @@
 ========================================================================================*/
 
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "ffxi_dat_resolver.h"
 #include "dat_replacement_dialog.h"
 #include "ffxi_coordinate_frame.h"
 #include "zone_transition.h"
+#include "tower_portal_data.h"
 #include "zone_diagnostics_dialog.h"
+#include "dat_hex_reader.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
 #include "zone_dat_table.h"
@@ -21,8 +24,10 @@
 #include "ffxi_companion_browser.h"
 #include "ffxi_resource_browser.h"
 #include "ffxi_paths.h"
+#include "ffxi_map_image.h"
 #include "ffxi_path_info_dialog.h"
 #include "ffxi_title_screen_renderer.h"
+#include "title_camera_rail.h"
 #include "ffxi_title_assets.h"
 #include "ffxi_title_ui_primitives.h"
 #include "title_scene_assets.h"
@@ -57,7 +62,14 @@
 #include "win32_owner_draw_menu.h"
 #include "application_menu.h"
 #include "ffxi_main_menu.h"
+#include "ffxi_inventory_menu.h"
+#include "inventory.h"
+#include "starter_item_catalog.h"
+#include "world_item_system.h"
+#include "world_item_renderer.h"
+#include "world_item_hover.h"
 #include "application_settings.h"
+#include "application_settings_store.h"
 #include "config_dialog.h"
 #include "input_controller.h"
 #include "interaction_controller.h"
@@ -105,6 +117,10 @@
 #include "game_ui_config.h"
 #include "npc_placement.h"
 #include "ffxi_event_table.h"
+#include "npc_event_runtime.h"
+#include "npc_conversation_controller.h"
+#include "character_creation_flow.h"
+#include "character_roster_controller.h"
 #include "ffxi_event_messages.h"
 #include "ffxi_lore_zone_dat_crossref.h"
 #include "resource.h"
@@ -118,6 +134,7 @@
 #include <limits>
 #include <array>
 #include <vector>
+#include <memory>
 #include <string>
 #include <map>
 #include <algorithm>
@@ -206,41 +223,27 @@ struct NpcRenderInstance
     bool renderedHeadingInitialized = false;
 };
 
-struct NpcEventRuntime
-{
-    const FFXIEventTable::Event* event = nullptr;
-    std::array<std::uint32_t, 80> local = {};
-    std::array<std::uint32_t, 96> zone = {};
-    std::array<std::uint16_t, 8> jumps = {};
-    std::size_t pc = 0;
-    std::size_t jumpIndex = 0;
-    std::uint32_t pendingMessage = 0xffffffffu;
-    std::uint32_t pendingChoiceMessage = 0xffffffffu;
-    std::uint32_t defaultChoice = 0;
-    std::uint32_t hiddenChoiceMask = 0;
-    bool messageOpen = false;
-    bool waitingChoice = false;
-    bool finished = false;
-};
-
 struct NpcConversationState
 {
     std::uint32_t entityId = 0;
     std::string name;
-    std::vector<std::string> frames;
-    std::size_t index = 0;
-    std::vector<FFXIEventTable::EntityScripts> scripts;
-    std::vector<FFXIEventMessages::Entry> messages;
-    NpcEventRuntime runtime;
+    NpcConversationController::State dialogue;
     std::string choicePrompt;
     std::vector<std::string> choiceOptions;
     std::vector<std::uint32_t> choiceValues;
     int choiceSelected = 0;
 };
 
+enum class HomePointMenuPhase
+{
+    None,
+    Actions,
+    Destinations
+};
+
 struct HomePointTeleportState
 {
-    bool active = false;
+    HomePointMenuPhase phase = HomePointMenuPhase::None;
     CharacterSaveData::HomePoint source;
     std::vector<CharacterSaveData::HomePoint> destinations;
 };
@@ -251,7 +254,7 @@ static NpcConversationState g_npcConversation;
 static HomePointTeleportState g_homePointTeleport;
 static double g_homePointSeconds = 0.0;
 
-static bool CompleteHomePointTeleport(HWND owner);
+static bool CompleteHomePointMenu(HWND owner);
 
 static std::vector<NpcNameplateRenderer::DrawItem> g_npcNameplates;
 static NpcInteraction::State g_npcInteraction;
@@ -301,8 +304,12 @@ static float& g_camYaw = g_orbitCamera.yaw;
 static float& g_camPitch = g_orbitCamera.pitch;
 static float& g_camDist = g_orbitCamera.distance;
 static float (&g_camTarget)[3] = g_orbitCamera.target;
+static float g_renderLightMinuteOfDay = 0;
 static bool g_cameraDebugOverlayVisible = false;
 static bool g_zoneMapVisible = false;
+static bool g_zoneMapCollisionView = false;
+static FFXIMapImage::Image g_zoneMapImage;
+static int g_zoneMapImageZoneId = -1;
 static bool g_uiVisible = true;
 static bool g_clickMoveActive = false;
 static float g_clickMoveTarget[3] = {};
@@ -367,6 +374,34 @@ static void ExecuteDeveloperCommand()
 // Mouse, keyboard, capture, and cursor state.
 static InputController::State g_input;
 static FFXIMainMenu::State g_ffxiMainMenu;
+static FFXIInventoryMenu::State g_ffxiInventoryMenu;
+static InventorySystem::ItemCatalog g_itemCatalog;
+static StarterItemCatalog::KeyItemCatalog g_keyItemCatalog;
+static std::unique_ptr<InventorySystem::Inventory> g_playerInventory;
+static std::vector<StarterItemCatalog::KeyItemId> g_playerKeyItems;
+static WorldItemSystem::State g_worldItems;
+static WorldItemSystem::EntityId g_hoveredWorldItemId = 0;
+
+static void SetStarterNationMap(const int nationIndex)
+{
+    constexpr StarterItemCatalog::KeyItemId maps[] = {385, 386, 387};
+    g_playerKeyItems.erase(std::remove_if(g_playerKeyItems.begin(), g_playerKeyItems.end(),
+        [](const auto id) { return id >= 385 && id <= 387; }), g_playerKeyItems.end());
+    g_playerKeyItems.push_back(maps[std::clamp(nationIndex, 0, 2)]);
+}
+
+static void InitializeStarterInventory()
+{
+    if (g_playerInventory)
+        return;
+    StarterItemCatalog::RegisterAll(g_itemCatalog);
+    StarterItemCatalog::RegisterStarterKeyItems(g_keyItemCatalog);
+    g_playerInventory = std::make_unique<InventorySystem::Inventory>(30, g_itemCatalog);
+    // Temporary retail-like starting contents until character inventory is saved.
+    g_playerInventory->Add(16534, 1); // Onion Sword
+    g_playerInventory->Add(536, 1);   // Adventurer Coupon
+    SetStarterNationMap(0);
+}
 
 // Edit/game mode and selected game music have one policy owner. The application
 // shell still performs the resulting player, menu, window, and audio operations.
@@ -458,154 +493,25 @@ static void UpdateAdaptivePlayDrawDistance(const float deltaSeconds,
         ClampPlayDrawDistance(g_adaptivePlayDrawDistance), configuredCap);
 }
 
-// Registry keys used to persist a user-overridden path.
-static const char kAppRegKey[]   = "Software\\FFXIViewer";
-static const char kAppPathValue[]= "FFXIPath";
+// Registry values retained by the application shell for install-path and theme owners.
+static const char kAppPathValue[] = "FFXIPath";
 static const char kAppThemeValue[] = "ColorTheme";
-static const char kAppTitleBackgroundModeValue[] = "TitleBackgroundMode";
-static const char kAppTitleBackgroundZoneValue[] = "TitleBackgroundZone";
-static const char kAppTitleMusicModeValue[] = "TitleMusicMode";
-static const char kAppTitleMusicValue[] = "TitleMusic";
-static const char kAppShowTitleUiValue[] = "ShowTitleUi";
-static const char kAppEnableHdTexturesValue[] = "EnableHdTextures";
-static const char kAppHdTextureFolderValue[] = "HdTextureFolder";
-static const char kAppEnablePbrValue[] = "EnablePbr";
-static const char kAppPbrTextureFolderValue[] = "PbrTextureFolder";
-static const char kAppRenderingResolutionValue[] = "RenderingResolutionScale";
-static const char kAppMapTextureCompressionValue[] = "MapTextureCompression";
-static const char kAppWeatherEffectsValue[] = "WeatherEffects";
-static const char kAppInvertBumpMappingValue[] = "InvertBumpMapping";
-static const char kAppAntiAliasingValue[] = "AntiAliasing";
-static const char kAppPostProcessAntiAliasingValue[] = "PostProcessAntiAliasing";
-static const char kAppShadowPlayerValue[] = "ShadowPlayer";
-static const char kAppShadowNpcsValue[] = "ShadowNpcs";
-static const char kAppShadowObjectsValue[] = "ShadowObjects";
-static const char kAppShadowGroundValue[] = "ShadowGroundLikeObjects";
-static const char kAppShadowAlphaValue[] = "ShadowAlphaTestedObjects";
-static const char kAppShadowDistanceValue[] = "ShadowMaxDistance";
-static const char kAppShadowNpcLimitValue[] = "ShadowNpcLimit";
-static const char kAppShadowObjectLimitValue[] = "ShadowObjectLimit";
-static const char kAppShadowMinSizeValue[] = "ShadowMinimumSizePercent";
-static const char kAppShadowMaxSizeValue[] = "ShadowMaximumSize";
-static const char kAppShadowUpdateFramesValue[] = "ShadowReceiverUpdateFrames";
-static const char kAppShadowReceiverQualityValue[] = "ShadowReceiverQuality";
-static const char kAppShadowLengthValue[] = "ShadowMaximumLength";
-static const char kAppShadowOpacityValue[] = "ShadowOpacityPercent";
-static const char kAppShadowDebugValue[] = "ShadowDebugVisualization";
-static const char kAppShadowCountersValue[] = "ShadowPerformanceCounters";
-static const char* const kAppKeyBindingValues[] =
-{
-    "KeyForward", "KeyBackward", "KeyLeft", "KeyRight", "KeyJump",
-    "KeyAutoRun", "KeyRunToggle", "KeyGameMode", "KeyZoneMap",
-    "KeyUnstick", "KeyCycleWeather", "KeyCameraDebug", "KeyBumpMapping",
-    "KeyMainMenu"
-};
 
 // Hard-coded default FFXI installation path.
 static const char kDefaultFFXIPath[] =
     "C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\";
-// Authored title presentation. Keep these separate from the regular-zone
-// camera defaults: the title backdrop is loaded through the normal zone path,
-// but its opening composition is intentionally cinematic and deterministic.
-static constexpr float kTitleScreenCameraTarget[3] =
-{
-    -284.089f, -41.906f, 328.520f
-};
-static constexpr float kTitleScreenCameraYaw = 10.1700f;
-static constexpr float kTitleScreenCameraPitch = 0.1900f;
-static constexpr float kTitleScreenCameraDistance = 260.0f;
 static const char kTitleScreenWeatherToken[] = "/suny";
-
-struct TitleCameraRailKey
-{
-    float targetOffset[3];
-    float yawOffset;
-    float pitch;
-    float distance;
-};
-
-// The retail zones use the authored cameras recovered from ROM/0/23.DAT.
-// Konschtat is DATura's twentieth, non-retail scene, so these conservative
-// control points remain its custom slow looping rail (and the fallback for a
-// damaged or incomplete retail title DAT).
-static constexpr TitleCameraRailKey kTitleCameraRail[] =
-{
-    { {  0.0f,  0.0f,   0.0f }, -0.035f, 0.185f, 266.0f },
-    { { -5.0f,  1.5f,   7.0f }, -0.010f, 0.178f, 258.0f },
-    { { -9.0f,  2.5f,  12.0f },  0.025f, 0.172f, 250.0f },
-    { { -4.0f,  1.0f,   6.0f },  0.055f, 0.182f, 255.0f },
-    { {  4.0f, -1.0f,  -5.0f },  0.030f, 0.195f, 265.0f },
-    { {  6.0f, -1.5f, -10.0f }, -0.010f, 0.198f, 272.0f },
-};
-static constexpr float kTitleCameraRailSeconds = 48.0f;
-static float g_titleCameraRailTime = 0.0f;
-static float g_titleCameraBaseTarget[3] =
-{
-    kTitleScreenCameraTarget[0], kTitleScreenCameraTarget[1], kTitleScreenCameraTarget[2]
-};
-static float g_titleCameraBaseYaw = kTitleScreenCameraYaw;
-static float g_titleCameraBasePitch = kTitleScreenCameraPitch;
-static float g_titleCameraBaseDistance = kTitleScreenCameraDistance;
 static int g_titleBackgroundIndex = -1;
 static int g_titleCycleIndex = -1;
 static int g_titleMusicIndex = -1;
 static int g_titleMusicCycleIndex = -1;
 static char g_ffxiPath[MAX_PATH] = {};
-
-struct RetailTitleCameraKey
-{
-    std::array<float, 3> eye = {};
-    std::array<float, 3> at = {};
-};
-
-struct RetailTitleCamera
-{
-    unsigned int easing = 0;
-    std::vector<RetailTitleCameraKey> keys;
-};
-
-struct RetailTitleShot
-{
-    const RetailTitleCamera* camera = nullptr;
-    float startSeconds = 0.0f;
-    float durationSeconds = 0.0f;
-};
-
-struct RetailTitleCameraPlayer
-{
-    std::map<std::string, RetailTitleCamera> cameras;
-    std::vector<RetailTitleShot> shots;
-    float durationSeconds = 0.0f;
-    bool active = false;
-};
-
-static RetailTitleCameraPlayer g_retailTitleCamera;
-
-template<typename T>
-static bool ReadTitleDatValue(const BYTE* data, const size_t size,
-                              const size_t offset, T* value)
-{
-    if (!data || !value || offset > size || sizeof(T) > size - offset)
-        return false;
-    memcpy(value, data + offset, sizeof(T));
-    return true;
-}
-
-static std::string ReadTitleDatTag(const BYTE* data, const size_t size,
-                                   const size_t offset)
-{
-    if (!data || offset > size || 4 > size - offset)
-        return {};
-    char tag[5] = {};
-    memcpy(tag, data + offset, 4);
-    return std::string(tag, strnlen_s(tag, 4));
-}
+static TitleCameraRail::Controller g_titleCameraRail;
 
 static const char* RetailTitleScheduleForBackground(const int backgroundIndex)
 {
-    // Each retail scheduler identifies its zone with opcode 0x7b. Map those
-    // zone-specific sequences into DATura's configured background order.
-    // Index 8 is DATura's additional Konschtat scene and has no retail entry.
+    // Map the zone-specific scheduler names into the configured background
+    // order. Konschtat is DATura's additional scene and has no retail entry.
     static constexpr const char* schedules[] =
     {
         "mov1", "mov2", "mov5", "mov3", "mov4", "mov8", "mov6", "mov7",
@@ -618,301 +524,23 @@ static const char* RetailTitleScheduleForBackground(const int backgroundIndex)
         ? schedules[backgroundIndex] : nullptr;
 }
 
-static bool LoadRetailTitleCamera(const char* scheduleName)
-{
-    g_retailTitleCamera = {};
-    if (!scheduleName || !scheduleName[0])
-        return false;
-
-    char path[MAX_PATH] = {};
-    strcpy_s(path, g_ffxiPath);
-    const size_t length = strlen(path);
-    if (length && path[length - 1] != '\\' && path[length - 1] != '/')
-        strcat_s(path, "\\");
-    strcat_s(path, "ROM\\0\\23.DAT");
-
-    BYTE* bytes = nullptr;
-    DWORD byteCount = 0;
-    if (!FFXIFileIO::ReadWholeFile(path, &bytes, &byteCount))
-        return false;
-    std::unique_ptr<BYTE[]> owned(bytes);
-
-    struct SchedulePayload { const BYTE* data = nullptr; size_t size = 0; } schedule;
-    for (size_t offset = 0; offset + 16 <= byteCount;)
-    {
-        unsigned int info = 0;
-        if (!ReadTitleDatValue(bytes, byteCount, offset + 4, &info))
-            return false;
-        const size_t chunkSize = (info >> 3) & 0x7ffff0;
-        const unsigned int type = info & 0x7f;
-        if (chunkSize < 16 || chunkSize > byteCount - offset)
-            return false;
-        const std::string name = ReadTitleDatTag(bytes, byteCount, offset);
-        const BYTE* payload = bytes + offset + 16;
-        const size_t payloadSize = chunkSize - 16;
-
-        if (type == 6 && payloadSize >= 32)
-        {
-            unsigned int mode = 0;
-            // The first 16 payload bytes are the serialized resource base.
-            // YmCamera's key/spline fields begin at payload offset 0x10.
-            ReadTitleDatValue(payload, payloadSize, 16, &mode);
-            const unsigned int keyCount = mode & 0xff;
-            if (keyCount > 0 && keyCount <= 64 &&
-                32 + static_cast<size_t>(keyCount) * 48 <= payloadSize)
-            {
-                RetailTitleCamera camera;
-                ReadTitleDatValue(payload, payloadSize, 20, &camera.easing);
-                for (unsigned int key = 0; key < keyCount; ++key)
-                {
-                    const size_t keyOffset = 32 + static_cast<size_t>(key) * 48;
-                    RetailTitleCameraKey parsed;
-                    memcpy(parsed.eye.data(), payload + keyOffset, sizeof(float) * 3);
-                    memcpy(parsed.at.data(), payload + keyOffset + 16, sizeof(float) * 3);
-                    camera.keys.push_back(parsed);
-                }
-                g_retailTitleCamera.cameras[name] = std::move(camera);
-            }
-        }
-        else if (type == 7 && name == scheduleName)
-        {
-            schedule = { payload, payloadSize };
-        }
-        offset += chunkSize;
-    }
-
-    if (!schedule.data || schedule.size < 0x20)
-        return false;
-    unsigned int begin = 0, end = 0;
-    if (!ReadTitleDatValue(schedule.data, schedule.size, 0x14, &begin) ||
-        !ReadTitleDatValue(schedule.data, schedule.size, 0x18, &end) ||
-        begin < 16 || end < begin || end - 16 > schedule.size)
-        return false;
-
-    float timelineFrames = 0.0f;
-    for (size_t cursor = begin - 16; cursor + 4 <= end - 16;)
-    {
-        const BYTE opcode = schedule.data[cursor];
-        const size_t commandSize = (std::max)(1, static_cast<int>(schedule.data[cursor + 1])) * 4;
-        if (commandSize > end - 16 - cursor)
-            return false;
-        unsigned short waitFrames = 0;
-        ReadTitleDatValue(schedule.data, schedule.size, cursor + 4, &waitFrames);
-        if (opcode == 4 && commandSize >= 12)
-        {
-            unsigned short durationFrames = 0;
-            ReadTitleDatValue(schedule.data, schedule.size, cursor + 6, &durationFrames);
-            const std::string cameraName = ReadTitleDatTag(
-                schedule.data, schedule.size, cursor + 8);
-            const auto found = g_retailTitleCamera.cameras.find(cameraName);
-            if (found != g_retailTitleCamera.cameras.end() && durationFrames > 0)
-            {
-                g_retailTitleCamera.shots.push_back({
-                    &found->second, timelineFrames / 60.0f,
-                    static_cast<float>(durationFrames) / 60.0f });
-            }
-        }
-        // Scheduler waits occur after the current command has been launched.
-        timelineFrames += static_cast<float>(waitFrames);
-        cursor += commandSize;
-    }
-    g_retailTitleCamera.durationSeconds = timelineFrames / 60.0f;
-    g_retailTitleCamera.active = !g_retailTitleCamera.shots.empty() &&
-        g_retailTitleCamera.durationSeconds > 0.0f;
-    return g_retailTitleCamera.active;
-}
-
-static float CatmullRom(const float p0, const float p1, const float p2,
-                        const float p3, const float t)
-{
-    const float t2 = t * t;
-    const float t3 = t2 * t;
-    return 0.5f * ((2.0f * p1) + (-p0 + p2) * t +
-        (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
-        (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
-}
-
-static float ApplyRetailCameraEasing(float t, const unsigned int mode)
-{
-    constexpr float halfPi = 1.5707963267948966f;
-    constexpr float pi = 3.1415926535897932f;
-    t = std::clamp(t, 0.0f, 1.0f);
-    switch (mode)
-    {
-    case 1: return std::sin(t * halfPi);             // fast start, soft finish
-    case 2: return 1.0f - std::cos(t * halfPi);      // soft start, fast finish
-    case 3:
-    case 4: return 0.5f - 0.5f * std::cos(t * pi);  // soft at both ends
-    default: return t;
-    }
-}
-
-static std::array<float, 3> SampleRetailCameraSpline(
-    const RetailTitleCamera& camera, const bool eye, const float normalizedTime)
-{
-    const size_t count = camera.keys.size();
-    if (count == 0)
-        return {};
-    const auto point = [&](const size_t index) -> const std::array<float, 3>&
-    {
-        return eye ? camera.keys[index].eye : camera.keys[index].at;
-    };
-    if (count == 1)
-        return point(0);
-
-    // YmSpline::MakeTable2 parameterizes eye and look-at curves by their
-    // three-dimensional chord length. Reproduce that parameterization and a
-    // natural cubic spline for each component.
-    std::vector<float> parameter(count, 0.0f);
-    for (size_t i = 1; i < count; ++i)
-    {
-        float lengthSquared = 0.0f;
-        for (int axis = 0; axis < 3; ++axis)
-        {
-            const float difference = point(i)[axis] - point(i - 1)[axis];
-            lengthSquared += difference * difference;
-        }
-        parameter[i] = parameter[i - 1] + std::sqrt(lengthSquared);
-    }
-    const float totalLength = parameter.back();
-    if (totalLength <= 0.000001f)
-        return point(0);
-    for (float& value : parameter)
-        value /= totalLength;
-
-    const float t = std::clamp(normalizedTime, 0.0f, 1.0f);
-    size_t segment = 0;
-    while (segment + 2 < count && parameter[segment + 1] < t)
-        ++segment;
-    const float h = (std::max)(0.000001f,
-        parameter[segment + 1] - parameter[segment]);
-    const float a = (parameter[segment + 1] - t) / h;
-    const float b = (t - parameter[segment]) / h;
-
-    std::array<float, 3> result = {};
-    for (int axis = 0; axis < 3; ++axis)
-    {
-        std::vector<float> second(count, 0.0f);
-        if (count > 2)
-        {
-            std::vector<float> lower(count, 0.0f), diagonal(count, 0.0f);
-            std::vector<float> upper(count, 0.0f), rhs(count, 0.0f);
-            diagonal[0] = diagonal[count - 1] = 1.0f;
-            for (size_t i = 1; i + 1 < count; ++i)
-            {
-                const float left = parameter[i] - parameter[i - 1];
-                const float right = parameter[i + 1] - parameter[i];
-                lower[i] = left;
-                diagonal[i] = 2.0f * (left + right);
-                upper[i] = right;
-                rhs[i] = 6.0f * ((point(i + 1)[axis] - point(i)[axis]) / right -
-                    (point(i)[axis] - point(i - 1)[axis]) / left);
-            }
-            for (size_t i = 1; i < count; ++i)
-            {
-                const float factor = lower[i] / diagonal[i - 1];
-                diagonal[i] -= factor * upper[i - 1];
-                rhs[i] -= factor * rhs[i - 1];
-            }
-            for (size_t i = count; i-- > 0;)
-            {
-                second[i] = (rhs[i] - (i + 1 < count ? upper[i] * second[i + 1] : 0.0f)) /
-                    diagonal[i];
-            }
-        }
-        result[axis] = a * point(segment)[axis] + b * point(segment + 1)[axis] +
-            ((a * a * a - a) * second[segment] +
-             (b * b * b - b) * second[segment + 1]) * h * h / 6.0f;
-    }
-    return result;
-}
-
-static bool SampleRetailTitleCamera()
-{
-    if (!g_retailTitleCamera.active || g_retailTitleCamera.shots.empty())
-        return false;
-    const float time = std::fmod((std::max)(0.0f, g_titleCameraRailTime),
-        g_retailTitleCamera.durationSeconds);
-    const RetailTitleShot* shot = &g_retailTitleCamera.shots.front();
-    for (const RetailTitleShot& candidate : g_retailTitleCamera.shots)
-    {
-        if (candidate.startSeconds > time)
-            break;
-        shot = &candidate;
-    }
-    const float progress = shot->durationSeconds > 0.0f
-        ? std::clamp((time - shot->startSeconds) / shot->durationSeconds, 0.0f, 1.0f)
-        : 1.0f;
-    const float eased = ApplyRetailCameraEasing(progress, shot->camera->easing);
-    auto eye = SampleRetailCameraSpline(*shot->camera, true, eased);
-    auto at = SampleRetailCameraSpline(*shot->camera, false, eased);
-    const bool mirrorX = !g_applicationSettings.mirrorWorldZones;
-    eye = FFXICoordinateFrame::NativeDatToScene(eye, mirrorX);
-    at = FFXICoordinateFrame::NativeDatToScene(at, mirrorX);
-
-    const float dx = eye[0] - at[0];
-    const float dy = eye[1] - at[1];
-    const float dz = eye[2] - at[2];
-    const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-    if (!std::isfinite(distance) || distance <= 0.0001f)
-        return false;
-    memcpy(g_camTarget, at.data(), sizeof(float) * 3);
-    g_camDist = distance;
-    g_camYaw = std::atan2(dx, dz);
-    g_camPitch = std::asin(std::clamp(dy / distance, -1.0f, 1.0f));
-    return true;
-}
-
-static void SampleTitleCameraRail()
-{
-    constexpr int count = static_cast<int>(_countof(kTitleCameraRail));
-    const float wrapped = std::fmod(
-        std::max(0.0f, g_titleCameraRailTime), kTitleCameraRailSeconds);
-    const float position = wrapped * static_cast<float>(count) /
-        kTitleCameraRailSeconds;
-    const int key1 = static_cast<int>(position) % count;
-    const int key0 = (key1 + count - 1) % count;
-    const int key2 = (key1 + 1) % count;
-    const int key3 = (key1 + 2) % count;
-    const float blend = position - std::floor(position);
-
-    for (int axis = 0; axis < 3; ++axis)
-    {
-        g_camTarget[axis] = g_titleCameraBaseTarget[axis] + CatmullRom(
-            kTitleCameraRail[key0].targetOffset[axis],
-            kTitleCameraRail[key1].targetOffset[axis],
-            kTitleCameraRail[key2].targetOffset[axis],
-            kTitleCameraRail[key3].targetOffset[axis], blend);
-    }
-    g_camYaw = g_titleCameraBaseYaw + CatmullRom(
-        kTitleCameraRail[key0].yawOffset, kTitleCameraRail[key1].yawOffset,
-        kTitleCameraRail[key2].yawOffset, kTitleCameraRail[key3].yawOffset, blend);
-    g_camPitch = g_titleCameraBasePitch - kTitleScreenCameraPitch + CatmullRom(
-        kTitleCameraRail[key0].pitch, kTitleCameraRail[key1].pitch,
-        kTitleCameraRail[key2].pitch, kTitleCameraRail[key3].pitch, blend);
-    g_camDist = g_titleCameraBaseDistance - kTitleScreenCameraDistance + CatmullRom(
-        kTitleCameraRail[key0].distance, kTitleCameraRail[key1].distance,
-        kTitleCameraRail[key2].distance, kTitleCameraRail[key3].distance, blend);
-}
 
 // Active FFXI root path used to seed file browsers is declared with the title
 // camera state above because the retail camera loader consumes it directly.
 static bool g_titleScreenActive = false;
 static int g_titleMenuSelection = 0;
 static bool g_highPolyCreationActive = false;
-static bool g_nationSelectActive = false;
-static bool g_characterSelectActive = false;
-static bool g_characterDeleteActive = false;
-static int  g_selectedNationIndex = 0;
+static CharacterCreationFlow::State g_characterCreationFlow;
 
 struct SavedCharacterPreview
 {
     FFXIModelLifetime::OwnedModel asset;
-    std::string name;
-    std::string dataPath;
+    CharacterRosterController::Candidate candidate;
 };
 static std::vector<SavedCharacterPreview> g_savedCharacterPreviews;
-static int g_selectedCharacterPreview = 0;
+static CharacterRosterController::State g_characterRosterController;
+static float g_characterRosterFocusOffset = 0.0f;
+static constexpr float kCharacterRosterSpacing = 2.5f;
 static std::string g_activeCharacterDataPath;
 static int g_activeCharacterHomeNationIndex = 0;
 static std::string g_lastSavedCharacterDataPath;
@@ -976,9 +604,11 @@ static void RefreshMainMenuTheme();
 static void SyncAppMusic();
 static void LoadTitleScreen();
 static void BeginNationSelectScene();
+static void BeginStartingJobSelect();
 static bool EnsureNationSelectAssets();
 static void ReturnToTitleScreen();
 static void LoadSelectedNationScene();
+static void ConfirmStartingJobSelection();
 static void ConfirmExitFromTitleScreen();
 static void HandleConfigDialogEvent(void* context, const ConfigDialog::Event& event);
 static bool ConfigDialogIsGameMode(void* context);
@@ -1134,13 +764,15 @@ static void ApplyColorTheme(HWND hWnd)
 
 static void InitColorTheme()
 {
-    Win32Theme::InitializeState(g_themeState, kAppRegKey, kAppThemeValue, true);
+    Win32Theme::InitializeState(g_themeState,
+        ApplicationSettingsStore::RegistryKey(), kAppThemeValue, true);
 }
 
 static void SetColorTheme(int theme)
 {
     Win32Theme::SetDarkMode(
-        g_themeState, kAppRegKey, kAppThemeValue, theme != ApplicationSettings::LightTheme);
+        g_themeState, ApplicationSettingsStore::RegistryKey(), kAppThemeValue,
+        theme != ApplicationSettings::LightTheme);
     ApplyColorTheme(g_hWnd);
     ConfigDialog::ApplyTheme(g_configDialog);
     RefreshMainMenuTheme();
@@ -1151,226 +783,10 @@ static void SetColorTheme(int theme)
 //   2. Otherwise fall back to the hard-coded default installation path.
 static void InitFFXIPath()
 {
-    FFXIInstallPath::InitializePath(kAppRegKey, kAppPathValue, kDefaultFFXIPath,
+    FFXIInstallPath::InitializePath(ApplicationSettingsStore::RegistryKey(),
+                                    kAppPathValue, kDefaultFFXIPath,
                                     g_ffxiPath, sizeof(g_ffxiPath));
-    DatReplacementDialog::Initialize(g_ffxiPath,kAppRegKey);
-}
-
-static DWORD ReadApplicationDword(const char* valueName, const DWORD fallback)
-{
-    HKEY key = nullptr;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, KEY_READ, &key) != ERROR_SUCCESS)
-        return fallback;
-    DWORD value = fallback;
-    DWORD type = 0;
-    DWORD size = sizeof(value);
-    if (RegQueryValueExA(key, valueName, nullptr, &type,
-            reinterpret_cast<BYTE*>(&value), &size) != ERROR_SUCCESS ||
-        type != REG_DWORD || size != sizeof(value))
-        value = fallback;
-    RegCloseKey(key);
-    return value;
-}
-
-static void WriteApplicationDword(const char* valueName, const DWORD value)
-{
-    HKEY key = nullptr;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, nullptr, 0,
-            KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS)
-    {
-        RegSetValueExA(key, valueName, 0, REG_DWORD,
-            reinterpret_cast<const BYTE*>(&value), sizeof(value));
-        RegCloseKey(key);
-    }
-}
-
-static std::string ReadApplicationString(const char* valueName)
-{
-    HKEY key = nullptr;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, KEY_READ, &key) != ERROR_SUCCESS)
-        return {};
-    char value[4096] = {};
-    DWORD type = 0;
-    DWORD size = sizeof(value);
-    const LONG result = RegQueryValueExA(key, valueName, nullptr, &type,
-        reinterpret_cast<BYTE*>(value), &size);
-    RegCloseKey(key);
-    return result == ERROR_SUCCESS && type == REG_SZ ? std::string(value) : std::string();
-}
-
-static void WriteApplicationString(const char* valueName, const std::string& value)
-{
-    HKEY key = nullptr;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, kAppRegKey, 0, nullptr, 0,
-            KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS)
-    {
-        RegSetValueExA(key, valueName, 0, REG_SZ,
-            reinterpret_cast<const BYTE*>(value.c_str()),
-            static_cast<DWORD>(value.size() + 1));
-        RegCloseKey(key);
-    }
-}
-
-static void InitCustomTextureSettings()
-{
-    g_applicationSettings.enableHdTextures =
-        ReadApplicationDword(kAppEnableHdTexturesValue, 0) != 0;
-    g_applicationSettings.hdTextureFolder = ReadApplicationString(kAppHdTextureFolderValue);
-    g_applicationSettings.enablePbr = ReadApplicationDword(kAppEnablePbrValue, 0) != 0;
-    g_applicationSettings.pbrTextureFolder = ReadApplicationString(kAppPbrTextureFolderValue);
-}
-
-static void SaveCustomTextureSettings()
-{
-    WriteApplicationDword(kAppEnableHdTexturesValue,
-        g_applicationSettings.enableHdTextures ? 1u : 0u);
-    WriteApplicationString(kAppHdTextureFolderValue, g_applicationSettings.hdTextureFolder);
-    WriteApplicationDword(kAppEnablePbrValue, g_applicationSettings.enablePbr ? 1u : 0u);
-    WriteApplicationString(kAppPbrTextureFolderValue, g_applicationSettings.pbrTextureFolder);
-}
-
-static void InitExtendedGraphicsSettings()
-{
-    g_applicationSettings.renderingResolutionScaleIndex =
-        ApplicationSettings::ClampRenderingResolutionScaleIndex(static_cast<int>(
-            ReadApplicationDword(kAppRenderingResolutionValue, 2)));
-    g_applicationSettings.enableMapTextureCompression =
-        ReadApplicationDword(kAppMapTextureCompressionValue, 1) != 0;
-    g_applicationSettings.enableWeatherEffects =
-        ReadApplicationDword(kAppWeatherEffectsValue, 1) != 0;
-    g_applicationSettings.invertBumpMapping =
-        ReadApplicationDword(kAppInvertBumpMappingValue, 0) != 0;
-    g_applicationSettings.antiAliasingIndex = ApplicationSettings::ClampAntiAliasingIndex(
-        static_cast<int>(ReadApplicationDword(kAppAntiAliasingValue, 0)));
-    g_applicationSettings.postProcessAntiAliasingMode =
-        ApplicationSettings::ClampPostProcessAntiAliasingMode(static_cast<int>(
-            ReadApplicationDword(kAppPostProcessAntiAliasingValue, 0)));
-    g_applicationSettings.shadowPlayer = ReadApplicationDword(kAppShadowPlayerValue, 1) != 0;
-    g_applicationSettings.shadowNpcs = ReadApplicationDword(kAppShadowNpcsValue, 1) != 0;
-    g_applicationSettings.shadowObjects = ReadApplicationDword(kAppShadowObjectsValue, 1) != 0;
-    g_applicationSettings.shadowGroundLikeObjects = ReadApplicationDword(kAppShadowGroundValue, 0) != 0;
-    g_applicationSettings.shadowAlphaTestedObjects = ReadApplicationDword(kAppShadowAlphaValue, 0) != 0;
-    g_applicationSettings.shadowMaxDistance = static_cast<int>(ReadApplicationDword(kAppShadowDistanceValue, 80));
-    g_applicationSettings.shadowNpcLimit = static_cast<int>(ReadApplicationDword(kAppShadowNpcLimitValue, 16));
-    g_applicationSettings.shadowObjectLimit = static_cast<int>(ReadApplicationDword(kAppShadowObjectLimitValue, 64));
-    g_applicationSettings.shadowMinimumSizePercent = static_cast<int>(ReadApplicationDword(kAppShadowMinSizeValue, 25));
-    g_applicationSettings.shadowMaximumSize = static_cast<int>(ReadApplicationDword(kAppShadowMaxSizeValue, 40));
-    g_applicationSettings.shadowReceiverUpdateFrames = static_cast<int>(ReadApplicationDword(kAppShadowUpdateFramesValue, 4));
-    g_applicationSettings.shadowReceiverQuality = static_cast<int>(ReadApplicationDword(kAppShadowReceiverQualityValue, 1));
-    g_applicationSettings.shadowMaximumLength = static_cast<int>(ReadApplicationDword(kAppShadowLengthValue, 30));
-    g_applicationSettings.shadowOpacityPercent = static_cast<int>(ReadApplicationDword(kAppShadowOpacityValue, 32));
-    g_applicationSettings.shadowDebugVisualization = ReadApplicationDword(kAppShadowDebugValue, 0) != 0;
-    g_applicationSettings.shadowPerformanceCounters = ReadApplicationDword(kAppShadowCountersValue, 0) != 0;
-}
-
-static void SaveExtendedGraphicsSettings()
-{
-    WriteApplicationDword(kAppRenderingResolutionValue, static_cast<DWORD>(
-        ApplicationSettings::ClampRenderingResolutionScaleIndex(
-            g_applicationSettings.renderingResolutionScaleIndex)));
-    WriteApplicationDword(kAppMapTextureCompressionValue,
-        g_applicationSettings.enableMapTextureCompression ? 1u : 0u);
-    WriteApplicationDword(kAppWeatherEffectsValue,
-        g_applicationSettings.enableWeatherEffects ? 1u : 0u);
-    WriteApplicationDword(kAppInvertBumpMappingValue,
-        g_applicationSettings.invertBumpMapping ? 1u : 0u);
-    WriteApplicationDword(kAppAntiAliasingValue, static_cast<DWORD>(
-        ApplicationSettings::ClampAntiAliasingIndex(g_applicationSettings.antiAliasingIndex)));
-    WriteApplicationDword(kAppPostProcessAntiAliasingValue, static_cast<DWORD>(
-        ApplicationSettings::ClampPostProcessAntiAliasingMode(
-            g_applicationSettings.postProcessAntiAliasingMode)));
-    WriteApplicationDword(kAppShadowPlayerValue, g_applicationSettings.shadowPlayer);
-    WriteApplicationDword(kAppShadowNpcsValue, g_applicationSettings.shadowNpcs);
-    WriteApplicationDword(kAppShadowObjectsValue, g_applicationSettings.shadowObjects);
-    WriteApplicationDword(kAppShadowGroundValue, g_applicationSettings.shadowGroundLikeObjects);
-    WriteApplicationDword(kAppShadowAlphaValue, g_applicationSettings.shadowAlphaTestedObjects);
-    WriteApplicationDword(kAppShadowDistanceValue, g_applicationSettings.shadowMaxDistance);
-    WriteApplicationDword(kAppShadowNpcLimitValue, g_applicationSettings.shadowNpcLimit);
-    WriteApplicationDword(kAppShadowObjectLimitValue, g_applicationSettings.shadowObjectLimit);
-    WriteApplicationDword(kAppShadowMinSizeValue, g_applicationSettings.shadowMinimumSizePercent);
-    WriteApplicationDword(kAppShadowMaxSizeValue, g_applicationSettings.shadowMaximumSize);
-    WriteApplicationDword(kAppShadowUpdateFramesValue, g_applicationSettings.shadowReceiverUpdateFrames);
-    WriteApplicationDword(kAppShadowReceiverQualityValue, g_applicationSettings.shadowReceiverQuality);
-    WriteApplicationDword(kAppShadowLengthValue, g_applicationSettings.shadowMaximumLength);
-    WriteApplicationDword(kAppShadowOpacityValue, g_applicationSettings.shadowOpacityPercent);
-    WriteApplicationDword(kAppShadowDebugValue, g_applicationSettings.shadowDebugVisualization);
-    WriteApplicationDword(kAppShadowCountersValue, g_applicationSettings.shadowPerformanceCounters);
-}
-
-static int* KeyBindingValue(ApplicationSettings::State& settings, const int index)
-{
-    switch (index)
-    {
-    case 0: return &settings.keyForward;
-    case 1: return &settings.keyBackward;
-    case 2: return &settings.keyLeft;
-    case 3: return &settings.keyRight;
-    case 4: return &settings.keyJump;
-    case 5: return &settings.keyAutoRun;
-    case 6: return &settings.keyRunToggle;
-    case 7: return &settings.keyGameMode;
-    case 8: return &settings.keyZoneMap;
-    case 9: return &settings.keyUnstick;
-    case 10: return &settings.keyCycleWeather;
-    case 11: return &settings.keyCameraDebug;
-    case 12: return &settings.keyBumpMapping;
-    default: return &settings.keyMainMenu;
-    }
-}
-
-static void InitKeyBindings()
-{
-    for (int index = 0; index < static_cast<int>(std::size(kAppKeyBindingValues)); ++index)
-    {
-        int* binding = KeyBindingValue(g_applicationSettings, index);
-        *binding = static_cast<int>(ReadApplicationDword(
-            kAppKeyBindingValues[index], static_cast<DWORD>(*binding)));
-    }
-}
-
-static void SaveKeyBindings()
-{
-    for (int index = 0; index < static_cast<int>(std::size(kAppKeyBindingValues)); ++index)
-        WriteApplicationDword(kAppKeyBindingValues[index], static_cast<DWORD>(
-            *KeyBindingValue(g_applicationSettings, index)));
-}
-
-static void InitTitleBackgroundSettings()
-{
-    g_applicationSettings.titleBackgroundMode =
-        ApplicationSettings::ClampTitleBackgroundMode(static_cast<int>(
-            ReadApplicationDword(kAppTitleBackgroundModeValue,
-                ApplicationSettings::TitleBackgroundRandom)));
-    g_applicationSettings.titleBackgroundZoneIndex =
-        ApplicationSettings::ClampTitleBackgroundZoneIndex(static_cast<int>(
-            ReadApplicationDword(kAppTitleBackgroundZoneValue, 8)));
-    g_applicationSettings.titleMusicMode =
-        ApplicationSettings::ClampTitleMusicMode(static_cast<int>(
-            ReadApplicationDword(kAppTitleMusicModeValue,
-                ApplicationSettings::TitleMusicRandom)));
-    g_applicationSettings.titleMusicIndex =
-        ApplicationSettings::ClampTitleMusicIndex(static_cast<int>(
-            ReadApplicationDword(kAppTitleMusicValue, 0)));
-    g_applicationSettings.showTitleUi = ReadApplicationDword(
-        kAppShowTitleUiValue, 1) != 0;
-}
-
-static void SaveTitleBackgroundSettings()
-{
-    WriteApplicationDword(kAppTitleBackgroundModeValue,
-        static_cast<DWORD>(ApplicationSettings::ClampTitleBackgroundMode(
-            g_applicationSettings.titleBackgroundMode)));
-    WriteApplicationDword(kAppTitleBackgroundZoneValue,
-        static_cast<DWORD>(ApplicationSettings::ClampTitleBackgroundZoneIndex(
-            g_applicationSettings.titleBackgroundZoneIndex)));
-    WriteApplicationDword(kAppTitleMusicModeValue,
-        static_cast<DWORD>(ApplicationSettings::ClampTitleMusicMode(
-            g_applicationSettings.titleMusicMode)));
-    WriteApplicationDword(kAppTitleMusicValue,
-        static_cast<DWORD>(ApplicationSettings::ClampTitleMusicIndex(
-            g_applicationSettings.titleMusicIndex)));
-    WriteApplicationDword(kAppShowTitleUiValue,
-        g_applicationSettings.showTitleUi ? 1u : 0u);
+    DatReplacementDialog::Initialize(g_ffxiPath, ApplicationSettingsStore::RegistryKey());
 }
 
 // Open a folder-browser dialog so the user can manually choose the FFXI root.
@@ -1382,10 +798,12 @@ static void PromptSetFFXIPath()
             "(the folder that contains the ROM, ROM2, ROM3 \x85 subfolders)",
             g_ffxiPath, sizeof(g_ffxiPath)))
     {
-        FFXIInstallPath::SavePath(kAppRegKey, kAppPathValue, g_ffxiPath);
+        FFXIInstallPath::SavePath(ApplicationSettingsStore::RegistryKey(),
+                                  kAppPathValue, g_ffxiPath);
         FFXIDatResolver::SetInstallRoot(g_ffxiPath);
         AudioPlayer_SetRootPath(g_ffxiPath);
         TextureViewer_SetRootPath(g_ffxiPath);
+        DatHexReader::SetRootPath(g_ffxiPath);
         FFXIBitmapFont::SetRootPath(g_ffxiPath);
         FFXIChatAssets::SetRootPath(g_ffxiPath);
         NpcNameplateRenderer::ClearCachedTextures();
@@ -1397,11 +815,12 @@ static void PromptSetFFXIPath()
 // Reset to the hard-coded default path, clearing any saved custom path.
 static void ResetFFXIPathToDefault()
 {
-    FFXIInstallPath::ClearSavedPath(kAppRegKey, kAppPathValue);
+    FFXIInstallPath::ClearSavedPath(ApplicationSettingsStore::RegistryKey(), kAppPathValue);
     strcpy_s(g_ffxiPath, kDefaultFFXIPath);
     FFXIDatResolver::SetInstallRoot(g_ffxiPath);
     AudioPlayer_SetRootPath(g_ffxiPath);
     TextureViewer_SetRootPath(g_ffxiPath);
+    DatHexReader::SetRootPath(g_ffxiPath);
     FFXIBitmapFont::SetRootPath(g_ffxiPath);
     FFXIChatAssets::SetRootPath(g_ffxiPath);
     NpcNameplateRenderer::ClearCachedTextures();
@@ -1418,9 +837,11 @@ static void AutoDetectFFXIPath()
     {
         strcpy_s(g_ffxiPath, detected);
         FFXIDatResolver::SetInstallRoot(g_ffxiPath);
-        FFXIInstallPath::SavePath(kAppRegKey, kAppPathValue, g_ffxiPath);
+        FFXIInstallPath::SavePath(ApplicationSettingsStore::RegistryKey(),
+                                  kAppPathValue, g_ffxiPath);
         AudioPlayer_SetRootPath(g_ffxiPath);
         TextureViewer_SetRootPath(g_ffxiPath);
+        DatHexReader::SetRootPath(g_ffxiPath);
         FFXIBitmapFont::SetRootPath(g_ffxiPath);
         FFXIChatAssets::SetRootPath(g_ffxiPath);
         NpcNameplateRenderer::ClearCachedTextures();
@@ -1466,7 +887,10 @@ static void ApplyTextureCompressionSetting()
 static void ConfigureRapiTextureSettings(noeRAPI_t *pRapi)
 {
     if (pRapi)
+    {
+        pRapi->SetGraphics(&g_graphicsRuntime.GetGraphics());
         pRapi->SetTextureCompressionEnabled(g_applicationSettings.enableTextureCompression);
+    }
 }
 
 static void ShowFFXIPathInfoDialog(const char *title, const char *labelText, const char *pathText)
@@ -1501,7 +925,7 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         break;
     case ConfigDialog::Command::MipMappingChanged:
     case ConfigDialog::Command::BumpMappingChanged:
-        SaveExtendedGraphicsSettings();
+        ApplicationSettingsStore::SaveExtendedGraphics(g_applicationSettings);
     case ConfigDialog::Command::LightingQualityChanged:
     case ConfigDialog::Command::ShadowSettingsChanged:
     case ConfigDialog::Command::LightDirectionChanged:
@@ -1510,7 +934,7 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
     case ConfigDialog::Command::CustomTextureSettingsChanged:
-        SaveCustomTextureSettings();
+        ApplicationSettingsStore::SaveCustomTextures(g_applicationSettings);
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
     case ConfigDialog::Command::SceneClockChanged:
@@ -1524,12 +948,12 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         ApplyDisplaySettings();
         break;
     case ConfigDialog::Command::RenderingResolutionChanged:
-        SaveExtendedGraphicsSettings();
+        ApplicationSettingsStore::SaveExtendedGraphics(g_applicationSettings);
         ApplyDisplaySettings();
         break;
     case ConfigDialog::Command::MapTextureCompressionChanged:
     case ConfigDialog::Command::WeatherEffectsChanged:
-        SaveExtendedGraphicsSettings();
+        ApplicationSettingsStore::SaveExtendedGraphics(g_applicationSettings);
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
     case ConfigDialog::Command::ToggleGameMode:
@@ -1553,6 +977,7 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
     case ConfigDialog::Command::ChatLogChanged:
         NpcChatWindow::SetSize(g_gameUiConfig.chatLogWidthPercent, g_gameUiConfig.chatLogHeightPercent);
         NpcChatWindow::SetTimeout(g_gameUiConfig.chatLogTimeoutSeconds);
+        NpcChatWindow::SetTextColour(g_gameUiConfig.chatLogFontColor);
         NpcChatWindow::SetFont(g_gameUiConfig.chatLogFont, g_gameUiConfig.chatLogFontSize);
         if (!GameUiConfig_SaveChatLog(g_gameUiConfig))
             MessageBoxA(ConfigDialog::Window(g_configDialog),
@@ -1587,17 +1012,17 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
     case ConfigDialog::Command::TitleBackgroundChanged:
-        SaveTitleBackgroundSettings();
-        SaveExtendedGraphicsSettings();
+        ApplicationSettingsStore::SaveTitleBackground(g_applicationSettings);
+        ApplicationSettingsStore::SaveExtendedGraphics(g_applicationSettings);
         if (g_titleScreenActive)
             LoadTitleScreen();
         break;
     case ConfigDialog::Command::ApplySettings:
         SetColorTheme(event.value);
-        SaveExtendedGraphicsSettings();
-        SaveCustomTextureSettings();
-        SaveKeyBindings();
-        SaveTitleBackgroundSettings();
+        ApplicationSettingsStore::SaveExtendedGraphics(g_applicationSettings);
+        ApplicationSettingsStore::SaveCustomTextures(g_applicationSettings);
+        ApplicationSettingsStore::SaveKeyBindings(g_applicationSettings);
+        ApplicationSettingsStore::SaveTitleBackground(g_applicationSettings);
         ApplyDisplaySettings();
         ApplyTextureCompressionSetting();
         g_doors.SetPhysics(
@@ -1614,6 +1039,7 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         NpcChatWindow::SetSize(g_gameUiConfig.chatLogWidthPercent,
             g_gameUiConfig.chatLogHeightPercent);
         NpcChatWindow::SetTimeout(g_gameUiConfig.chatLogTimeoutSeconds);
+        NpcChatWindow::SetTextColour(g_gameUiConfig.chatLogFontColor);
         NpcChatWindow::SetFont(g_gameUiConfig.chatLogFont,
             g_gameUiConfig.chatLogFontSize);
         GameUiConfig_SaveChatLog(g_gameUiConfig);
@@ -1706,15 +1132,14 @@ static bool InitD3D()
 // The graphics runtime invokes these hooks around every reset and shutdown.
 static void ReleaseDefaultPoolResources()
 {
+    ModelRenderer::ReleaseDirectionalShadowResources();
     D3DModelRenderState::ReleaseFfxiPixelShaders();
 
-    // TODO: register additional D3DPOOL_DEFAULT resources here as rendering
-    // introduces vertex buffers, textures, or render targets in that pool.
 }
 
 static void RecreateDefaultPoolResources()
 {
-    // TODO: re-create registered default-pool resources as they are introduced.
+    // Directional shadow resources are recreated lazily on the next outdoor frame.
 }
 
 static void ApplyDisplaySettings()
@@ -1754,6 +1179,38 @@ static void UnloadNpcModels();
 static void LoadNpcModelsForCurrentZone();
 static void UpdateNpcAnimations(float dt);
 static void TransitionPlayerZone(const ZoneTransition::Line& line, const PlayerController::State& previousPlayer);
+static std::unique_ptr<HomePoint::Effect> g_towerPortalEffect;
+static std::unique_ptr<HomePoint::Effect> g_towerUpperPortalEffect;
+static std::string g_towerReturnPrompt;
+static std::vector<std::string> g_towerReturnOptions;
+static TowerPortal::Interaction g_towerPortalInteraction;
+static const ZoneTransition::Line* g_towerPortalRoute = nullptr;
+static PlayerController::State g_towerPortalPreviousPlayer;
+static double g_towerPortalSeconds = 0;
+
+static bool IsTowerPortalRoute(const ZoneTransition::Line& line)
+{
+    return std::strcmp(line.token,"htin")==0 || std::strcmp(line.token,"hout")==0 ||
+        std::strcmp(line.token,"hret")==0;
+}
+static void CancelTowerPortal()
+{
+    const auto* route=g_towerPortalRoute;
+    NpcChatWindow::HideChoices();
+    g_towerPortalInteraction.Cancel(route);
+    g_towerPortalRoute=nullptr;
+}
+static bool ConfirmTowerPortal()
+{
+    if (!g_towerPortalInteraction.query) return false;
+    if (g_towerPortalInteraction.selected!=0) CancelTowerPortal();
+    else
+    {
+        NpcChatWindow::HideChoices();
+        g_towerPortalInteraction.Confirm();
+    }
+    return true;
+}
 static int g_loadedZoneId = -1;
 static int g_transitionZoneId = -1;
 static const ZoneTransition::Line* g_failedZoneTransition = nullptr;
@@ -1785,6 +1242,8 @@ struct LoadingOverlayState
 };
 
 static ZoneTransitionRuntime g_zoneTransitionRuntime;
+static ZoneTransition::Line g_bastokMogReturn = ZoneTransition::lines[0];
+static bool g_bastokMogReturnValid = false;
 static LoadingOverlayState g_loadingOverlay;
 static const wchar_t kLoadingOverlayClassName[] = L"DATuraZoneLoadingOverlay";
 static const float kZoneTransitionFadeSeconds = 0.35f;
@@ -2046,7 +1505,7 @@ static void BindMetalworksElevatorObjects()
 
         for (size_t objectIndex = 0; objectIndex < gFF11LastMapObjects.size(); ++objectIndex)
         {
-            const auto& object = gFF11LastMapObjects[objectIndex];
+            auto& object = gFF11LastMapObjects[objectIndex];
             std::string authoredName = object.objectName;
             authoredName.erase(authoredName.find_last_not_of(' ') + 1);
             if (object.mapRecordIndex != kRecordIndices[platformIndex] ||
@@ -2054,6 +1513,8 @@ static void BindMetalworksElevatorObjects()
                 continue;
 
             platform.objectName = object.displayName;
+            Model_FF11_CollectMovingObjectCollision(g_zoneAsset.Model(), object,
+                !g_applicationSettings.mirrorWorldZones);
             // Both lift meshes author their deck at local Y=0.
             platform.baseY = object.trans[1];
             platform.lastY = platform.baseY;
@@ -2377,25 +1838,25 @@ static void DrawClickMoveTarget()
     D3DMATRIX world = {};
     world._11 = world._22 = world._33 = world._44 = 1.0f;
     IDirect3DDevice9* device = GraphicsDevice();
-    device->SetTransform(D3DTS_WORLD, &world);
-    device->SetFVF(D3DFVF_XYZ | D3DFVF_DIFFUSE);
-    device->SetTexture(0, nullptr);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_ZENABLE, TRUE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, segments * 2, vertices, sizeof(Vertex));
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &world._11);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::PositionColor);
+    D3D9Graphics::Context(device).BindTexture(0, nullptr);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::SelectArg1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Diffuse);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::SelectArg1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Diffuse);
+    D3D9Graphics::Context(device).DrawImmediate(RendererBackend::Primitive::TriangleList, segments * 2, vertices, sizeof(Vertex));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Modulate);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Modulate);
 }
 
 static bool IsEditMode()
@@ -2424,7 +1885,8 @@ static void SyncAppMusic()
         titleMusicIndex).musicId;
 
     if (!context.soundsEnabled || (!context.playSoundsInBackground && !context.applicationOwnsForeground) ||
-        !IsGameMode() || g_titleScreenActive || g_nationSelectActive)
+        !IsGameMode() || g_titleScreenActive ||
+        CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
         for (auto& asset : g_npcRenderAssets)
             if (asset.homePoint) asset.homePoint->StopSound();
 
@@ -2530,7 +1992,8 @@ static void UnstickPlayerFromGeometry()
 static PlayerController::InputSnapshot CapturePlayerInputSnapshot()
 {
     PlayerController::InputSnapshot input;
-    if (g_zoneMapVisible)
+    if (g_zoneMapVisible || NpcChatWindow::IsTyping() ||
+        g_towerPortalInteraction.query || g_towerPortalInteraction.activating)
         return input;
     const InputController::MovementSnapshot movement = InputController::Movement(g_input);
     input.turn = -movement.right;
@@ -2570,6 +2033,7 @@ static PlayerController::InputSnapshot CapturePlayerInputSnapshot()
 
 static void UpdatePlayerMovement(const float dt)
 {
+    if (g_towerPortalInteraction.query || g_towerPortalInteraction.activating) return;
     if (IsZoneTransitionActive())
         return;
 
@@ -2606,7 +2070,11 @@ static void UpdatePlayerMovement(const float dt)
         const auto& line = *g_failedZoneTransition;
         const float side = (native[0]-line.threshold[0])*line.outward[0] +
             (native[2]-line.threshold[2])*line.outward[2];
-        if (side < -2) g_failedZoneTransition = nullptr;
+        if (const auto* volume = ZoneTransition::VolumeFor(line))
+        {
+            if (!ZoneTriggerVolume::Contains(*volume, native)) g_failedZoneTransition = nullptr;
+        }
+        else if (side < -2) g_failedZoneTransition = nullptr;
     }
     const auto movement = PlayerController::UpdateMovement(
         g_player, input, dt, context);
@@ -2622,14 +2090,44 @@ static void UpdatePlayerMovement(const float dt)
     {
         OrbitCamera::FollowYaw(g_orbitCamera, g_player.yaw, dt);
     }
-    if (g_zoneAsset && g_playerAsset && !movement.respawned)
+    if (g_zoneAsset && g_playerAsset && !movement.respawned &&
+        !(g_npcConversation.dialogue.runtime.event && !g_npcConversation.dialogue.runtime.finished))
     {
         const ZoneTransition::Point current = { g_player.position[0], g_player.position[1], g_player.position[2] };
+        if (g_towerPortalInteraction.suppressed)
+        {
+            const auto* suppressed=static_cast<const ZoneTransition::Line*>(g_towerPortalInteraction.suppressed);
+            const auto native=FFXICoordinateFrame::SceneToNativeDat(current,!g_applicationSettings.mirrorWorldZones);
+            const auto* volume=ZoneTransition::VolumeFor(*suppressed);
+            auto bounds=volume ? *volume : ZoneTriggerVolume::Volume{};
+            for (auto& size : bounds.size) size+=0.002f;
+            if (!volume || !ZoneTriggerVolume::Contains(bounds,native))
+                g_towerPortalInteraction.suppressed=nullptr;
+        }
         if (const auto* line = ZoneTransition::Crossed(g_transitionZoneId, previous, current,
                 !g_applicationSettings.mirrorWorldZones))
         {
-            if (line != g_failedZoneTransition)
-                TransitionPlayerZone(*line, previousPlayer);
+            if (IsTowerPortalRoute(*line))
+            {
+                if (g_towerPortalInteraction.suppressed!=line &&
+                    !g_npcConversation.entityId && !g_towerPortalInteraction.query)
+                {
+                    g_towerPortalRoute=line;
+                    g_towerPortalPreviousPlayer=previousPlayer;
+                    g_clickMoveActive=false;
+                    g_towerPortalInteraction.Begin();
+                    // Ground-floor retail events warp directly. These prompts
+                    // are DATura safety UI, not original event message text.
+                    if (std::strcmp(line->token,"hret")==0 && !g_towerReturnOptions.empty())
+                        NpcChatWindow::ShowChoices(g_hWnd,g_towerReturnPrompt,g_towerReturnOptions,0);
+                    else NpcChatWindow::ShowChoices(g_hWnd,line->fromZone==239 ?
+                        "Enter Heaven's Tower?" : "Return to Windurst Walls?",{"Yes.","Not now."},0);
+                }
+            }
+            else if (line != g_failedZoneTransition)
+                TransitionPlayerZone((line->fromZone == 301 || line->fromZone == 300 || line->fromZone == 302 || line->fromZone == 0) &&
+                    g_bastokMogReturnValid && g_bastokMogReturn.fromZone == line->fromZone
+                    ? g_bastokMogReturn : *line, previousPlayer);
             else
                 g_player = previousPlayer;
         }
@@ -2760,7 +2258,8 @@ static bool FindZoneShadowReceiverY(const float x, const float y, const float z,
 
 static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false,
                         ModelRenderer::GeometryPass pass = ModelRenderer::GeometryPass::All,
-                        bool drawDynamicActorShadow = true)
+                        bool drawDynamicActorShadow = true, bool applyZoneFog = false,
+                        bool shadowCasterOnly = false)
 {
     if (!pModel || !GraphicsDevice())
         return;
@@ -2770,9 +2269,10 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
         g_applicationSettings.enablePbr, g_applicationSettings.pbrTextureFolder);
 
     ModelRenderer::Context rendererContext = {};
+    rendererContext.graphics = &g_graphicsRuntime.GetGraphics();
     rendererContext.device = GraphicsDevice();
     rendererContext.geometryPass = pass;
-    rendererContext.minuteOfDay = ZoneEnvironmentState::CurrentMinuteOfDay();
+    rendererContext.minuteOfDay = g_renderLightMinuteOfDay;
     rendererContext.lightingQuality = g_applicationSettings.lightingQuality;
     rendererContext.automaticLightDirection =
         g_applicationSettings.lightDirectionMode == ApplicationSettings::LightDirectionAutomatic;
@@ -2813,7 +2313,10 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
     }
     rendererContext.useAuthoredLightDirection =
         g_zoneEnvironment.valid && g_zoneEnvironment.authoredLightDirection;
-    rendererContext.useAuthoredFog = allowObjectOverrides && g_zoneEnvironment.valid;
+    // Actors placed in the world share its atmosphere. Preview models keep
+    // their own pass without inheriting the currently loaded zone's fog.
+    rendererContext.useAuthoredFog =
+        (allowObjectOverrides || applyZoneFog) && g_zoneEnvironment.valid;
     rendererContext.authoredFogColor = g_zoneEnvironment.fogColor;
     rendererContext.authoredFogNear = g_zoneEnvironment.fogNear;
     rendererContext.authoredFogFar = g_zoneEnvironment.fogFar;
@@ -2848,13 +2351,20 @@ static void RenderModel(noesisModel_t *pModel, bool allowObjectOverrides = false
     rendererContext.findZoneShadowReceiverY = FindZoneShadowReceiverY;
     GetRenderCameraPosition(rendererContext.cameraPosition[0],
         rendererContext.cameraPosition[1], rendererContext.cameraPosition[2]);
+    rendererContext.shadowCenterValid = true;
+    std::copy(g_camTarget, g_camTarget + 3, rendererContext.shadowCenter);
     ZoneModelRenderMetadata::Prepare(pModel, GraphicsDevice());
-    GraphicsDevice()->SetFVF(FFXI_VERTEX_FVF);
+    g_graphicsRuntime.GetGraphics().BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model);
     D3DMATRIX baseWorld = {};
-    GraphicsDevice()->GetTransform(D3DTS_WORLD, &baseWorld);
+    D3D9Graphics::Context(GraphicsDevice()).QueryTransform(RendererBackend::Transform::World, &baseWorld._11);
 
-    // The dynamic tier adds an inexpensive planar pass for standalone actors. Zone terrain
-    // has uneven ground, so projecting an entire zone onto a single plane would be wrong.
+    if (shadowCasterOnly)
+    {
+        ModelRenderer::SubmitDirectionalShadowCaster(rendererContext,pModel,baseWorld);
+        return;
+    }
+
+    // The planar actor pass is a fallback when the outdoor shadow map is unavailable.
     ModelRenderer::DrawActorPlanarShadow(rendererContext, pModel, baseWorld);
     ModelRenderer::PrepareFixedFunctionPass(rendererContext, baseWorld);
 
@@ -2891,7 +2401,7 @@ static void ShowSceneModelLoadError(const SceneModelLoader::Error error)
         message = "File is empty or unreadable.";
         break;
     case SceneModelLoader::Error::FileReadFailed:
-        message = "Read error — incomplete file.";
+        message = "Read error â€” incomplete file.";
         break;
     case SceneModelLoader::Error::UnrecognizedDat:
         message = "Not a recognised FFXI DAT file.";
@@ -2938,6 +2448,13 @@ static void ShowSceneModelLoadError(const SceneModelLoader::Error error)
 
 static void UnloadZoneModel()
 {
+    if (g_towerPortalRoute) NpcChatWindow::HideChoices();
+    g_towerPortalRoute=nullptr;
+    g_towerPortalInteraction={};
+    g_towerPortalEffect.reset();
+    g_towerUpperPortalEffect.reset();
+    g_towerReturnPrompt.clear();
+    g_towerReturnOptions.clear();
     g_metalworksElevatorAudio.Reset();
     g_loadedZoneId = -1;
     g_transitionZoneId = -1;
@@ -2976,6 +2493,8 @@ static void UnloadTitleAssets()
 // title state, and camera selection remain the responsibility of each loader.
 static void ResetZoneModelLoadState(const char *path)
 {
+    ZoneTransition::authoredVolumes.clear();
+    ZoneTransition::arrivalVolumes.clear();
     UnloadZoneModel();
     g_hiddenZoneObjects.clear();
     g_zoneObjectOverrides.clear();
@@ -3010,7 +2529,8 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     {
         g_titleScreenActive = false;
         g_highPolyCreationActive = false;
-        g_nationSelectActive = false;
+        CharacterCreationFlow::SetStage(g_characterCreationFlow,
+            CharacterCreationFlow::Stage::Inactive);
         InteractionController::SetGameMusicId(g_interaction, 0);
         UnloadCreationModel();
         UnloadTitleAssets();
@@ -3054,6 +2574,33 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
         ZoneModelTransform::MirrorOnX(g_zoneAsset.Model(), GraphicsDevice());
     const int zoneId = FFXIPath::FindZoneIDByModelPath(g_ffxiPath, path);
     g_loadedZoneId = zoneId;
+    if (zoneId==239 || zoneId==242)
+    {
+        auto portal=std::make_unique<HomePoint::Effect>();
+        if (portal->LoadTowerPortal(GraphicsDevice(),g_ffxiPath,zoneId,
+            g_applicationSettings.enableTextureCompression))
+            g_towerPortalEffect=std::move(portal);
+        else OutputDebugStringA("[DATura Tower portal] asset load failed\n");
+        if (zoneId==242)
+        {
+            auto upper=std::make_unique<HomePoint::Effect>();
+            if (upper->LoadTowerPortal(GraphicsDevice(),g_ffxiPath,242,
+                g_applicationSettings.enableTextureCompression,true))
+                g_towerUpperPortalEffect=std::move(upper);
+            else OutputDebugStringA("[DATura Tower portal] upper-floor asset load failed\n");
+            std::vector<FFXIEventMessages::Entry> messages;
+            std::vector<uint32_t> values;
+            const auto messagePath=std::string(g_ffxiPath)+"/ROM/25/51.DAT";
+            if (FFXIEventMessages::Load(messagePath.c_str(),messages) && messages.size()>80)
+                FFXIEventMessages::SplitChoiceText(messages[80],0,g_towerReturnPrompt,
+                    g_towerReturnOptions,values);
+            if (g_towerReturnOptions.size()!=2)
+            {
+                g_towerReturnPrompt="Do you want to warp to the first floor?";
+                g_towerReturnOptions={"Yes.","Not now."};
+            }
+        }
+    }
     g_metalworksElevator = {};
     g_metalworksElevatorAudio.Reset();
     if (zoneId == ZoneElevator::kMetalworksZone)
@@ -3062,6 +2609,20 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     g_doors.SetPhysics(g_applicationSettings.doorInteractionMode == ApplicationSettings::DoorPhysics);
     BuildZoneCollisionFromDAT(zoneId);
     g_transitionZoneId = userContentLoad ? zoneId : -1;
+    {
+        BYTE* triggerBytes = nullptr;
+        DWORD triggerSize = 0;
+        if (FFXIFileIO::ReadWholeFile(path, &triggerBytes, &triggerSize))
+        {
+            std::vector<ZoneTriggerVolume::Volume> volumes;
+            if (ZoneTriggerVolume::Decode(triggerBytes, triggerSize, volumes, true))
+                for (const auto& volume : volumes)
+                    (volume.target ? ZoneTransition::authoredVolumes : ZoneTransition::arrivalVolumes).push_back(volume);
+            delete[] triggerBytes;
+        }
+    }
+    for (const auto& portal : ZoneTransition::towerPortals)
+        if (portal.zone == zoneId) ZoneTransition::authoredVolumes.push_back(portal);
     if (userContentLoad)
     {
         // NPC DAT parsing replaces the parser diagnostics. Keep this zone's
@@ -3169,6 +2730,32 @@ static void TransitionPlayerZone(const ZoneTransition::Line& line, const PlayerC
     }
 
     g_player = previousPlayer;
+    if ((line.toZone == 301 && (line.fromZone == 234 || line.fromZone == 235 || line.fromZone == 236)) ||
+        (line.toZone == 300 && (line.fromZone == 230 || line.fromZone == 231 || line.fromZone == 232)) ||
+        (line.toZone == 302 && line.fromZone >= 238 && line.fromZone <= 241) ||
+        (line.toZone == 0 && line.fromZone >= 243 && line.fromZone <= 246))
+    {
+        // A shared local Mog House must return to the entrance used to enter it.
+        for (const auto& candidate : ZoneTransition::lines)
+            if (candidate.fromZone == line.toZone) { g_bastokMogReturn = candidate; break; }
+        g_bastokMogReturn.toZone = line.fromZone;
+        auto arrival = line.threshold;
+        float depth = 0;
+        if (const auto* volume = ZoneTransition::VolumeFor(line))
+        {
+            arrival = volume->center;
+            depth = (std::min)(volume->size[0], volume->size[2]) * 0.5f;
+        }
+        for (int axis : {0,2}) arrival[axis] -= line.outward[axis] * (depth + 3.0f);
+        const auto playerNative = FFXICoordinateFrame::SceneToNativeDat(
+            {previousPlayer.position[0],previousPlayer.position[1],previousPlayer.position[2]},
+            !g_applicationSettings.mirrorWorldZones);
+        arrival[1] = playerNative[1];
+        g_bastokMogReturn.arrival = arrival;
+        g_bastokMogReturn.heading = ZoneTransition::EncodeHeading(
+            std::atan2(line.outward[2], -line.outward[0]));
+        g_bastokMogReturnValid = true;
+    }
     g_zoneTransitionRuntime.phase = ZoneTransitionPhase::FadingOut;
     g_zoneTransitionRuntime.line = &line;
     g_zoneTransitionRuntime.previousPlayer = previousPlayer;
@@ -3229,8 +2816,76 @@ static void DrawZoneTransitionOverlay()
         D3DCOLOR_ARGB(alpha, 0, 0, 0));
 }
 
+static void DrawZoneTriggerVolumes()
+{
+    auto* device = GraphicsDevice();
+    if (!device || g_titleScreenActive ||
+        ((!g_applicationSettings.showZoneTriggerVolumes || ZoneTransition::authoredVolumes.empty()) &&
+         (!g_applicationSettings.showZoneArrivalVolumes || ZoneTransition::arrivalVolumes.empty()))) return;
+    RendererBackend::PipelineSnapshot* saved = nullptr;
+    if (!((saved = D3D9Graphics::Context(device).CapturePipelineState()))) return;
+    const auto identity = D3DMath::BuildIdentity();
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &identity._11);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::View, &g_pickView._11);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::Projection, &g_pickProjection._11);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Vertex, nullptr); D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model); D3D9Graphics::Context(device).BindTexture(0, nullptr);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::SelectArg1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Diffuse);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::SelectArg1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Diffuse);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Disable);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fog, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetStencilField(&RendererBackend::StencilState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthCompare, RendererBackend::Compare::LessEqual);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fill, RendererBackend::Fill::Solid);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::separateAlphaBlend, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blendOperation, RendererBackend::BlendOperation::Add);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
+    constexpr int faces[] = {0,1,3,0,3,2,4,6,7,4,7,5,0,4,5,0,5,1,
+                            2,3,7,2,7,6,0,2,6,0,6,4,1,5,7,1,7,3};
+    constexpr int edges[] = {0,1,1,3,3,2,2,0,4,5,5,7,7,6,6,4,0,4,1,5,2,6,3,7};
+    for (const bool arrivals : {false, true})
+    {
+        if (!(arrivals ? g_applicationSettings.showZoneArrivalVolumes :
+            g_applicationSettings.showZoneTriggerVolumes)) continue;
+        const auto& volumes = arrivals ? ZoneTransition::arrivalVolumes : ZoneTransition::authoredVolumes;
+        const DWORD fillColor = arrivals ? D3DCOLOR_ARGB(35,0,120,255) : D3DCOLOR_ARGB(35,255,0,0);
+        const DWORD edgeColor = arrivals ? D3DCOLOR_ARGB(230,30,160,255) : D3DCOLOR_ARGB(230,255,30,30);
+        for (const auto& volume : volumes)
+        {
+            FFXIVertex corners[8] = {};
+            const float c = std::cos(volume.yaw), s = std::sin(volume.yaw);
+            for (int i=0; i<8; ++i)
+            {
+                const float x = (i&1 ? 0.5f : -0.5f)*volume.size[0];
+                const float y = (i&2 ? 0.5f : -0.5f)*volume.size[1];
+                const float z = (i&4 ? 0.5f : -0.5f)*volume.size[2];
+                const auto scene = FFXICoordinateFrame::NativeDatToScene(
+                    {volume.center[0]+c*x+s*z, volume.center[1]+y, volume.center[2]-s*x+c*z},
+                    !g_applicationSettings.mirrorWorldZones);
+                for (int axis=0; axis<3; ++axis) corners[i].pos[axis]=scene[axis];
+            }
+            FFXIVertex fill[36], outline[24];
+            for (int i=0; i<36; ++i) { fill[i]=corners[faces[i]]; fill[i].diffuse=fillColor; }
+            for (int i=0; i<24; ++i) { outline[i]=corners[edges[i]]; outline[i].diffuse=edgeColor; }
+            D3D9Graphics::Context(device).DrawImmediate(RendererBackend::Primitive::TriangleList,12,fill,sizeof(FFXIVertex));
+            D3D9Graphics::Context(device).DrawImmediate(RendererBackend::Primitive::LineList,12,outline,sizeof(FFXIVertex));
+        }
+    }
+    saved->Restore(); delete saved;
+}
+
 static void DrawZoneBoundaryDots(const D3DMATRIX& viewProjection, int width, int height)
 {
+    if (!g_applicationSettings.showZoneLineMarkers) return;
     if (!IsGameMode() || g_zoneTransitionRuntime.phase != ZoneTransitionPhase::None || !GraphicsDevice()) return;
     const ZoneTransition::Line* active = nullptr;
     float nearest = 1.0e30f;
@@ -3240,12 +2895,42 @@ static void DrawZoneBoundaryDots(const D3DMATRIX& viewProjection, int width, int
     // additional (x,-y,-z) transform puts the markers on the wrong floor.
     const auto playerNative = FFXICoordinateFrame::SceneToNativeDat(
         { g_player.position[0], g_player.position[1], g_player.position[2] }, mirrorX);
-    for (const auto& line : ZoneTransition::lines)
+    ZoneTransition::Line markerLine = ZoneTransition::lines[0];
+    for (const auto& route : ZoneTransition::lines)
     {
-        if (line.fromZone != g_transitionZoneId) continue;
+        if (route.fromZone != g_transitionZoneId) continue;
+        // The authored circle replaces the ordinary boundary-dot row.
+        if (IsTowerPortalRoute(route) &&
+            (std::strcmp(route.token,"hret")==0 ? bool(g_towerUpperPortalEffect) : bool(g_towerPortalEffect)))
+            continue;
+        auto line = route;
+        if (const auto* volume = ZoneTransition::VolumeFor(route))
+        {
+            const float c = std::cos(volume->yaw), s = std::sin(volume->yaw);
+            // Put the row outside the near face of the authored box. Select
+            // the thin horizontal axis, retaining the route's approach side.
+            ZoneTransition::Point normal = volume->size[0] < volume->size[2]
+                ? ZoneTransition::Point{c,0,-s} : ZoneTransition::Point{s,0,c};
+            if (normal[0]*route.outward[0] + normal[2]*route.outward[2] < 0)
+                for (auto& component : normal) component = -component;
+            const float depth = (std::min)(volume->size[0], volume->size[2]) * 0.5f;
+            line.threshold = volume->center;
+            line.threshold[0] -= normal[0] * depth;
+            line.threshold[2] -= normal[2] * depth;
+            line.outward = normal;
+            line.halfWidth = (std::max)(volume->size[0], volume->size[2]) * 0.5f;
+        }
+        else if (!ZoneTransition::authoredVolumes.empty()) continue;
+        const float dx = playerNative[0] - line.threshold[0];
+        const float dz = playerNative[2] - line.threshold[2];
+        const float lateral = std::fabs(dx * line.outward[2] - dz * line.outward[0]);
+        // Match the bounded passage and floor used by the crossing test.
+        // A nearby infinite plane is not necessarily an accessible exit.
+        if (lateral > line.halfWidth + 2.0f ||
+            !ZoneTransition::MarkerFloorEligible(route, playerNative)) continue;
         const float distance = std::fabs((playerNative[0] - line.threshold[0]) * line.outward[0] +
             (playerNative[2] - line.threshold[2]) * line.outward[2]);
-        if (distance < nearest) { nearest = distance; active = &line; }
+        if (distance < nearest) { nearest = distance; markerLine = line; active = &markerLine; }
     }
     if (!active) return;
     const auto native = active->threshold;
@@ -3264,7 +2949,7 @@ static void DrawZoneBoundaryDots(const D3DMATRIX& viewProjection, int width, int
     const DWORD pulse = static_cast<DWORD>((150.0f + 80.0f * std::fabs(std::sin(static_cast<double>(tick) * 0.004))) * distanceAlpha);
     for (int i = -8; i <= 8; ++i)
     {
-        const float offset = static_cast<float>(i) * active->halfWidth * 0.20f;
+        const float offset = static_cast<float>(i) * active->halfWidth / 8.0f;
         // Native DAT Y grows downward.  A negative offset therefore lifts the
         // guide above the floor instead of sinking it into the threshold.
         constexpr float kBoundaryMarkerHeight = -1.0f;
@@ -3272,7 +2957,9 @@ static void DrawZoneBoundaryDots(const D3DMATRIX& viewProjection, int width, int
         const float dotX = native[0] - active->outward[0] * kMarkerInsideOffset + tangentX * offset;
         const float dotZ = native[2] - active->outward[2] * kMarkerInsideOffset + tangentZ * offset;
         const auto scene = FFXICoordinateFrame::NativeDatToScene({ dotX, dotY, dotZ }, mirrorX);
-        const float radius = 0.035f + 0.010f * std::fabs(std::sin((static_cast<double>(tick) + i * 90.0) * 0.006));
+        const float radiusPulse = static_cast<float>(
+            std::fabs(std::sin((static_cast<double>(tick) + i * 90.0) * 0.006)));
+        const float radius = 0.035f + 0.010f * radiusPulse;
         // Each fan has one center, twelve perimeter vertices, and a closing
         // perimeter vertex (15 total).  Keep two complete fans; the previous
         // 28-vertex allocation let the second fan write element 28.
@@ -3288,22 +2975,22 @@ static void DrawZoneBoundaryDots(const D3DMATRIX& viewProjection, int width, int
         build(radius + 0.018f, D3DCOLOR_ARGB(pulse, 65, 135, 235), verts);
         build(radius, D3DCOLOR_ARGB(pulse, 255, 255, 255), verts + 14);
         const D3DMATRIX identity = D3DMath::BuildIdentity();
-        GraphicsDevice()->SetTransform(D3DTS_WORLD, &identity);
-        GraphicsDevice()->SetFVF(FFXI_VERTEX_FVF); GraphicsDevice()->SetTexture(0, nullptr);
-        GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-        GraphicsDevice()->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
-        GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-        GraphicsDevice()->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
-        GraphicsDevice()->SetRenderState(D3DRS_LIGHTING, FALSE);
+        D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &identity._11);
+        g_graphicsRuntime.GetGraphics().BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model); D3D9Graphics::Context(GraphicsDevice()).BindTexture(0, nullptr);
+        D3D9Graphics::Context(GraphicsDevice()).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::SelectArg1);
+        D3D9Graphics::Context(GraphicsDevice()).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Diffuse);
+        D3D9Graphics::Context(GraphicsDevice()).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::SelectArg1);
+        D3D9Graphics::Context(GraphicsDevice()).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Diffuse);
+        D3D9Graphics::Context(GraphicsDevice()).SetLightingField(&RendererBackend::LightingState::enabled, false);
         // Test against the already-rendered world depth buffer so walls,
         // pillars, and characters can hide markers that are behind them. Do
         // not write marker depth; the dots remain a non-invasive overlay.
-        GraphicsDevice()->SetRenderState(D3DRS_ZENABLE, TRUE);
-        GraphicsDevice()->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-        GraphicsDevice()->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-        GraphicsDevice()->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE); GraphicsDevice()->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE); GraphicsDevice()->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA); GraphicsDevice()->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-        GraphicsDevice()->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 12, verts, sizeof(FFXIVertex));
-        GraphicsDevice()->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 12, verts + 14, sizeof(FFXIVertex));
+        D3D9Graphics::Context(GraphicsDevice()).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+        D3D9Graphics::Context(GraphicsDevice()).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+        D3D9Graphics::Context(GraphicsDevice()).SetPipelineField(&RendererBackend::PipelineState::depthCompare, RendererBackend::Compare::LessEqual);
+        D3D9Graphics::Context(GraphicsDevice()).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None); D3D9Graphics::Context(GraphicsDevice()).SetPipelineField(&RendererBackend::PipelineState::blend, ((TRUE) != FALSE)); D3D9Graphics::Context(GraphicsDevice()).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha); D3D9Graphics::Context(GraphicsDevice()).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
+        g_graphicsRuntime.GetGraphics().DrawImmediate(RendererBackend::Primitive::TriangleFan, 12, verts, sizeof(FFXIVertex));
+        g_graphicsRuntime.GetGraphics().DrawImmediate(RendererBackend::Primitive::TriangleFan, 12, verts + 14, sizeof(FFXIVertex));
     }
 }
 
@@ -3437,9 +3124,9 @@ static void LoadTitleScreen()
     UnloadTitleAssets();
     InteractionController::SetGameMusicId(g_interaction, 0);
     g_highPolyCreationActive = false;
-    g_nationSelectActive = false;
-    g_titleCameraRailTime = 0.0f;
-    g_retailTitleCamera = {};
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::Inactive);
+    g_titleCameraRail.Reset();
     g_titleMusicIndex = SelectTitleMusicIndex();
 
     // The original PS2 lobby deliberately presents its title demo at 12:30,
@@ -3486,28 +3173,30 @@ static void LoadTitleScreen()
         // Preserve DATura's custom Konschtat composition. Every retail zone
         // starts on its exact authored scheduler camera; collision-derived
         // framing is retained only as a safe fallback for incomplete installs.
+        TitleCameraRail::Pose initialCamera;
         if (g_titleBackgroundIndex == 8)
         {
-            for (int axis = 0; axis < 3; ++axis)
-                g_camTarget[axis] = kTitleScreenCameraTarget[axis];
-            g_camYaw = kTitleScreenCameraYaw;
-            g_camPitch = kTitleScreenCameraPitch;
-            g_camDist = kTitleScreenCameraDistance;
+            initialCamera = TitleCameraRail::Controller::KonschtatOpeningPose();
         }
-        else
+        else if (!g_titleCameraRail.LoadRetailSchedule(
+                     g_ffxiPath,
+                     RetailTitleScheduleForBackground(g_titleBackgroundIndex),
+                     !g_applicationSettings.mirrorWorldZones) ||
+                 !g_titleCameraRail.SampleRetail(initialCamera))
         {
-            if (!LoadRetailTitleCamera(
-                    RetailTitleScheduleForBackground(g_titleBackgroundIndex)) ||
-                !SampleRetailTitleCamera())
-            {
-                ConfigureGenericTitleCameraBase();
-            }
+            ConfigureGenericTitleCameraBase();
+            for (int axis = 0; axis < 3; ++axis)
+                initialCamera.target[axis] = g_camTarget[axis];
+            initialCamera.yaw = g_camYaw;
+            initialCamera.pitch = g_camPitch;
+            initialCamera.distance = g_camDist;
         }
         for (int axis = 0; axis < 3; ++axis)
-            g_titleCameraBaseTarget[axis] = g_camTarget[axis];
-        g_titleCameraBaseYaw = g_camYaw;
-        g_titleCameraBasePitch = g_camPitch;
-        g_titleCameraBaseDistance = g_camDist;
+            g_camTarget[axis] = initialCamera.target[axis];
+        g_camYaw = initialCamera.yaw;
+        g_camPitch = initialCamera.pitch;
+        g_camDist = initialCamera.distance;
+        g_titleCameraRail.SetFallbackBase(initialCamera);
 
         const TitleSceneAssets::Paths paths =
         {
@@ -3547,7 +3236,8 @@ static void LoadCreationEntry(const FFXICreationEntry *pEntry)
 
     g_titleScreenActive = false;
     g_highPolyCreationActive = true;
-    g_nationSelectActive = false;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::Customization);
     InteractionController::SetGameMusicId(g_interaction, 0);
     UnloadTitleAssets();
     SyncAppMusic();
@@ -3675,7 +3365,8 @@ static void LoadCreationEntryInModelViewer(const FFXICreationEntry *pEntry)
 
     g_titleScreenActive = false;
     g_highPolyCreationActive = true;
-    g_nationSelectActive = false;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::Inactive);
     UnloadTitleAssets();
     UnloadZoneModel();
     UnloadPlayerModel();
@@ -3719,7 +3410,8 @@ static void LoadDatSetFile(const char *path)
 {
     g_titleScreenActive = false;
     g_highPolyCreationActive = false;
-    g_nationSelectActive = false;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::Inactive);
     InteractionController::SetGameMusicId(g_interaction, 0);
     UnloadCreationModel();
     UnloadTitleAssets();
@@ -4158,8 +3850,9 @@ static void SaveHighPolyCreationCharacter()
 
     char dataPath[MAX_PATH] = {};
     FFXIFileIO::ReplaceExtension(datSetPath, ".ini", dataPath, sizeof(dataPath));
-    CharacterSaveData::Data characterData;
-    characterData.homeNationIndex = 0;
+    CharacterSaveData::Data characterData =
+        CharacterCreationFlow::PrepareCharacterData(g_playerEquip.raceIndex, 0,
+            FFXIStats::kJob_WAR);
     CharacterSaveData::Data existingData;
     if (CharacterSaveData::Load(dataPath, existingData))
         characterData = existingData;
@@ -4182,7 +3875,7 @@ static bool FileExists(const char* path)
         (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
 }
 
-static bool EnsureActiveCharacterModelFiles()
+static bool WriteActiveCharacterModelFiles(const bool replaceExisting)
 {
     if (g_activeCharacterDataPath.empty())
         return false;
@@ -4194,7 +3887,7 @@ static bool EnsureActiveCharacterModelFiles()
     FFXIFileIO::ReplaceExtension(g_activeCharacterDataPath.c_str(), ".noesis",
         noesisPath, sizeof(noesisPath));
 
-    if (!FileExists(datSetPath))
+    if (replaceExisting || !FileExists(datSetPath))
     {
         FFXIDatSet::PlayerOptions options;
         options.raceIndex = g_playerEquip.raceIndex;
@@ -4215,7 +3908,7 @@ static bool EnsureActiveCharacterModelFiles()
             return false;
     }
 
-    if (!FileExists(noesisPath))
+    if (replaceExisting || !FileExists(noesisPath))
     {
         const char* fileName = strrchr(datSetPath, '\\');
         fileName = fileName ? fileName + 1 : datSetPath;
@@ -4240,6 +3933,11 @@ static bool EnsureActiveCharacterModelFiles()
     return true;
 }
 
+static bool EnsureActiveCharacterModelFiles()
+{
+    return WriteActiveCharacterModelFiles(false);
+}
+
 static bool LoadOrCreateActiveCharacterData(CharacterSaveData::Data& data)
 {
     if (g_activeCharacterDataPath.empty())
@@ -4247,6 +3945,7 @@ static bool LoadOrCreateActiveCharacterData(CharacterSaveData::Data& data)
     if (CharacterSaveData::Load(g_activeCharacterDataPath.c_str(), data))
     {
         g_activeCharacterHomeNationIndex = data.homeNationIndex;
+        SetStarterNationMap(g_activeCharacterHomeNationIndex);
         return true;
     }
     if (FileExists(g_activeCharacterDataPath.c_str()))
@@ -4264,10 +3963,30 @@ static void BeginNationSelectScene()
 
     g_titleScreenActive = false;
     g_highPolyCreationActive = true;
-    g_nationSelectActive = true;
-    g_selectedNationIndex = 0;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::NationSelection);
+    CharacterCreationFlow::SelectNation(g_characterCreationFlow, 0,
+        FFXINationSelection::Count());
     EnsureNationSelectAssets();
     InvalidateRect(g_hWnd, NULL, FALSE);
+}
+
+static void BeginStartingJobSelect()
+{
+    PullHighPolyCreationStateFromControls();
+    HighPolyCreationPanel::Hide(g_highPolyCreationPanel);
+    g_titleScreenActive = false;
+    g_highPolyCreationActive = true;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::StartingJob);
+    CharacterCreationFlow::ResetStartingJobSelection(g_characterCreationFlow);
+    InvalidateRect(g_hWnd, NULL, FALSE);
+}
+
+static void ConfirmStartingJobSelection()
+{
+    CharacterCreationFlow::ConfirmStartingJobSelection(g_characterCreationFlow);
+    BeginNationSelectScene();
 }
 
 static bool TextStartsWithNoCase(const std::string& text, const char* prefix)
@@ -4296,296 +4015,14 @@ static bool IsObjectLikeNpcTarget(const FFXINpcPlacement::Placement& placement)
         TextStartsWithNoCase(name, "Waypoint");
 }
 
-enum class NpcEventStep
-{
-    Done,
-    Message,
-    Choice,
-    Blocked,
-};
-
-static std::uint16_t NpcEventRead16(const FFXIEventTable::Event& event, std::size_t at)
-{
-    if (at + 2 > event.code.size()) return 0;
-    return static_cast<std::uint16_t>(event.code[at] | (event.code[at + 1] << 8));
-}
-
-static std::uint32_t NpcEventResolveOperand(const FFXIEventTable::Event& event, std::uint16_t operand)
-{
-    return (operand & 0x8000u) != 0 && (operand & 0x7fffu) < event.references.size()
-        ? event.references[operand & 0x7fffu]
-        : operand;
-}
-
-static std::int32_t NpcEventGetWork(NpcEventRuntime& runtime, std::size_t operandOffset, std::int32_t shift = 0)
-{
-    if (!runtime.event) return 0;
-    const std::uint32_t operand = static_cast<std::uint32_t>(
-        static_cast<std::int32_t>(NpcEventRead16(*runtime.event, runtime.pc + operandOffset)) + shift);
-    if ((operand & 0x8000u) != 0)
-        return static_cast<std::int32_t>(NpcEventResolveOperand(*runtime.event, static_cast<std::uint16_t>(operand)));
-    if (operand >= 4096u)
-    {
-        const std::size_t index = operand - 4096u;
-        return index < runtime.zone.size() ? static_cast<std::int32_t>(runtime.zone[index]) : 0;
-    }
-    return operand < runtime.local.size() ? static_cast<std::int32_t>(runtime.local[operand]) : 0;
-}
-
-static void NpcEventSetWork(NpcEventRuntime& runtime, std::size_t operandOffset, std::uint32_t value, std::int32_t shift = 0)
-{
-    if (!runtime.event) return;
-    const std::uint32_t operand = static_cast<std::uint32_t>(
-        static_cast<std::int32_t>(NpcEventRead16(*runtime.event, runtime.pc + operandOffset)) + shift);
-    if (operand >= 4096u)
-    {
-        const std::size_t index = operand - 4096u;
-        if (index < runtime.zone.size()) runtime.zone[index] = value;
-    }
-    else if (operand < runtime.local.size())
-        runtime.local[operand] = value;
-}
-
-static std::size_t NpcEventFixedSize(std::uint8_t op)
-{
-    switch (op)
-    {
-    case 0x00: case 0x21: case 0x23: case 0x25: case 0x58: case 0x7f:
-        return 1;
-    case 0x43:
-        return 2;
-    case 0x01: case 0x05: case 0x06: case 0x0b: case 0x0c:
-    case 0x1a: case 0x1c: case 0x1d: case 0x34: case 0x35: case 0x48: case 0x63:
-        return 3;
-    case 0x03: case 0x6f: case 0x76: case 0x80: case 0x99:
-        return 5;
-    case 0x07: case 0x08: case 0x09: case 0x0a: case 0x0d: case 0x0e:
-    case 0x0f: case 0x10: case 0x11: case 0x14: case 0x15: case 0x19:
-    case 0x24: case 0x27: case 0x28: case 0x29: case 0x2a: case 0x2b:
-    case 0x3e: case 0x49: case 0x6e:
-        return 7;
-    case 0x02: case 0x40: case 0x41: case 0x4e: case 0x6c:
-        return 9;
-    case 0x2c: case 0xb0:
-        return 12;
-    case 0x45:
-        return 17;
-    case 0x46:
-        return 2;
-    case 0x53: case 0x54: case 0x55: case 0x5b: case 0x66:
-        return 9;
-    case 0x5d:
-        return 5;
-    case 0x70:
-        return 1;
-    default:
-        return 0;
-    }
-}
-
-static void NpcEventBinaryOp(NpcEventRuntime& runtime, std::uint8_t op)
-{
-    const std::uint32_t a = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
-    const std::uint32_t b = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 3));
-    std::uint32_t value = 0;
-    switch (op)
-    {
-    case 0x07: value = a + b; break;
-    case 0x08: value = a - b; break;
-    case 0x09: value = a | (1u << (b & 31)); break;
-    case 0x0a: value = a & ~(1u << (b & 31)); break;
-    case 0x0d: value = a & b; break;
-    case 0x0e: value = a | b; break;
-    case 0x0f: value = a ^ b; break;
-    case 0x10: value = a << (b & 31); break;
-    case 0x11: value = a >> (b & 31); break;
-    case 0x14: value = a * b; break;
-    case 0x15: value = (a && b) ? a / b : 0; break;
-    }
-    NpcEventSetWork(runtime, 1, value);
-    runtime.pc += 5;
-}
-
-static void NpcEventIf(NpcEventRuntime& runtime)
-{
-    if (!runtime.event) return;
-    const std::uint8_t kind = runtime.pc + 5 < runtime.event->code.size()
-        ? runtime.event->code[runtime.pc + 5] & 0x0f : 0;
-    const std::int32_t a = NpcEventGetWork(runtime, 1);
-    const std::int32_t b = NpcEventGetWork(runtime, 3);
-    const std::size_t target = NpcEventRead16(*runtime.event, runtime.pc + 6);
-    bool take = true;
-    switch (kind)
-    {
-    case 0: take = a != b; break;
-    case 1: case 7: take = a == b; break;
-    case 2: take = a <= b; break;
-    case 3: take = a >= b; break;
-    case 4: take = a < b; break;
-    case 5: take = a > b; break;
-    case 6: case 9: take = ((std::uint32_t)b & (std::uint32_t)a) == 0; break;
-    case 8: take = ((std::uint32_t)a | (std::uint32_t)b) == 0; break;
-    case 10: take = (~(std::uint32_t)a & (std::uint32_t)b) == 0; break;
-    }
-    runtime.pc = take ? target : runtime.pc + 8;
-}
-
-static NpcEventStep StepNpcEvent(NpcEventRuntime& runtime)
-{
-    if (!runtime.event || runtime.finished)
-        return NpcEventStep::Done;
-    for (int budget = 0; budget < 100000; ++budget)
-    {
-        if (runtime.pc >= runtime.event->code.size())
-        {
-            runtime.finished = true;
-            return NpcEventStep::Done;
-        }
-        const std::uint8_t op = runtime.event->code[runtime.pc];
-        switch (op)
-        {
-        case 0x00: case 0x21:
-            runtime.finished = true;
-            return NpcEventStep::Done;
-        case 0x01:
-            runtime.pc = NpcEventRead16(*runtime.event, runtime.pc + 1);
-            break;
-        case 0x02:
-            NpcEventIf(runtime);
-            break;
-        case 0x03:
-            NpcEventSetWork(runtime, 1, static_cast<std::uint32_t>(NpcEventGetWork(runtime, 3)));
-            runtime.pc += 5;
-            break;
-        case 0x05:
-            NpcEventSetWork(runtime, 1, 1); runtime.pc += 3; break;
-        case 0x06:
-            NpcEventSetWork(runtime, 1, 0); runtime.pc += 3; break;
-        case 0x0b:
-            NpcEventSetWork(runtime, 1, static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1) + 1)); runtime.pc += 3; break;
-        case 0x0c:
-            NpcEventSetWork(runtime, 1, static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1) - 1)); runtime.pc += 3; break;
-        case 0x07: case 0x08: case 0x09: case 0x0a: case 0x0d: case 0x0e:
-        case 0x0f: case 0x10: case 0x11: case 0x14: case 0x15:
-            NpcEventBinaryOp(runtime, op);
-            break;
-        case 0x19:
-        {
-            const std::uint32_t a = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
-            const std::uint32_t b = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 3));
-            NpcEventSetWork(runtime, 1, b);
-            NpcEventSetWork(runtime, 3, a);
-            runtime.pc += 5;
-            break;
-        }
-        case 0x1a:
-            if (runtime.jumpIndex >= runtime.jumps.size()) { runtime.finished = true; return NpcEventStep::Done; }
-            runtime.jumps[runtime.jumpIndex++] = static_cast<std::uint16_t>(runtime.pc + 3);
-            runtime.pc = NpcEventRead16(*runtime.event, runtime.pc + 1);
-            break;
-        case 0x1b:
-            if (runtime.jumpIndex == 0) { runtime.finished = true; return NpcEventStep::Done; }
-            runtime.pc = runtime.jumps[--runtime.jumpIndex];
-            break;
-        case 0x1d: case 0x48:
-            runtime.pendingMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
-            runtime.messageOpen = true;
-            runtime.pc += 3;
-            break;
-        case 0x2b: case 0x49:
-            runtime.pendingMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 5));
-            runtime.messageOpen = true;
-            runtime.pc += 7;
-            break;
-        case 0xb0:
-            if (runtime.pc + 12 > runtime.event->code.size() || runtime.event->code[runtime.pc + 1] != 0)
-                return NpcEventStep::Blocked;
-            runtime.pendingMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 10));
-            runtime.messageOpen = true;
-            runtime.pc += 12;
-            break;
-        case 0x23:
-            if (runtime.messageOpen)
-                return NpcEventStep::Message;
-            runtime.pc += 1;
-            break;
-        case 0x24:
-            runtime.pendingChoiceMessage = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 1));
-            runtime.defaultChoice = static_cast<std::uint32_t>(std::max<std::int32_t>(0, NpcEventGetWork(runtime, 3)));
-            runtime.hiddenChoiceMask = static_cast<std::uint32_t>(NpcEventGetWork(runtime, 5));
-            runtime.waitingChoice = true;
-            runtime.pc += 7;
-            break;
-        case 0x25: case 0x7f:
-            if (runtime.waitingChoice)
-                return NpcEventStep::Choice;
-            runtime.pc += 1;
-            break;
-        case 0x3e:
-        {
-            const std::int32_t bit = NpcEventGetWork(runtime, 3);
-            const std::int32_t word = NpcEventGetWork(runtime, 1, bit >> 5);
-            runtime.pc = ((word & (1 << (bit & 31))) == 0)
-                ? NpcEventRead16(*runtime.event, runtime.pc + 5)
-                : runtime.pc + 7;
-            break;
-        }
-        default:
-        {
-            const std::size_t size = NpcEventFixedSize(op);
-            if (size == 0)
-                return NpcEventStep::Blocked;
-            runtime.pc += size;
-            break;
-        }
-        }
-    }
-    return NpcEventStep::Blocked;
-}
-
-static void DismissNpcEventMessage(NpcEventRuntime& runtime)
-{
-    runtime.messageOpen = false;
-    runtime.pendingMessage = 0xffffffffu;
-}
-
-static void SelectNpcEventChoice(NpcEventRuntime& runtime, std::uint32_t selected)
-{
-    runtime.zone[0] = selected;
-    runtime.waitingChoice = false;
-    runtime.pendingChoiceMessage = 0xffffffffu;
-}
-
-static std::vector<std::string> SplitNpcDialogueFrames(const std::string& dialogue)
-{
-    std::vector<std::string> frames;
-    std::size_t start = 0;
-    while (start <= dialogue.size())
-    {
-        std::size_t end = dialogue.find('\n', start);
-        std::string frame = dialogue.substr(start,
-            end == std::string::npos ? std::string::npos : end - start);
-        if (!frame.empty() && frame.back() == '\r')
-            frame.pop_back();
-        if (!frame.empty())
-            frames.push_back(std::move(frame));
-        if (end == std::string::npos)
-            break;
-        start = end + 1;
-    }
-    if (frames.empty())
-        frames.push_back(dialogue);
-    return frames;
-}
-
 static bool ShowNpcConversationFrame(HWND owner)
 {
     if (!g_npcConversation.entityId)
         return false;
-    if (g_npcConversation.index < g_npcConversation.frames.size())
+    if (const std::string* frame = NpcConversationController::CurrentFallbackFrame(
+            g_npcConversation.dialogue))
     {
-        NpcChatWindow::Show(owner, g_npcConversation.name,
-            g_npcConversation.frames[g_npcConversation.index]);
+        NpcChatWindow::Show(owner, g_npcConversation.name, *frame);
         return true;
     }
     return true;
@@ -4611,22 +4048,39 @@ static bool LoadRetailNpcConversation(const FFXINpcPlacement::Placement& placeme
     char messagePath[MAX_PATH] = {};
     FFXIPath::BuildFullPath(g_ffxiPath, zone->eventDat, eventPath, sizeof(eventPath));
     FFXIPath::BuildFullPath(g_ffxiPath, zone->dialogDat, messagePath, sizeof(messagePath));
-    if (!FFXIEventTable::Load(eventPath, g_npcConversation.scripts) ||
-        !FFXIEventMessages::Load(messagePath, g_npcConversation.messages))
+    auto& dialogue = g_npcConversation.dialogue;
+    if (!FFXIEventTable::Load(eventPath, dialogue.scripts) ||
+        !FFXIEventMessages::Load(messagePath, dialogue.messages))
         return false;
 
-    for (const auto& scripts : g_npcConversation.scripts)
+    for (const auto& scripts : dialogue.scripts)
     {
         if (scripts.entityId != placement.entityId) continue;
         for (const auto& event : scripts.events)
         {
-            NpcEventRuntime runtime;
-            runtime.event = &event;
-            g_npcConversation.runtime = runtime;
-            const NpcEventStep firstStep = StepNpcEvent(g_npcConversation.runtime);
-            if (firstStep == NpcEventStep::Message || firstStep == NpcEventStep::Choice)
+            NpcEventRuntime::State runtime;
+            NpcEventRuntime::Begin(runtime, event);
+            dialogue.runtime = runtime;
+            const NpcEventRuntime::Outcome firstStep =
+                NpcEventRuntime::Advance(dialogue.runtime);
+            if (firstStep.unsupportedOpcode)
+            {
+                char diagnostic[160]{};
+                sprintf_s(diagnostic,
+                    "[DATura NPC dialogue] blocked event=%u pc=%zu opcode=0x%02x\n",
+                    firstStep.eventId, firstStep.programCounter, firstStep.opcode);
+                OutputDebugStringA(diagnostic);
+            }
+            if (firstStep.step == NpcEventRuntime::Step::Message ||
+                firstStep.step == NpcEventRuntime::Step::Choice)
+            {
+                trace("selected entity=" + std::to_string(placement.entityId) +
+                    " event=" + std::to_string(event.id) +
+                    " entry=" + std::to_string(event.entryOffset));
                 return true;
+            }
         }
+        dialogue.runtime = {};
         trace("matched entity had no runnable retail dialogue");
         return false;
     }
@@ -4635,46 +4089,34 @@ static bool LoadRetailNpcConversation(const FFXINpcPlacement::Placement& placeme
 
 static bool PresentNpcEventStep(HWND owner)
 {
-    for (;;)
+    NpcConversationController::Presentation presentation =
+        NpcConversationController::PresentNext(g_npcConversation.dialogue);
+    if (presentation.unsupportedOpcode)
     {
-        const NpcEventStep step = StepNpcEvent(g_npcConversation.runtime);
-        if (step == NpcEventStep::Message)
-        {
-            const std::uint32_t id = g_npcConversation.runtime.pendingMessage;
-            if (id < g_npcConversation.messages.size() &&
-                !g_npcConversation.messages[(size_t)id].text.empty())
-            {
-                NpcChatWindow::HideChoices();
-                NpcChatWindow::Show(owner, g_npcConversation.name,
-                    g_npcConversation.messages[(size_t)id].text);
-                return true;
-            }
-            DismissNpcEventMessage(g_npcConversation.runtime);
-            continue;
-        }
-        if (step == NpcEventStep::Choice)
-        {
-            const std::uint32_t id = g_npcConversation.runtime.pendingChoiceMessage;
-            std::string prompt;
-            std::vector<std::string> options;
-            std::vector<std::uint32_t> optionValues;
-            if (id < g_npcConversation.messages.size() &&
-                FFXIEventMessages::SplitChoiceText(g_npcConversation.messages[(size_t)id],
-                    g_npcConversation.runtime.hiddenChoiceMask, prompt, options, optionValues))
-            {
-                g_npcConversation.choicePrompt = prompt;
-                g_npcConversation.choiceOptions = options;
-                g_npcConversation.choiceValues = optionValues;
-                const auto defaultIt = std::find(optionValues.begin(), optionValues.end(),
-                    g_npcConversation.runtime.defaultChoice);
-                g_npcConversation.choiceSelected = defaultIt == optionValues.end()
-                    ? 0 : static_cast<int>(defaultIt - optionValues.begin());
-                NpcChatWindow::ShowChoices(owner, prompt, options, g_npcConversation.choiceSelected);
-                return true;
-            }
-            SelectNpcEventChoice(g_npcConversation.runtime, 0);
-            continue;
-        }
+        char diagnostic[160]{};
+        sprintf_s(diagnostic,
+            "[DATura NPC dialogue] blocked event=%u pc=%zu opcode=0x%02x\n",
+            presentation.eventId, presentation.programCounter, presentation.opcode);
+        OutputDebugStringA(diagnostic);
+    }
+    switch (presentation.kind)
+    {
+    case NpcConversationController::PresentationKind::Message:
+        NpcChatWindow::HideChoices();
+        NpcChatWindow::Show(owner, g_npcConversation.name, presentation.text);
+        return true;
+    case NpcConversationController::PresentationKind::Choices:
+        g_npcConversation.choicePrompt = presentation.prompt;
+        g_npcConversation.choiceOptions = std::move(presentation.options);
+        g_npcConversation.choiceValues = std::move(presentation.optionValues);
+        g_npcConversation.choiceSelected = presentation.selected;
+        NpcChatWindow::ShowChoices(owner, g_npcConversation.choicePrompt,
+            g_npcConversation.choiceOptions, g_npcConversation.choiceSelected);
+        return true;
+    case NpcConversationController::PresentationKind::UnreadableChoice:
+        OutputDebugStringA("[DATura NPC dialogue] unreadable choice; stopping rather than selecting an answer.\n");
+        return false;
+    default:
         return false;
     }
 }
@@ -4689,8 +4131,8 @@ static void StartNpcConversation(HWND owner, const FFXINpcPlacement::Placement& 
         PresentNpcEventStep(owner);
         return;
     }
-    g_npcConversation.frames = SplitNpcDialogueFrames(NpcDialogueText(placement));
-    g_npcConversation.index = 0;
+    NpcConversationController::BeginFallback(g_npcConversation.dialogue,
+        NpcDialogueText(placement));
     ShowNpcConversationFrame(owner);
 }
 
@@ -4698,8 +4140,8 @@ static bool AdvanceNpcConversation(HWND owner)
 {
     if (!g_npcConversation.entityId)
         return false;
-    if (g_homePointTeleport.active)
-        return CompleteHomePointTeleport(owner);
+    if (g_homePointTeleport.phase != HomePointMenuPhase::None)
+        return CompleteHomePointMenu(owner);
     if (!g_npcConversation.choiceOptions.empty())
     {
         const std::uint32_t selectedValue =
@@ -4707,7 +4149,7 @@ static bool AdvanceNpcConversation(HWND owner)
             static_cast<std::size_t>(g_npcConversation.choiceSelected) < g_npcConversation.choiceValues.size()
             ? g_npcConversation.choiceValues[static_cast<std::size_t>(g_npcConversation.choiceSelected)]
             : 0;
-        SelectNpcEventChoice(g_npcConversation.runtime,
+        NpcConversationController::SelectChoice(g_npcConversation.dialogue,
             selectedValue);
         g_npcConversation.choicePrompt.clear();
         g_npcConversation.choiceOptions.clear();
@@ -4717,16 +4159,15 @@ static bool AdvanceNpcConversation(HWND owner)
             EndNpcConversation();
         return true;
     }
-    if (g_npcConversation.runtime.event)
+    if (g_npcConversation.dialogue.runtime.event)
     {
-        DismissNpcEventMessage(g_npcConversation.runtime);
+        NpcConversationController::DismissMessage(g_npcConversation.dialogue);
         if (!PresentNpcEventStep(owner))
             EndNpcConversation();
         return true;
     }
-    if (g_npcConversation.index + 1 < g_npcConversation.frames.size())
+    if (NpcConversationController::AdvanceFallback(g_npcConversation.dialogue))
     {
-        ++g_npcConversation.index;
         ShowNpcConversationFrame(owner);
     }
     else
@@ -4741,7 +4182,7 @@ static bool MoveNpcConversationChoice(HWND owner, int delta)
     if (!g_npcConversation.entityId || g_npcConversation.choiceOptions.empty())
         return false;
     const int count = (int)g_npcConversation.choiceOptions.size();
-    g_npcConversation.choiceSelected = (g_npcConversation.choiceSelected + delta + count) % count;
+    g_npcConversation.choiceSelected = std::clamp(g_npcConversation.choiceSelected + delta, 0, count - 1);
     NpcChatWindow::SetChoiceSelection(owner, g_npcConversation.choiceSelected);
     return true;
 }
@@ -4830,7 +4271,8 @@ static void ReturnToTitleScreen()
 
     UnloadPlayerModel();
     g_highPolyCreationActive = false;
-    g_nationSelectActive = false;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::Inactive);
     LoadTitleScreen();
     if (g_hWnd)
         InvalidateRect(g_hWnd, NULL, FALSE);
@@ -5072,7 +4514,7 @@ static void HandleHighPolyCreationPanelEvent(
         ReturnToTitleScreen();
         break;
     case HighPolyCreationPanel::Command::ChooseNation:
-        BeginNationSelectScene();
+        BeginStartingJobSelect();
         break;
     case HighPolyCreationPanel::Command::SaveCharacter:
         SaveHighPolyCreationCharacter();
@@ -5097,7 +4539,8 @@ static void BeginHighPolyCreationScene()
 {
     LowPolyCharacterPanel::Hide(g_lowPolyPanel);
 
-    g_nationSelectActive = false;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::Customization);
     // Match the standard FFXI character-creation presentation on entry.
     g_creationSelection = {};
     g_creationSelection.equipmentIndex = 1; // Initial Equipment
@@ -5534,32 +4977,21 @@ static void BeginCharacterSelectScene()
         g_applicationSettings.enableTextureCompression);
     g_savedCharacterPreviews.clear();
     g_activeCharacterDataPath.clear();
-    char exeDir[MAX_PATH] = {}, pattern[MAX_PATH] = {};
+    char exeDir[MAX_PATH] = {};
     FFXIFileIO::GetExecutableDirectory(exeDir, sizeof(exeDir));
-    sprintf_s(pattern, "%sCharacters\\*.ff11datset", exeDir);
-    WIN32_FIND_DATAA file = {};
-    HANDLE handle = FindFirstFileA(pattern, &file);
-    if (handle != INVALID_HANDLE_VALUE)
+    const std::string characterDirectory = std::string(exeDir) + "Characters";
+    const std::vector<CharacterRosterController::Candidate> candidates =
+        CharacterRosterController::EnumerateCandidates(characterDirectory);
+    for (const CharacterRosterController::Candidate& candidate : candidates)
     {
-        do
-        {
-            if (file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-            char path[MAX_PATH] = {};
-            sprintf_s(path, "%sCharacters\\%s", exeDir, file.cFileName);
-            SceneModelLoader::Result result = SceneModelLoader::LoadDatSet(
-                GraphicsDevice(), path, g_applicationSettings.enableTextureCompression);
-            if (!result.Succeeded()) continue;
-            SavedCharacterPreview preview;
-            preview.asset = std::move(result.asset);
-            preview.name = file.cFileName;
-            const size_t dot = preview.name.find_last_of('.');
-            if (dot != std::string::npos) preview.name.erase(dot);
-            char dataPath[MAX_PATH] = {};
-            FFXIFileIO::ReplaceExtension(path, ".ini", dataPath, sizeof(dataPath));
-            preview.dataPath = dataPath;
-            g_savedCharacterPreviews.push_back(std::move(preview));
-        } while (FindNextFileA(handle, &file));
-        FindClose(handle);
+        SceneModelLoader::Result result = SceneModelLoader::LoadDatSet(
+            GraphicsDevice(), candidate.dataSetPath.c_str(),
+            g_applicationSettings.enableTextureCompression);
+        if (!result.Succeeded()) continue;
+        SavedCharacterPreview preview;
+        preview.asset = std::move(result.asset);
+        preview.candidate = candidate;
+        g_savedCharacterPreviews.push_back(std::move(preview));
     }
     if (g_savedCharacterPreviews.empty())
     {
@@ -5567,19 +4999,22 @@ static void BeginCharacterSelectScene()
         sprintf_s(message, "No loadable character DAT sets were found in:\n%sCharacters\\\n\nSave a character there first, then try again.", exeDir);
         MessageBoxA(g_hWnd, message, "Select Character", MB_OK | MB_ICONINFORMATION);
     }
-    g_selectedCharacterPreview = 0;
+    CharacterRosterController::Reset(g_characterRosterController);
+    g_characterRosterFocusOffset = 0.0f;
     g_titleScreenActive = false;
-    g_nationSelectActive = false;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::Inactive);
     g_highPolyCreationActive = false;
-    g_characterSelectActive = true;
+    CharacterRosterController::SetMode(g_characterRosterController,
+        CharacterRosterController::Mode::SelectCharacter);
     InvalidateRect(g_hWnd, nullptr, FALSE);
 }
 
 static void BeginCharacterDeleteScene()
 {
     BeginCharacterSelectScene();
-    g_characterSelectActive = false;
-    g_characterDeleteActive = true;
+    CharacterRosterController::SetMode(g_characterRosterController,
+        CharacterRosterController::Mode::DeleteCharacter);
 }
 
 static bool LoadCharacterZone(const int zoneId)
@@ -5602,24 +5037,42 @@ static std::string HomePointDisplayName(const CharacterSaveData::HomePoint& poin
     return zoneName + " - " + (point.name.empty() ? "Home Point" : point.name);
 }
 
-static void StartHomePointTeleportChoice(
+static void StartHomePointActionChoice(
     HWND owner, const CharacterSaveData::Data& data,
     const CharacterSaveData::HomePoint& source)
 {
     g_homePointTeleport = {};
+    g_homePointTeleport.phase = HomePointMenuPhase::Actions;
     g_homePointTeleport.source = source;
     for (const CharacterSaveData::HomePoint& point : data.activatedHomePoints)
     {
         if (!CharacterSaveData::SameHomePoint(point, source))
             g_homePointTeleport.destinations.push_back(point);
     }
-    if (g_homePointTeleport.destinations.empty())
-        return;
 
-    g_homePointTeleport.active = true;
     g_npcConversation = {};
     g_npcConversation.entityId = source.entityId;
     g_npcConversation.name = "Home Point";
+    g_npcConversation.choiceOptions = {"Save character data", "Teleport", "Cancel"};
+    g_npcConversation.choiceValues = {0, 1, 2};
+    g_npcConversation.choiceSelected = 0;
+    NpcChatWindow::ShowChoices(owner, "What would you like to do?",
+        g_npcConversation.choiceOptions, g_npcConversation.choiceSelected);
+}
+
+static bool ShowHomePointTeleportChoice(HWND owner)
+{
+    if (g_homePointTeleport.destinations.empty())
+    {
+        EndNpcConversation();
+        NpcChatWindow::Show(owner, "Home Point",
+            "You have not registered any other Home Points yet.");
+        return true;
+    }
+
+    g_homePointTeleport.phase = HomePointMenuPhase::Destinations;
+    g_npcConversation.choiceOptions.clear();
+    g_npcConversation.choiceValues.clear();
     for (std::size_t index = 0; index < g_homePointTeleport.destinations.size(); ++index)
     {
         g_npcConversation.choiceOptions.push_back(
@@ -5632,12 +5085,55 @@ static void StartHomePointTeleportChoice(
     g_npcConversation.choiceSelected = 0;
     NpcChatWindow::ShowChoices(owner, "Teleport to which Home Point?",
         g_npcConversation.choiceOptions, g_npcConversation.choiceSelected);
+    return true;
 }
 
-static bool CompleteHomePointTeleport(HWND owner)
+static bool SaveCharacterAtHomePoint(
+    HWND owner, const CharacterSaveData::HomePoint& point)
+{
+    CharacterSaveData::Data characterData;
+    if (!LoadOrCreateActiveCharacterData(characterData) ||
+        !WriteActiveCharacterModelFiles(true))
+    {
+        NpcChatWindow::Show(owner, "System",
+            "The character's data could not be saved.");
+        return false;
+    }
+
+    CharacterSaveData::SetHomePoint(characterData, point);
+    if (!CharacterSaveData::Save(g_activeCharacterDataPath.c_str(), characterData))
+    {
+        NpcChatWindow::Show(owner, "System",
+            "The character's data could not be saved.");
+        return false;
+    }
+
+    PlayerController::SetRespawnPoint(g_player);
+    NpcChatWindow::Show(owner, "Home Point",
+        "Character data saved. This Home Point is now your saved location.");
+    return true;
+}
+
+static bool CompleteHomePointMenu(HWND owner)
 {
     const int selected = g_npcConversation.choiceSelected;
     const CharacterSaveData::HomePoint source = g_homePointTeleport.source;
+
+    if (g_homePointTeleport.phase == HomePointMenuPhase::Actions)
+    {
+        if (selected == 0)
+        {
+            EndNpcConversation();
+            SaveCharacterAtHomePoint(owner, source);
+            return true;
+        }
+        if (selected == 1)
+            return ShowHomePointTeleportChoice(owner);
+
+        EndNpcConversation();
+        return true;
+    }
+
     const std::vector<CharacterSaveData::HomePoint> destinations =
         g_homePointTeleport.destinations;
     EndNpcConversation();
@@ -5679,17 +5175,19 @@ static void LoadSelectedCharacterScene()
     if (g_savedCharacterPreviews.empty())
         return;
 
-    SavedCharacterPreview& selected = g_savedCharacterPreviews[g_selectedCharacterPreview];
+    const int selectedIndex = CharacterRosterController::SelectedIndex(
+        g_characterRosterController, g_savedCharacterPreviews.size());
+    SavedCharacterPreview& selected = g_savedCharacterPreviews[selectedIndex];
     CharacterSaveData::Data characterData;
     bool loadedCharacterData =
-        CharacterSaveData::Load(selected.dataPath.c_str(), characterData);
+        CharacterSaveData::Load(selected.candidate.dataPath.c_str(), characterData);
     if (!loadedCharacterData)
     {
         // Legacy characters have no metadata. Give them a durable Bastok
         // fallback immediately so their first Home Point activation can save.
         characterData.homeNationIndex = 0;
         loadedCharacterData = CharacterSaveData::Save(
-            selected.dataPath.c_str(), characterData);
+            selected.candidate.dataPath.c_str(), characterData);
     }
     const int nationIndex = loadedCharacterData ? characterData.homeNationIndex : 0;
     const int homeNationZone = FFXINationSelection::InfoForIndex(nationIndex).zoneId;
@@ -5714,11 +5212,12 @@ static void LoadSelectedCharacterScene()
 
     UnloadPlayerModel();
     g_playerAsset = std::move(selected.asset);
-    g_activeCharacterDataPath = selected.dataPath;
+    g_activeCharacterDataPath = selected.candidate.dataPath;
     g_activeCharacterHomeNationIndex = nationIndex;
+    SetStarterNationMap(g_activeCharacterHomeNationIndex);
     g_savedCharacterPreviews.clear();
-    g_characterSelectActive = false;
-    g_characterDeleteActive = false;
+    CharacterRosterController::SetMode(g_characterRosterController,
+        CharacterRosterController::Mode::None);
     g_camDist = 10.0f;
     g_camPitch = -0.35f;
     UpdatePlayerCameraTarget();
@@ -5760,11 +5259,11 @@ static void LoadSelectedNationScene()
     PullHighPolyCreationStateFromControls();
     HighPolyCreationPanel::Hide(g_highPolyCreationPanel);
 
-    if (g_selectedNationIndex < 0 || g_selectedNationIndex >= FFXINationSelection::Count())
-        g_selectedNationIndex = 0;
+    const int selectedNationIndex = CharacterCreationFlow::SelectedNation(
+        g_characterCreationFlow, FFXINationSelection::Count());
 
     const FFXINationSelection::Info& nation =
-        FFXINationSelection::InfoForIndex(g_selectedNationIndex);
+        FFXINationSelection::InfoForIndex(selectedNationIndex);
     const SceneRequestResolver::Result resolution =
         SceneRequestResolver::ResolveZone(g_ffxiPath, nation.zoneId);
     if (!resolution.Succeeded())
@@ -5798,11 +5297,16 @@ static void LoadSelectedNationScene()
         FFXIFileIO::MakeSafeFileStem(g_creationCharacterName, safeName, sizeof(safeName));
         sprintf_s(dataPath, "%s%s.ini", characterDir, safeName);
     }
-    CharacterSaveData::Data characterData;
-    characterData.homeNationIndex = g_selectedNationIndex;
+    CharacterSaveData::Data characterData =
+        CharacterCreationFlow::PrepareCharacterData(g_playerEquip.raceIndex,
+            selectedNationIndex, CharacterCreationFlow::StartingJob(
+                g_characterCreationFlow));
     CharacterSaveData::Save(dataPath, characterData);
     g_activeCharacterDataPath = dataPath;
-    g_activeCharacterHomeNationIndex = g_selectedNationIndex;
+    g_activeCharacterHomeNationIndex = selectedNationIndex;
+    CharacterCreationFlow::SetStage(g_characterCreationFlow,
+        CharacterCreationFlow::Stage::Inactive);
+    SetStarterNationMap(g_activeCharacterHomeNationIndex);
 
     const FFXIZoneMusicEntry *pMusic = FFXIZoneMusic_FindByID(nation.zoneId);
     if (pMusic)
@@ -5822,7 +5326,7 @@ static bool EnsureNationSelectAssets()
 
 static void DrawNationSelectTextures()
 {
-    if (!g_nationSelectActive || !g_hWnd)
+    if (!CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow) || !g_hWnd)
         return;
 
     EnsureNationSelectAssets();
@@ -5830,23 +5334,130 @@ static void DrawNationSelectTextures()
     {
         GraphicsDevice(), g_hWnd, g_applicationSettings.enableMipMapping,
         g_titleAssets.UiModel(),
-        g_gameUiConfig.nation, g_selectedNationIndex
+        g_gameUiConfig.nation,
+        CharacterCreationFlow::SelectedNation(g_characterCreationFlow,
+            FFXINationSelection::Count())
     };
     FFXINationSelectionRenderer::DrawTextures(context);
 }
 
 static void DrawNationSelectOverlay(HDC overlayDc = nullptr)
 {
-    if (!g_nationSelectActive || !g_hWnd)
+    if (!CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow) || !g_hWnd)
         return;
 
     const FFXINationSelectionRenderer::Context context =
     {
         GraphicsDevice(), g_hWnd, g_applicationSettings.enableMipMapping,
         g_titleAssets.UiModel(),
-        g_gameUiConfig.nation, g_selectedNationIndex, overlayDc
+        g_gameUiConfig.nation,
+        CharacterCreationFlow::SelectedNation(g_characterCreationFlow,
+            FFXINationSelection::Count()), overlayDc
     };
     FFXINationSelectionRenderer::DrawOverlay(context);
+}
+
+static RECT StartingJobPanelRect(const int width, const int height)
+{
+    const int panelWidth = std::min(520, std::max(340, width * 2 / 5));
+    const int panelHeight = std::min(380, std::max(320, height / 2));
+    const int left = (width - panelWidth) / 2;
+    const int top = (height - panelHeight) / 2;
+    return { left, top, left + panelWidth, top + panelHeight };
+}
+
+static RECT StartingJobRowRect(const int index, const int width, const int height)
+{
+    const RECT panel = StartingJobPanelRect(width, height);
+    constexpr int insetX = 20;
+    constexpr int topInset = 78;
+    constexpr int rowHeight = 48;
+    constexpr int columnGap = 12;
+    constexpr int rowGap = 12;
+    const int columnWidth = (panel.right - panel.left - insetX * 2 - columnGap) / 2;
+    const int column = index / 3;
+    const int row = index % 3;
+    const int left = panel.left + insetX + column * (columnWidth + columnGap);
+    const int top = panel.top + topInset + row * (rowHeight + rowGap);
+    return { left, top, left + columnWidth, top + rowHeight };
+}
+
+static RECT StartingJobActionRect(const bool confirm, const int width, const int height)
+{
+    const RECT panel = StartingJobPanelRect(width, height);
+    constexpr int buttonWidth = 150;
+    constexpr int buttonHeight = 34;
+    constexpr int gap = 14;
+    const int y = panel.bottom - buttonHeight - 18;
+    const int left = confirm ? panel.right - buttonWidth - gap : panel.left + gap;
+    return { left, y, left + buttonWidth, y + buttonHeight };
+}
+
+static void DrawStartingJobSelectOverlay(HDC overlayDc = nullptr)
+{
+    if (!CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow) || !g_hWnd)
+        return;
+
+    int width = 0;
+    int height = 0;
+    D3D9Device::GetViewportOrClientSize(GraphicsDevice(), g_hWnd, &width, &height);
+    if (width <= 0 || height <= 0)
+        return;
+
+    const bool ownsDc = overlayDc == nullptr;
+    HDC dc = ownsDc ? GetDC(g_hWnd) : overlayDc;
+    if (!dc)
+        return;
+    const int savedDc = ownsDc
+        ? D3D9Device::BeginGdiViewportMapping(dc, g_hWnd, width, height)
+        : SaveDC(dc);
+
+    const RECT panel = StartingJobPanelRect(width, height);
+    HBRUSH panelBrush = CreateSolidBrush(RGB(10, 13, 23));
+    FillRect(dc, &panel, panelBrush);
+    DeleteObject(panelBrush);
+
+    HFONT titleFont = CreateFontA(-std::max(22, height / 28), 0, 0, 0,
+        FW_BOLD, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Arial");
+    HFONT rowFont = CreateFontA(-std::max(18, height / 42), 0, 0, 0,
+        FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET, OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Arial");
+    RECT titleRect = { panel.left + 12, panel.top + 16, panel.right - 12, panel.top + 54 };
+    Win32Drawing::DrawShadowText(dc, titleFont, "Choose Your Starting Job", titleRect,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(245, 238, 210), 2);
+
+    for (int index = 0; index < CharacterCreationFlow::StartingJobCount(); ++index)
+    {
+        RECT row = StartingJobRowRect(index, width, height);
+        const bool selected = index == CharacterCreationFlow::SelectedStartingJob(
+            g_characterCreationFlow);
+        HBRUSH rowBrush = CreateSolidBrush(selected
+            ? RGB(67, 83, 143) : RGB(28, 34, 49));
+        FillRect(dc, &row, rowBrush);
+        DeleteObject(rowBrush);
+        Win32Drawing::DrawShadowText(dc, rowFont,
+            CharacterCreationFlow::StartingJobName(index), row,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+            RGB(245, 245, 245), selected ? 2 : 1);
+    }
+
+    const RECT back = StartingJobActionRect(false, width, height);
+    const RECT confirm = StartingJobActionRect(true, width, height);
+    HBRUSH actionBrush = CreateSolidBrush(RGB(76, 91, 134));
+    FillRect(dc, &back, actionBrush);
+    FillRect(dc, &confirm, actionBrush);
+    DeleteObject(actionBrush);
+    Win32Drawing::DrawShadowText(dc, rowFont, "Back", back,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(255, 255, 255), 1);
+    Win32Drawing::DrawShadowText(dc, rowFont, "Confirm", confirm,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(255, 255, 255), 1);
+    DeleteObject(rowFont);
+    DeleteObject(titleFont);
+    if (savedDc)
+        RestoreDC(dc, savedDc);
+    if (ownsDc)
+        ReleaseDC(g_hWnd, dc);
 }
 
 static void DrawTitleScreenTextures()
@@ -5887,7 +5498,7 @@ static constexpr int kCharacterRosterPanelInset = 12;
 
 static void DrawCharacterRosterOverlay(HDC dc)
 {
-    if ((!g_characterSelectActive && !g_characterDeleteActive) || !dc) return;
+    if (!CharacterRosterController::IsActive(g_characterRosterController) || !dc) return;
     const RECT panel = CharacterRosterPanelRect();
     NpcChatWindow::PaintFrameRect(dc, panel);
     HFONT font = CreateFontA(-18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -5896,18 +5507,24 @@ static void DrawCharacterRosterOverlay(HDC dc)
     for (size_t i = 0; i < g_savedCharacterPreviews.size(); ++i)
     {
         RECT row = CharacterRosterRowRect((int)i);
-        if ((int)i == g_selectedCharacterPreview)
+        if (static_cast<int>(i) == CharacterRosterController::SelectedIndex(
+                g_characterRosterController, g_savedCharacterPreviews.size()))
         {
             HBRUSH selected = CreateSolidBrush(
-                g_characterDeleteActive ? RGB(102, 40, 58) : RGB(48, 79, 124));
+                CharacterRosterController::CurrentMode(g_characterRosterController) ==
+                    CharacterRosterController::Mode::DeleteCharacter
+                    ? RGB(102, 40, 58) : RGB(48, 79, 124));
             FillRect(dc, &row, selected); DeleteObject(selected);
         }
-        Win32Drawing::DrawShadowText(dc, font, g_savedCharacterPreviews[i].name.c_str(), row,
+        Win32Drawing::DrawShadowText(dc, font,
+            g_savedCharacterPreviews[i].candidate.name.c_str(), row,
             DT_LEFT | DT_VCENTER | DT_SINGLELINE, RGB(240, 240, 250), 1);
     }
     RECT hint = { 270, 690, 1240, 720 };
     Win32Drawing::DrawShadowText(dc, font,
-        g_characterDeleteActive ? "Enter deletes the selected character. Backspace returns." :
+        CharacterRosterController::CurrentMode(g_characterRosterController) ==
+            CharacterRosterController::Mode::DeleteCharacter
+            ? "Enter deletes the selected character. Backspace returns." :
         "Enter loads the selected character. Backspace returns.", hint,
         DT_CENTER | DT_VCENTER | DT_SINGLELINE, RGB(240, 240, 250), 1);
     RECT client{};
@@ -5951,14 +5568,14 @@ static RECT CharacterRosterConfirmRect(int width, int height)
 
 static void DrawCharacterRosterTextures(const int width, const int height)
 {
-    if (!g_characterSelectActive && !g_characterDeleteActive)
+    if (!CharacterRosterController::IsActive(g_characterRosterController))
         return;
     noesisTex_t* buttonTexture = FFXITitleAssets::FindTitleTexture(
         g_titleAssets.UiModel(), "buttonto");
     if (!buttonTexture)
         buttonTexture = FFXITitleAssets::FindTitleTexture(
             g_titleAssets.UiModel(), "lrbutton");
-    if (!buttonTexture || !buttonTexture->pD3DTex)
+    if (!buttonTexture || !D3D9Graphics::NativeTexture(buttonTexture->gpuTexture))
         return;
 
     const POINT mouse = D3D9Device::MapClientPointToViewport(
@@ -6001,6 +5618,40 @@ static void DrawZoneMapOverlay(HDC dc)
     FillRect(dc, &mapRect, sea);
     DeleteObject(sea);
 
+    if (!g_zoneMapCollisionView && g_zoneMapImageZoneId != g_loadedZoneId)
+    {
+        FFXIMapImage::Release(g_zoneMapImage);
+        g_zoneMapImageZoneId = g_loadedZoneId;
+        FFXIMapImage::Load(g_ffxiPath, g_loadedZoneId, g_zoneMapImage);
+    }
+    RECT contentRect = mapRect;
+    if (!g_zoneMapCollisionView && g_zoneMapImage.bitmap)
+    {
+        const float imageAspect = static_cast<float>(g_zoneMapImage.width) /
+            static_cast<float>(g_zoneMapImage.height);
+        const int availableWidth = mapRect.right - mapRect.left;
+        const int availableHeight = mapRect.bottom - mapRect.top;
+        int drawWidth = availableWidth;
+        int drawHeight = static_cast<int>(drawWidth / imageAspect + 0.5f);
+        if (drawHeight > availableHeight)
+        {
+            drawHeight = availableHeight;
+            drawWidth = static_cast<int>(drawHeight * imageAspect + 0.5f);
+        }
+        contentRect.left = mapRect.left + (availableWidth - drawWidth) / 2;
+        contentRect.top = mapRect.top + (availableHeight - drawHeight) / 2;
+        contentRect.right = contentRect.left + drawWidth;
+        contentRect.bottom = contentRect.top + drawHeight;
+        HDC imageDc = CreateCompatibleDC(dc);
+        HGDIOBJ oldBitmap = SelectObject(imageDc, g_zoneMapImage.bitmap);
+        SetStretchBltMode(dc, HALFTONE);
+        StretchBlt(dc, contentRect.left, contentRect.top,
+            contentRect.right - contentRect.left, contentRect.bottom - contentRect.top,
+            imageDc, 0, 0, g_zoneMapImage.width, g_zoneMapImage.height, SRCCOPY);
+        SelectObject(imageDc, oldBitmap);
+        DeleteDC(imageDc);
+    }
+
     if (g_haveZoneCollisionBounds && !g_zoneCollisionTris.empty())
     {
         const float minX = g_zoneCollisionMin[0], maxX = g_zoneCollisionMax[0];
@@ -6008,10 +5659,10 @@ static void DrawZoneMapOverlay(HDC dc)
         const float worldWidth = (std::max)(1.0f, maxX - minX);
         const float worldHeight = (std::max)(1.0f, maxZ - minZ);
         const float scale = (std::min)(
-            static_cast<float>(mapRect.right - mapRect.left - 8) / worldWidth,
-            static_cast<float>(mapRect.bottom - mapRect.top - 8) / worldHeight);
-        const float offsetX = (mapRect.left + mapRect.right - worldWidth * scale) * 0.5f;
-        const float offsetY = (mapRect.top + mapRect.bottom - worldHeight * scale) * 0.5f;
+            static_cast<float>(contentRect.right - contentRect.left - 8) / worldWidth,
+            static_cast<float>(contentRect.bottom - contentRect.top - 8) / worldHeight);
+        const float offsetX = (contentRect.left + contentRect.right - worldWidth * scale) * 0.5f;
+        const float offsetY = (contentRect.top + contentRect.bottom - worldHeight * scale) * 0.5f;
         const auto project = [&](const float x, const float z)
         {
             POINT point = {
@@ -6021,23 +5672,26 @@ static void DrawZoneMapOverlay(HDC dc)
             return point;
         };
 
-        HBRUSH ground = CreateSolidBrush(RGB(92, 105, 91));
-        HGDIOBJ oldBrush = SelectObject(dc, ground);
-        HGDIOBJ oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
-        for (const ZoneCollisionTriangle& triangle : g_zoneCollisionTris)
+        if (g_zoneMapCollisionView || !g_zoneMapImage.bitmap)
         {
-            if (std::fabs(triangle.normal[1]) < 0.20f)
-                continue;
-            POINT points[3] = {
-                project(triangle.p[0][0], triangle.p[0][2]),
-                project(triangle.p[1][0], triangle.p[1][2]),
-                project(triangle.p[2][0], triangle.p[2][2])
-            };
-            Polygon(dc, points, 3);
+            HBRUSH ground = CreateSolidBrush(RGB(92, 105, 91));
+            HGDIOBJ oldBrush = SelectObject(dc, ground);
+            HGDIOBJ oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
+            for (const ZoneCollisionTriangle& triangle : g_zoneCollisionTris)
+            {
+                if (std::fabs(triangle.normal[1]) < 0.20f)
+                    continue;
+                POINT points[3] = {
+                    project(triangle.p[0][0], triangle.p[0][2]),
+                    project(triangle.p[1][0], triangle.p[1][2]),
+                    project(triangle.p[2][0], triangle.p[2][2])
+                };
+                Polygon(dc, points, 3);
+            }
+            SelectObject(dc, oldPen);
+            SelectObject(dc, oldBrush);
+            DeleteObject(ground);
         }
-        SelectObject(dc, oldPen);
-        SelectObject(dc, oldBrush);
-        DeleteObject(ground);
 
         const POINT player = project(g_player.position[0], g_player.position[2]);
         const float arrowSize = 11.0f;
@@ -6053,8 +5707,8 @@ static void DrawZoneMapOverlay(HDC dc)
               player.y - static_cast<LONG>(forwardY * arrowSize * 0.65f) - static_cast<LONG>(rightY * arrowSize * 0.65f) }
         };
         HBRUSH marker = CreateSolidBrush(RGB(255, 222, 76));
-        oldBrush = SelectObject(dc, marker);
-        oldPen = SelectObject(dc, GetStockObject(WHITE_PEN));
+        HGDIOBJ oldBrush = SelectObject(dc, marker);
+        HGDIOBJ oldPen = SelectObject(dc, GetStockObject(WHITE_PEN));
         Polygon(dc, arrow, 3);
         SelectObject(dc, oldPen);
         SelectObject(dc, oldBrush);
@@ -6072,7 +5726,9 @@ static void DrawZoneMapOverlay(HDC dc)
     SelectObject(dc, oldFont);
     DeleteObject(font);
     SetTextColor(dc, RGB(185, 194, 203));
-    const char* hint = "M or Esc: close map";
+    const char* hint = g_zoneMapCollisionView
+        ? "N or Esc: close geometry map"
+        : "M or Esc: close retail map";
     TextOutA(dc, panel.left + 18, panel.bottom - 28, hint, static_cast<int>(strlen(hint)));
 }
 
@@ -6221,6 +5877,10 @@ static void DrawFfxiMainMenuOverlay(HDC overlayDc = nullptr)
     const bool showMogHouse = g_loadedZoneLabel.find("Mog House") != std::string::npos;
     FFXIMainMenu::Draw(overlayDc, g_ffxiMainMenu,
                        client.right - client.left, client.bottom - client.top, showMogHouse);
+    if (g_playerInventory)
+        FFXIInventoryMenu::Draw(overlayDc, g_ffxiInventoryMenu,
+            client.right - client.left, client.bottom - client.top,
+            *g_playerInventory, g_itemCatalog, g_keyItemCatalog, g_playerKeyItems);
 }
 
 static void DrawFfxiMainMenuTextures()
@@ -6303,13 +5963,16 @@ static void Render()
     if (!g_graphicsRuntime.IsInitialized())
         return;
 
-    if (g_graphicsRuntime.PrepareFrame() != D3D9Device::FrameStatus::Ready)
+    if (g_graphicsRuntime.PrepareFrame() != RendererBackend::FrameStatus::Ready)
     {
         Sleep(10);
         return;
     }
 
     UpdateZoneEnvironmentState();
+
+    // Share one sub-minute light time across terrain, actors, and the shadow map.
+    g_renderLightMinuteOfDay = static_cast<float>(ZoneEnvironmentState::CurrentMinuteOfDayPrecise());
 
     noesisModel_t* const zoneModel = g_zoneAsset.Model();
     noesisModel_t* const creationModel = g_creationAsset.Model();
@@ -6319,10 +5982,7 @@ static void Render()
     // alongside their sky and fog; non-zone screens keep DATura's neutral fill.
     const DWORD clearColor = (zoneModel && g_zoneEnvironment.valid) ?
         g_zoneEnvironment.clearColor : D3DCOLOR_XRGB(25, 32, 38);
-    GraphicsDevice()->Clear(0, NULL,
-        D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER,
-        clearColor,
-        1.0f, 0);
+    g_graphicsRuntime.GetGraphics().Clear({true,true,false,clearColor,0,1.0f});
 
     g_npcNameplates.clear();
     g_npcInteraction.targets.clear();
@@ -6331,18 +5991,20 @@ static void Render()
         g_zoneRuntimeOverrides.insert(entry);
     if (g_loadedZoneId == ZoneElevator::kMetalworksZone)
         ApplyMetalworksElevatorRuntimeObjects();
-    if (SUCCEEDED(GraphicsDevice()->BeginScene()))
+    if (g_graphicsRuntime.GetGraphics().BeginScene())
     {
         // ---- Camera setup ----
-        if (g_characterSelectActive || g_characterDeleteActive)
+        if (CharacterRosterController::IsActive(g_characterRosterController))
         {
-            g_camTarget[0] = 0.0f;
+            // Keep the selected preview on the camera's horizontal centerline.
+            const float focusOffset = g_characterRosterFocusOffset;
+            g_camTarget[0] = std::cos(g_camYaw) * focusOffset;
             // Aim at the character's torso rather than the ground plane so
             // the roster framing does not leave excessive space below them.
             // Raise the target slightly to better center taller characters
             // in the preview (previously 1.0f was too low).
             g_camTarget[1] = -1.6f; // Camera position height <-------------------------------------------------------------------------------------
-            g_camTarget[2] = 0.0f;
+            g_camTarget[2] = -std::sin(g_camYaw) * focusOffset;
             // Character previews face along the X axis, so place the camera
             // on that axis to show their fronts instead of their profiles.
             g_camYaw = 3.14159265f * 0.5f;
@@ -6438,11 +6100,11 @@ static void Render()
                 }
             }
         }
-		GraphicsDevice()->SetTransform(D3DTS_VIEW,       &view);
-		GraphicsDevice()->SetTransform(D3DTS_PROJECTION, zoneModel ? &skyProj : &proj);
+		D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::View, &view._11);
+		D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::Projection, zoneModel ? &skyProj._11 : &proj._11);
 
         D3DMATRIX world = D3DMath::BuildIdentity();
-        GraphicsDevice()->SetTransform(D3DTS_WORLD,      &world);
+        D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &world._11);
 
         if (zoneModel)
 		{
@@ -6478,8 +6140,9 @@ static void Render()
                     renderCameraEye[0], renderCameraEye[1], renderCameraEye[2],
                     g_zoneEnvironment.weatherTransition);
             }
-			GraphicsDevice()->SetTransform(D3DTS_PROJECTION, &proj);
-			GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+			D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::Projection, &proj._11);
+			D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &world._11);
+            ModelRenderer::BeginDirectionalShadowFrame();
             RenderModel(zoneModel, true, ModelRenderer::GeometryPass::Opaque);
         }
 
@@ -6495,25 +6158,33 @@ static void Render()
             creationWorld._41 += g_creationHorizontalPlacement[0] + creationRootMotion[0];
             creationWorld._42 = creationRootMotion[1];
             creationWorld._43 += g_creationHorizontalPlacement[2] + creationRootMotion[2];
-            GraphicsDevice()->SetTransform(D3DTS_PROJECTION, &proj);
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &creationWorld);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::Projection, &proj._11);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &creationWorld._11);
             RenderModel(creationModel);
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &world._11);
         }
 
-        if (g_characterSelectActive || g_characterDeleteActive)
+        if (CharacterRosterController::IsActive(g_characterRosterController))
         {
-            const float spacing = 4.0f;
-            const float center = (float)(g_savedCharacterPreviews.size() - 1) * spacing * 0.5f;
+            const float center = (float)(g_savedCharacterPreviews.size() - 1) *
+                kCharacterRosterSpacing * 0.5f;
+            // Lay the roster out across the camera's horizontal screen axis.
+            // The characters face +X and this camera looks from +X, so an
+            // offset on world X would put them in front of one another; for
+            // this view, screen-right is world -Z.
+            const float screenRightX = std::cos(g_camYaw);
+            const float screenRightZ = -std::sin(g_camYaw);
             for (size_t i = 0; i < g_savedCharacterPreviews.size(); ++i)
             {
                 if (!g_savedCharacterPreviews[i].asset) continue;
                 D3DMATRIX previewWorld = world;
-                previewWorld._41 += (float)i * spacing - center;
-                GraphicsDevice()->SetTransform(D3DTS_WORLD, &previewWorld);
+                const float screenOffset = (float)i * kCharacterRosterSpacing - center;
+                previewWorld._41 += screenRightX * screenOffset;
+                previewWorld._43 += screenRightZ * screenOffset;
+                D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &previewWorld._11);
                 RenderModel(g_savedCharacterPreviews[i].asset.Model());
             }
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &world._11);
         }
 
         for (NpcRenderAsset &asset : g_npcRenderAssets)
@@ -6529,7 +6200,8 @@ static void Render()
                     npc.homePointActivatedAt});
         const float listenerRight[3] = {view._11, view._21, view._31};
         const HWND soundForeground = GetForegroundWindow();
-        const bool homePointAudioAllowed = IsGameMode() && !g_titleScreenActive && !g_nationSelectActive &&
+        const bool homePointAudioAllowed = IsGameMode() && !g_titleScreenActive &&
+            !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow) &&
             g_applicationSettings.enableSounds &&
             (g_applicationSettings.playSoundsInBackground || soundForeground == g_hWnd ||
              soundForeground == ConfigDialog::Window(g_configDialog) || AudioPlayer_OwnsWindow(soundForeground));
@@ -6538,7 +6210,40 @@ static void Render()
                 asset.homePoint->UpdateSound(homePoints, g_player.position, listenerRight,
                     homePointAudioAllowed, g_applicationSettings.maxSimultaneousSounds);
 
-        int npcShadowCount = 0;
+        // Select casters around the orbit focus, independent of nameplate or
+        // camera visibility. Rotating must not redistribute the NPC shadow budget.
+        std::vector<const NpcRenderInstance*> npcShadowCasters;
+        const auto npcInVisibleZoneCell = [&](const NpcRenderInstance& npc)
+        {
+            const auto& at=npc.placement.transform;
+            const auto nativePoint=FFXICoordinateFrame::SceneToNativeDat(
+                {at.x,at.y,at.z},!g_applicationSettings.mirrorWorldZones);
+            return Model_FF11_IsZonePointVisible(g_zoneVisibilityViewerPoint,nativePoint.data());
+        };
+        const auto shadowDistanceSquared = [&](const NpcRenderInstance& npc)
+        {
+            const auto& at=npc.placement.transform;
+            const float dx=at.x-g_camTarget[0], dy=at.y-g_camTarget[1], dz=at.z-g_camTarget[2];
+            return dx*dx+dy*dy+dz*dz;
+        };
+        if (g_applicationSettings.shadowNpcs &&
+            g_applicationSettings.lightingQuality == ApplicationSettings::LightingDynamicShadows)
+        {
+            const float radius=static_cast<float>((std::max)(0,g_applicationSettings.shadowMaxDistance))*2;
+            for (const auto& npc:g_npcRenderInstances)
+                if (npc.placement.visible && npc.assetIndex<g_npcRenderAssets.size() &&
+                    g_npcRenderAssets[npc.assetIndex].resource &&
+                    !g_npcRenderAssets[npc.assetIndex].homePoint && shadowDistanceSquared(npc)<=radius*radius &&
+                    npcInVisibleZoneCell(npc))
+                    npcShadowCasters.push_back(&npc);
+            std::sort(npcShadowCasters.begin(),npcShadowCasters.end(),[&](const auto* a,const auto* b)
+            {
+                const float da=shadowDistanceSquared(*a), db=shadowDistanceSquared(*b);
+                return da!=db ? da<db : a->placement.entityId<b->placement.entityId;
+            });
+            const size_t limit=static_cast<size_t>((std::max)(0,g_applicationSettings.shadowNpcLimit));
+            if(npcShadowCasters.size()>limit) npcShadowCasters.resize(limit);
+        }
         for (const NpcRenderInstance &npc : g_npcRenderInstances)
         {
             if (npc.assetIndex >= g_npcRenderAssets.size() || !npc.placement.visible)
@@ -6551,29 +6256,32 @@ static void Render()
             // Catalog headings and character DATs both face +X at zero. The
             // player's camera-relative quarter-turn does not apply to NPCs.
             D3DMATRIX npcWorld = FFXINpcPlacement::BuildWorldTransform(transform);
+            const bool drawNpcShadow=std::find(npcShadowCasters.begin(),npcShadowCasters.end(),&npc)!=npcShadowCasters.end();
+
+            // The zone DAT's spatial tree uses the map geometry's native X
+            // orientation. Normal viewer mode mirrors that geometry to match
+            // server/entity coordinates, so transform both query points back.
+            if (!npcInVisibleZoneCell(npc))
+                continue;
 
             NpcNameplateRenderer::DrawItem nameplate;
             float worldX = 0.0f, worldY = 0.0f, worldZ = 0.0f;
             if (!ProjectNpcNameplate(npcWorld, asset.nameplateLocalY, viewProjection,
                                      w, h2, &nameplate.screenX, &nameplate.screenY,
                                      &nameplate.depth, &worldX, &worldY, &worldZ))
-                continue;
-
-            // The zone DAT's spatial tree uses the map geometry's native X
-            // orientation. Normal viewer mode mirrors that geometry to match
-            // server/entity coordinates, so transform both query points back.
-            const float cameraVisibilityPoint[3] =
             {
-                g_zoneVisibilityViewerPoint[0],
-                g_zoneVisibilityViewerPoint[1],
-                g_zoneVisibilityViewerPoint[2]
-            };
-            const auto npcVisibilityPoint = FFXICoordinateFrame::SceneToNativeDat(
-                {transform.x, transform.y, transform.z}, !g_applicationSettings.mirrorWorldZones);
-            if (!Model_FF11_IsZonePointVisible(cameraVisibilityPoint, npcVisibilityPoint.data()))
+                if(drawNpcShadow && ModelRenderer::IsDirectionalShadowFrameActive())
+                {
+                    D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &npcWorld._11);
+                    RenderModel(asset.resource.Model(),false,ModelRenderer::GeometryPass::All,true,true,true);
+                    // Keep shared animation advancing while only its shadow is visible.
+                    asset.visibleLastFrame=true;
+                }
                 continue;
+            }
 
-            if (IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
+            if (IsGameMode() && !g_titleScreenActive &&
+                !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
             {
                 float feetX, feetY, feetDepth, unusedX, unusedY, unusedZ;
                 if (ProjectNpcNameplate(npcWorld, 0.0f, viewProjection, w, h2,
@@ -6589,17 +6297,13 @@ static void Render()
             }
 
             asset.visibleLastFrame = true;
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &npcWorld);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &npcWorld._11);
             if (asset.homePoint)
                 visibleHomePoints.push_back(&npc);
             else
             {
-                const bool drawNpcShadow = g_applicationSettings.shadowNpcs &&
-                    npcShadowCount < (std::max)(0, g_applicationSettings.shadowNpcLimit);
                 RenderModel(asset.resource.Model(), false, ModelRenderer::GeometryPass::All,
-                    drawNpcShadow);
-                if (drawNpcShadow)
-                    ++npcShadowCount;
+                    drawNpcShadow, true);
             }
 
             if (!npc.placement.name.empty() &&
@@ -6617,7 +6321,7 @@ static void Render()
                 g_npcNameplates.push_back(std::move(nameplate));
             }
         }
-        GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+        D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &world._11);
 
         if (playerModel)
         {
@@ -6627,10 +6331,10 @@ static void Render()
                 :
                 D3DMath::BuildYawTranslation(
                     g_player.yaw + (3.1415926535f * 0.5f), g_player.position);
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &playerWorld);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &playerWorld._11);
             RenderModel(playerModel, false, ModelRenderer::GeometryPass::All,
-                g_applicationSettings.shadowPlayer);
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+                g_applicationSettings.shadowPlayer, !g_companionViewerMode);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &world._11);
 
             // Use the posed mesh after animation to keep the label above the
             // current race/equipment, with the same camera-distance scaling as NPCs.
@@ -6645,7 +6349,10 @@ static void Render()
             {
                 playerLabel.name = appearance.name[0] ? appearance.name : g_creationCharacterName;
                 if (playerLabel.name.empty()) playerLabel.name = "Adventurer";
-                playerLabel.nameColor = 0xFFFFFFFF;
+                playerLabel.font = appearance.font;
+                playerLabel.fontSize = appearance.fontSize;
+                playerLabel.nameColor = D3DCOLOR_XRGB(GetRValue(appearance.fontColor), GetGValue(appearance.fontColor), GetBValue(appearance.fontColor));
+                playerLabel.titleColor = playerLabel.nameColor;
                 playerLabel.icon = appearance.icon;
                 playerLabel.jobMaster = appearance.jobMaster;
                 playerLabel.roleTitle = GameUiConfig_PlayerSubtitle(appearance);
@@ -6659,11 +6366,77 @@ static void Render()
             }
         }
 
+        // Finish scene shadows before world items, which have their own draw path.
+        ModelRenderer::DrawDirectionalShadowFrame();
+
+        if (IsGameMode() && !g_titleScreenActive &&
+            !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
+        {
+            std::vector<WorldItemHover::Candidate> hoverCandidates;
+            if (g_input.clientMouse.x >= 0 && g_input.clientMouse.y >= 0 &&
+                !g_ffxiMainMenu.open && !FFXIInventoryMenu::IsOpen(g_ffxiInventoryMenu))
+            {
+                for (const auto& entity : g_worldItems.entities)
+                {
+                    if (entity.zoneId != g_loadedZoneId) continue;
+                    D3DMATRIX itemWorld = D3DMath::BuildIdentity();
+                    itemWorld._41 = entity.position[0];
+                    itemWorld._42 = entity.position[1];
+                    itemWorld._43 = entity.position[2];
+                    float bottomX, bottomY, bottomDepth, unusedX, unusedY, unusedZ;
+                    float topX, topY, topDepth;
+                    if (!ProjectNpcNameplate(itemWorld, 0.0f, viewProjection, w, h2,
+                            &bottomX, &bottomY, &bottomDepth, &unusedX, &unusedY, &unusedZ) ||
+                        !ProjectNpcNameplate(itemWorld, -0.5f, viewProjection, w, h2,
+                            &topX, &topY, &topDepth, &unusedX, &unusedY, &unusedZ))
+                        continue;
+                    const float projectedHeight = std::fabs(bottomY - topY);
+                    const float halfWidth = (std::max)(8.0f, projectedHeight * 0.7f);
+                    hoverCandidates.push_back({entity.id,
+                        (std::min)(bottomX, topX) - halfWidth,
+                        (std::min)(bottomY, topY) - 5.0f,
+                        (std::max)(bottomX, topX) + halfWidth,
+                        (std::max)(bottomY, topY) + 5.0f,
+                        (std::min)(bottomDepth, topDepth)});
+                }
+            }
+            const POINT hoverMouse = D3D9Device::MapClientPointToViewport(
+                g_hWnd, static_cast<int>(w), static_cast<int>(h2), g_input.clientMouse);
+            const auto hoveredId = WorldItemHover::PickNearest(hoverCandidates,
+                static_cast<float>(hoverMouse.x), static_cast<float>(hoverMouse.y));
+            g_hoveredWorldItemId = hoveredId;
+            if (const auto* hovered = WorldItemSystem::Find(g_worldItems, hoveredId))
+            {
+                if (const auto* definition = g_itemCatalog.Find(hovered->stack.itemId))
+                {
+                    D3DMATRIX itemWorld = D3DMath::BuildIdentity();
+                    itemWorld._41 = hovered->position[0];
+                    itemWorld._42 = hovered->position[1];
+                    itemWorld._43 = hovered->position[2];
+                    NpcNameplateRenderer::DrawItem label;
+                    float worldX, worldY, worldZ;
+                    if (ProjectNpcNameplate(itemWorld, -0.65f, viewProjection, w, h2,
+                        &label.screenX, &label.screenY, &label.depth,
+                        &worldX, &worldY, &worldZ))
+                    {
+                        label.name = definition->name;
+                        label.nameColor = 0xFFFFFF80;
+                        const float dx = worldX - renderCameraEye[0];
+                        const float dy = worldY - renderCameraEye[1];
+                        const float dz = worldZ - renderCameraEye[2];
+                        label.distanceSquared = dx * dx + dy * dy + dz * dz;
+                        g_npcNameplates.push_back(std::move(label));
+                    }
+                }
+            }
+            WorldItemRenderer::Draw(GraphicsDevice(), g_worldItems, g_itemCatalog, g_loadedZoneId);
+        }
+
         // Water and other translucent zone surfaces blend after actors have
         // populated depth and color, preserving submerged/foreground occlusion.
         if (zoneModel)
         {
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &world._11);
             RenderModel(zoneModel, true, ModelRenderer::GeometryPass::Transparent);
             ZoneObjectHighlightRenderer::Draw(
                 GraphicsDevice(), zoneModel, g_highlightedZoneObjects, g_zoneRuntimeOverrides);
@@ -6680,7 +6453,7 @@ static void Render()
             };
             return distance(a) > distance(b);
         });
-        GraphicsDevice()->SetTransform(D3DTS_PROJECTION, &proj);
+        D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::Projection, &proj._11);
         for (const auto* npc : visibleHomePoints)
         {
             const auto npcWorld = FFXINpcPlacement::BuildWorldTransform(npc->placement.transform);
@@ -6690,6 +6463,25 @@ static void Render()
         }
         if (g_applicationSettings.showCollisionGeometry)
             ZoneCollision::DrawOverlay(GraphicsDevice(), g_zoneCollisionMesh);
+        DrawZoneTriggerVolumes();
+        if (g_towerPortalEffect)
+        {
+            auto portalWorld=D3DMath::BuildIdentity();
+            if (!g_applicationSettings.mirrorWorldZones) portalWorld._11=-1;
+            g_towerPortalEffect->Draw(GraphicsDevice(),portalWorld,renderCameraEye,
+                g_towerPortalSeconds,-1000,g_applicationSettings.enableMipMapping);
+            if (g_towerUpperPortalEffect)
+                g_towerUpperPortalEffect->Draw(GraphicsDevice(),portalWorld,renderCameraEye,
+                    g_towerPortalSeconds,-1000,g_applicationSettings.enableMipMapping);
+            if (g_towerPortalInteraction.activating)
+            {
+                portalWorld._41=g_player.position[0];
+                portalWorld._42=g_player.position[1];
+                portalWorld._43=g_player.position[2];
+                g_towerPortalEffect->DrawActivation(GraphicsDevice(),portalWorld,renderCameraEye,
+                    g_towerPortalInteraction.elapsed,0,g_applicationSettings.enableMipMapping);
+            }
+        }
         DrawClickMoveTarget();
 
         // Precipitation blends against the completed scene and depth-tests against
@@ -6712,7 +6504,7 @@ static void Render()
                 gFF11LastGeneratorRecords, gFF11LastKeyframeRecords,
                 renderCameraEye[0], renderCameraEye[1], renderCameraEye[2],
                 g_zoneEnvironment.weatherTransition);
-            GraphicsDevice()->SetTransform(D3DTS_WORLD, &world);
+            D3D9Graphics::Context(GraphicsDevice()).SetTransform(RendererBackend::Transform::World, &world._11);
         }
 
         if (IsGameMode() && g_doors.selected >= 0 && g_doors.selected < (int)g_doors.doors.size())
@@ -6737,17 +6529,19 @@ static void Render()
         }
         if (g_uiVisible)
         {
-            if (!g_titleScreenActive && !g_nationSelectActive)
+            if (!g_titleScreenActive &&
+                !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow) &&
+                !CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
                 NpcNameplateRenderer::Draw(GraphicsDevice(), g_npcNameplates);
             DrawTitleScreenTextures();
             DrawNationSelectTextures();
             DrawCharacterRosterTextures((int)w, (int)h2);
             DrawFfxiMainMenuTextures();
-            DrawZoneBoundaryDots(viewProjection, w, h2);
+            DrawZoneBoundaryDots(viewProjection, static_cast<int>(w), static_cast<int>(h2));
             DrawZoneTransitionOverlay();
         }
 
-        GraphicsDevice()->EndScene();
+        g_graphicsRuntime.GetGraphics().EndScene();
     }
 
     // Resolve MSAA/post-processing before drawing GDI overlays into the final
@@ -6756,16 +6550,14 @@ static void Render()
 
     if (g_uiVisible)
         NpcChatWindow::Draw(GraphicsDevice());
+        NpcChatWindow::DrawChoices(GraphicsDevice());
 
     // The title/nation labels are GDI-rendered.  Paint them into the
     // lockable backbuffer before Present so they cannot flicker independently
     // of the Direct3D title artwork on the window surface.
-    IDirect3DSurface9* backBuffer = nullptr;
-    HDC overlayDc = nullptr;
-    if (SUCCEEDED(GraphicsDevice()->GetBackBuffer(
-            0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)) && backBuffer)
+    if (std::unique_ptr<RendererBackend::OverlayContext> overlay{g_graphicsRuntime.AcquireOverlay()})
     {
-        backBuffer->GetDC(&overlayDc);
+        HDC overlayDc = overlay->DeviceContext();
         if (overlayDc)
         {
             if (g_uiVisible)
@@ -6773,15 +6565,14 @@ static void Render()
                 DrawTitleScreenOverlay(overlayDc);
                 DrawCharacterRosterOverlay(overlayDc);
                 DrawNationSelectOverlay(overlayDc);
+                DrawStartingJobSelectOverlay(overlayDc);
                 DrawZoneMapOverlay(overlayDc);
                 DrawCameraDebugOverlay(overlayDc);
                 DrawModelViewerLightOverlay(overlayDc);
                 DrawFfxiMainMenuOverlay(overlayDc);
                 DrawDeveloperConsoleOverlay(overlayDc);
             }
-            backBuffer->ReleaseDC(overlayDc);
         }
-        backBuffer->Release();
     }
 
     g_graphicsRuntime.Present();
@@ -7094,6 +6885,9 @@ static bool HandleApplicationMenuCommand(
     case ApplicationMenu::Action::OpenResourceDat:
         ShowResourceDatBrowser();
         return true;
+    case ApplicationMenu::Action::ShowDatHexReader:
+        DatHexReader::Show(g_hWnd, g_ffxiPath);
+        return true;
     case ApplicationMenu::Action::ShowTextureViewer:
         TextureViewer_Show(g_hWnd, g_ffxiPath);
         return true;
@@ -7119,25 +6913,44 @@ static bool HandleApplicationMenuCommand(
 
 static void HandleInputAction(const InputController::Action action, HWND window)
 {
+    if (g_towerPortalInteraction.query)
+    {
+        if (action==InputController::Action::Confirm) ConfirmTowerPortal();
+        else if (action==InputController::Action::Back) CancelTowerPortal();
+        return;
+    }
+    if (g_towerPortalInteraction.activating) return;
     switch (action)
     {
     case InputController::Action::Back:
-        if (g_characterSelectActive || g_characterDeleteActive)
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
         {
-            g_characterSelectActive = false;
-            g_characterDeleteActive = false;
-            g_savedCharacterPreviews.clear();
-            LoadTitleScreen();
+            CharacterCreationFlow::Back(g_characterCreationFlow);
+            ShowHighPolyCreationPanel();
+            InvalidateRect(window, NULL, FALSE);
             return;
         }
-        if (g_nationSelectActive)
+        if (CharacterRosterController::IsActive(g_characterRosterController))
         {
-            g_nationSelectActive = false;
-            ShowHighPolyCreationPanel();
+            const CharacterRosterController::Intent intent =
+                CharacterRosterController::Back(g_characterRosterController);
+            if (intent.kind == CharacterRosterController::IntentKind::ReturnToTitleScreen)
+            {
+                CharacterRosterController::SetMode(g_characterRosterController,
+                    CharacterRosterController::Mode::None);
+                g_savedCharacterPreviews.clear();
+                LoadTitleScreen();
+                return;
+            }
+        }
+        if (CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
+        {
+            CharacterCreationFlow::Back(g_characterCreationFlow);
             InvalidateRect(window, NULL, FALSE);
         }
         break;
     case InputController::Action::Confirm:
+        if (IsGameMode() && ConfirmTowerPortal()) return;
         if (IsGameMode())
         {
             // An active event owns Confirm. Reopen its hidden transcript first;
@@ -7150,29 +6963,42 @@ static void HandleInputAction(const InputController::Action action, HWND window)
                     return;
             }
         }
-        if (g_characterSelectActive && !g_savedCharacterPreviews.empty())
+        if (CharacterRosterController::IsActive(g_characterRosterController) &&
+            !g_savedCharacterPreviews.empty())
         {
-            LoadSelectedCharacterScene();
-            return;
-        }
-        if (g_characterDeleteActive && !g_savedCharacterPreviews.empty())
-        {
-            const std::string name = g_savedCharacterPreviews[g_selectedCharacterPreview].name;
-            if (MessageBoxA(window, "Delete the selected character? This cannot be undone.",
-                "Delete Character Warning", MB_YESNO | MB_ICONWARNING) == IDYES)
+            const int selectedIndex = CharacterRosterController::SelectedIndex(
+                g_characterRosterController, g_savedCharacterPreviews.size());
+            const CharacterRosterController::Intent intent =
+                CharacterRosterController::Confirm(g_characterRosterController,
+                    g_savedCharacterPreviews[selectedIndex].candidate);
+            if (intent.kind == CharacterRosterController::IntentKind::LoadSelectedCharacter)
             {
-                char exeDir[MAX_PATH] = {}, path[MAX_PATH] = {};
-                FFXIFileIO::GetExecutableDirectory(exeDir, sizeof(exeDir));
-                sprintf_s(path, "%sCharacters\\%s.ff11datset", exeDir, name.c_str()); DeleteFileA(path);
-                sprintf_s(path, "%sCharacters\\%s.noesis", exeDir, name.c_str()); DeleteFileA(path);
-                sprintf_s(path, "%sCharacters\\%s.ini", exeDir, name.c_str()); DeleteFileA(path);
-                BeginCharacterDeleteScene();
+                LoadSelectedCharacterScene();
+                return;
             }
-            return;
+            if (intent.kind == CharacterRosterController::IntentKind::ConfirmDeleteSelectedCharacter)
+            {
+                const CharacterRosterController::DeleteRequest request =
+                    CharacterRosterController::PrepareDelete(intent.candidate);
+                if (MessageBoxA(window, "Delete the selected character? This cannot be undone.",
+                    "Delete Character Warning", MB_YESNO | MB_ICONWARNING) == IDYES)
+                {
+                    DeleteFileA(request.dataSetPath.c_str());
+                    DeleteFileA(request.noesisPath.c_str());
+                    DeleteFileA(request.dataPath.c_str());
+                    BeginCharacterDeleteScene();
+                }
+                return;
+            }
         }
-        if (g_nationSelectActive)
+        if (CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
         {
             LoadSelectedNationScene();
+            return;
+        }
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+        {
+            ConfirmStartingJobSelection();
             return;
         }
         if (IsGameMode())
@@ -7203,9 +7029,27 @@ static void HandleInputAction(const InputController::Action action, HWND window)
         break;
     case InputController::Action::ToggleZoneMap:
         if (IsGameMode() && g_zoneAsset && !g_titleScreenActive &&
-            !g_nationSelectActive)
+            !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
         {
-            g_zoneMapVisible = !g_zoneMapVisible;
+            g_zoneMapVisible = g_zoneMapVisible && !g_zoneMapCollisionView
+                ? false : true;
+            g_zoneMapCollisionView = false;
+            if (g_zoneMapVisible)
+            {
+                g_ffxiMainMenu.open = false;
+                g_clickMoveActive = false;
+                InputController::EndDrag(g_input);
+            }
+            InvalidateRect(window, NULL, FALSE);
+        }
+        break;
+    case InputController::Action::ToggleCollisionMap:
+        if (IsGameMode() && g_zoneAsset && !g_titleScreenActive &&
+            !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
+        {
+            g_zoneMapVisible = g_zoneMapVisible && g_zoneMapCollisionView
+                ? false : true;
+            g_zoneMapCollisionView = true;
             if (g_zoneMapVisible)
             {
                 g_ffxiMainMenu.open = false;
@@ -7228,7 +7072,7 @@ static void HandleInputAction(const InputController::Action action, HWND window)
     case InputController::Action::ToggleBumpMappingInversion:
         g_applicationSettings.invertBumpMapping =
             !g_applicationSettings.invertBumpMapping;
-        SaveExtendedGraphicsSettings();
+        ApplicationSettingsStore::SaveExtendedGraphics(g_applicationSettings);
         ConfigDialog::Sync(g_configDialog);
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
@@ -7398,7 +7242,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             EndMouseLook();
             return 0;
         }
-        if (IsEditMode() && !g_titleScreenActive && !g_nationSelectActive)
+        if (IsEditMode() && !g_titleScreenActive &&
+            !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
         {
             POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
             const bool additive = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
@@ -7425,12 +7270,37 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         }
         if (!InputController::PlayerMouseButton(g_input, true, false,
                 GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam))) return 0;
-        if (IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
+        if (IsGameMode() && !g_titleScreenActive &&
+            !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
         {
             int width = 0, height = 0;
             D3D9Device::GetViewportOrClientSize(GraphicsDevice(), hWnd, &width, &height);
             POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
             point = D3D9Device::MapClientPointToViewport(hWnd, width, height, point);
+            if (g_hoveredWorldItemId != 0 && g_playerInventory)
+            {
+                const auto* worldItem = WorldItemSystem::Find(
+                    g_worldItems, g_hoveredWorldItemId);
+                if (worldItem && worldItem->zoneId == g_loadedZoneId)
+                {
+                    const auto* definition = g_itemCatalog.Find(worldItem->stack.itemId);
+                    const std::string itemName = definition ? definition->name : "item";
+                    const std::uint32_t quantity = worldItem->stack.quantity;
+                    if (WorldItemSystem::TransferToInventory(
+                        g_worldItems, g_hoveredWorldItemId, *g_playerInventory))
+                    {
+                        g_clickMoveActive = false;
+                        g_hoveredWorldItemId = 0;
+                        NpcChatWindow::Show(g_hWnd, "System", "You pick up " +
+                            std::to_string(quantity) + " " + itemName + ".");
+                    }
+                    else
+                        NpcChatWindow::Show(g_hWnd, "System",
+                            "Your inventory cannot hold that item stack.");
+                    return 0;
+                }
+                g_hoveredWorldItemId = 0;
+            }
             ZoneObjectVisibility::RenderContext visibility;
             visibility.hiddenNames = &g_hiddenZoneObjects;
             visibility.viewerPointValid = g_zoneVisibilityViewerPointValid;
@@ -7489,13 +7359,22 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                                     g_loadedZoneId, npc.placement.entityId,
                                     npc.placement.name
                                 };
+                                const bool firstRegistration = std::none_of(
+                                    characterData.activatedHomePoints.begin(),
+                                    characterData.activatedHomePoints.end(),
+                                    [&](const CharacterSaveData::HomePoint& registered)
+                                    {
+                                        return CharacterSaveData::SameHomePoint(registered, point);
+                                    });
                                 CharacterSaveData::RegisterHomePoint(characterData, point);
                                 if (CharacterSaveData::Save(
                                         g_activeCharacterDataPath.c_str(), characterData))
                                 {
                                     NpcChatWindow::Show(g_hWnd, "System",
-                                        "Home Point registered. Character data has been saved.");
-                                    StartHomePointTeleportChoice(
+                                        firstRegistration
+                                            ? "The Home Point has been registered."
+                                            : "The Home Point responds to your touch.");
+                                    StartHomePointActionChoice(
                                         g_hWnd, characterData, point);
                                 }
                             }
@@ -7525,7 +7404,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 g_input, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
             return 0;
         }
-        if (g_characterSelectActive || g_characterDeleteActive)
+        if (CharacterRosterController::IsActive(g_characterRosterController))
         {
             POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
             int rosterWidth = 0, rosterHeight = 0;
@@ -7550,14 +7429,48 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     const RECT rowRect = CharacterRosterRowRect(row);
                     if (PtInRect(&rowRect, point))
                     {
-                        g_selectedCharacterPreview = row;
+                        CharacterRosterController::Select(g_characterRosterController,
+                            row, g_savedCharacterPreviews.size());
                         break;
                     }
                 }
             }
             return 0;
         }
-        if (IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+        {
+            int jobWidth = 0, jobHeight = 0;
+            D3D9Device::GetViewportOrClientSize(GraphicsDevice(), hWnd,
+                &jobWidth, &jobHeight);
+            POINT point = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            point = D3D9Device::MapClientPointToViewport(hWnd, jobWidth, jobHeight, point);
+            const RECT backButton = StartingJobActionRect(false, jobWidth, jobHeight);
+            if (PtInRect(&backButton, point))
+            {
+                HandleInputAction(InputController::Action::Back, hWnd);
+                return 0;
+            }
+            const RECT confirmButton = StartingJobActionRect(true, jobWidth, jobHeight);
+            if (PtInRect(&confirmButton, point))
+            {
+                ConfirmStartingJobSelection();
+                return 0;
+            }
+            for (int row = 0; row < CharacterCreationFlow::StartingJobCount(); ++row)
+            {
+                const RECT rowRect = StartingJobRowRect(row, jobWidth, jobHeight);
+                if (PtInRect(&rowRect, point))
+                {
+                    CharacterCreationFlow::SetStartingJobSelection(
+                        g_characterCreationFlow, row);
+                    InvalidateRect(hWnd, nullptr, FALSE);
+                    return 0;
+                }
+            }
+            return 0;
+        }
+        if (IsGameMode() && !g_titleScreenActive &&
+            !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
         {
             InputController::PlayerMouseButton(g_input, true, true,
                 GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
@@ -7572,7 +7485,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             UpdatePlayerCameraTarget();
             return 0;
         }
-        if (g_nationSelectActive)
+        if (CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
         {
             int uiW = 0, uiH = 0;
             D3D9Device::GetViewportOrClientSize(GraphicsDevice(), g_hWnd, &uiW, &uiH);
@@ -7582,7 +7495,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                 D3D9Device::MapClientPointToViewport(g_hWnd, uiW, uiH, pt));
             if (nationIndex >= 0)
             {
-                g_selectedNationIndex = nationIndex;
+                CharacterCreationFlow::SelectNation(g_characterCreationFlow,
+                    nationIndex, FFXINationSelection::Count());
                 InvalidateRect(hWnd, NULL, FALSE);
                 return 0;
             }
@@ -7618,6 +7532,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     // ---- Mouse camera orbit ----
     case WM_RBUTTONDOWN:
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+            return 0;
         if (g_companionViewerMode)
         {
             InputController::BeginOrbit(
@@ -7636,6 +7552,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
 
     case WM_RBUTTONUP:
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+            return 0;
         if (g_companionViewerMode)
         {
             EndMouseLook();
@@ -7651,6 +7569,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
 
     case WM_MBUTTONDOWN:
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+            return 0;
         if (g_companionViewerMode)
         {
             InputController::BeginLightAzimuth(
@@ -7666,6 +7586,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         break;
 
     case WM_MBUTTONUP:
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+            return 0;
         if (g_input.dragMode == InputController::DragMode::Pan ||
             g_input.dragMode == InputController::DragMode::LightAzimuth)
         {
@@ -7684,11 +7606,14 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     case WM_MOUSEMOVE:
         {
+            if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+                return 0;
             const InputController::DragDelta delta = InputController::MouseMoved(
                 g_input, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
             if (g_applicationSettings.movementStyle == ApplicationSettings::MovementClickToMove &&
                 g_input.leftMouseHeld && !g_input.rightMouseHeld &&
-                IsGameMode() && !g_titleScreenActive && !g_nationSelectActive)
+                IsGameMode() && !g_titleScreenActive &&
+                !CharacterCreationFlow::IsNationSelectionActive(g_characterCreationFlow))
             {
                 int width = 0, height = 0;
                 D3D9Device::GetViewportOrClientSize(GraphicsDevice(), hWnd, &width, &height);
@@ -7741,6 +7666,8 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
 
     case WM_MOUSEWHEEL:
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+            return 0;
         if (g_developerConsoleOpen)
         {
             const int direction = GET_WHEEL_DELTA_WPARAM(wParam) > 0 ? 1 : -1;
@@ -7822,6 +7749,27 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         { ExecuteDeveloperCommand(); return 0; }
         if (g_developerConsoleOpen)
             return 0;
+        if (CharacterCreationFlow::IsStartingJobSelectionActive(g_characterCreationFlow))
+        {
+            if (wParam == VK_UP || wParam == VK_LEFT)
+                CharacterCreationFlow::MoveStartingJobSelection(
+                    g_characterCreationFlow, -1);
+            else if (wParam == VK_DOWN || wParam == VK_RIGHT)
+                CharacterCreationFlow::MoveStartingJobSelection(
+                    g_characterCreationFlow, 1);
+            else if (wParam == VK_RETURN || wParam == VK_SPACE)
+            {
+                ConfirmStartingJobSelection();
+                return 0;
+            }
+            else if (wParam == VK_ESCAPE || wParam == VK_BACK)
+            {
+                HandleInputAction(InputController::Action::Back, hWnd);
+                return 0;
+            }
+            InvalidateRect(hWnd, nullptr, FALSE);
+            return 0;
+        }
         if (wParam == '0' && (lParam & (1LL << 30)) == 0)
         {
             g_uiVisible = !g_uiVisible;
@@ -7858,10 +7806,27 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
             InvalidateRect(hWnd, NULL, FALSE);
             return 0;
         }
-        if (g_zoneMapVisible && wParam != 'M')
+        if (IsGameMode() && g_towerPortalInteraction.query &&
+            (wParam==VK_ESCAPE || wParam==VK_BACK || wParam==VK_UP || wParam==VK_DOWN ||
+             wParam==VK_RETURN || wParam==VK_SPACE))
+        {
+            if (wParam==VK_ESCAPE || wParam==VK_BACK) CancelTowerPortal();
+            else if (wParam==VK_UP || wParam==VK_DOWN)
+            {
+                g_towerPortalInteraction.selected=1-g_towerPortalInteraction.selected;
+                NpcChatWindow::SetChoiceSelection(hWnd,g_towerPortalInteraction.selected);
+            }
+            else ConfirmTowerPortal();
             return 0;
-        if (IsGameMode() && (wParam == VK_UP || wParam == VK_DOWN) &&
-            MoveNpcConversationChoice(hWnd, wParam == VK_UP ? -1 : 1))
+        }
+        if (g_zoneMapVisible &&
+            wParam != static_cast<WPARAM>(g_applicationSettings.keyZoneMap) &&
+            wParam != 'N')
+            return 0;
+        if (IsGameMode() && (wParam == VK_UP || wParam == VK_DOWN || wParam == VK_PRIOR || wParam == VK_NEXT) &&
+            MoveNpcConversationChoice(hWnd, wParam == VK_UP ? -1 :
+                wParam == VK_DOWN ? 1 : wParam == VK_PRIOR ? -NpcChatWindow::queryVisibleRows :
+                NpcChatWindow::queryVisibleRows))
         {
             return 0;
         }
@@ -7890,6 +7855,64 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
         {
             const bool menuKey = wParam == VK_SUBTRACT ||
                 wParam == static_cast<WPARAM>(g_applicationSettings.keyMainMenu);
+            if (FFXIInventoryMenu::IsOpen(g_ffxiInventoryMenu) && g_playerInventory)
+            {
+                const unsigned int inventoryKey = menuKey ? VK_ESCAPE :
+                    static_cast<unsigned int>(wParam);
+                const FFXIInventoryMenu::Event event = FFXIInventoryMenu::HandleKey(
+                    g_ffxiInventoryMenu, inventoryKey, *g_playerInventory,
+                    g_itemCatalog, g_playerKeyItems);
+                if (event.type == FFXIInventoryMenu::EventType::Use ||
+                    event.type == FFXIInventoryMenu::EventType::Equip)
+                {
+                    const auto* item = g_itemCatalog.Find(event.stack.itemId);
+                    const std::string itemName = item ? item->name : "That item";
+                    NpcChatWindow::Show(g_hWnd, "System", itemName +
+                        (event.type == FFXIInventoryMenu::EventType::Use
+                            ? " cannot be used until item effects are connected."
+                            : " cannot be equipped until equipment ownership is connected."));
+                    g_ffxiInventoryMenu.view = g_ffxiInventoryMenu.returnView;
+                }
+                else if (event.type == FFXIInventoryMenu::EventType::Drop)
+                {
+                    float dropPosition[3] = {
+                        g_player.position[0] - std::sin(g_player.yaw) * 1.25f,
+                        g_player.position[1],
+                        g_player.position[2] - std::cos(g_player.yaw) * 1.25f
+                    };
+                    float floorNormal[3] = {};
+                    float floorY = dropPosition[1];
+                    if (ZoneCollision::FindFloorAt(g_zoneCollisionTris, g_zoneCollisionGrid,
+                        0.15f, dropPosition[0], dropPosition[2],
+                        g_player.position[1] - 6.0f, g_player.position[1] + 2.0f,
+                        &floorY, floorNormal))
+                        dropPosition[1] = floorY;
+
+                    const bool dropped = g_playerInventory->TransferFromSlot(
+                        event.slotIndex, event.stack.quantity,
+                        [&](const InventorySystem::ItemStack& stack)
+                        {
+                            WorldItemSystem::SpawnRequest request;
+                            request.zoneId = g_loadedZoneId;
+                            request.stack = stack;
+                            std::copy(std::begin(dropPosition), std::end(dropPosition),
+                                request.position);
+                            return WorldItemSystem::Spawn(g_worldItems, request) != 0;
+                        });
+                    const auto* item = g_itemCatalog.Find(event.stack.itemId);
+                    const std::string itemName = item ? item->name : "item";
+                    if (dropped)
+                    {
+                        g_ffxiInventoryMenu.view = g_ffxiInventoryMenu.returnView;
+                        NpcChatWindow::Show(g_hWnd, "System", "You drop " +
+                            std::to_string(event.stack.quantity) + " " + itemName + ".");
+                    }
+                    else
+                        NpcChatWindow::Show(g_hWnd, "System", "You cannot drop that item here.");
+                }
+                InvalidateRect(hWnd, NULL, FALSE);
+                return 0;
+            }
             const bool showMogHouse =
                 g_loadedZoneLabel.find("Mog House") != std::string::npos;
             const FFXIMainMenu::Action menuAction = menuKey
@@ -7898,6 +7921,26 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
                     static_cast<unsigned int>(wParam), showMogHouse);
             if (menuAction != FFXIMainMenu::Action::None)
             {
+                if (menuAction == FFXIMainMenu::Action::Activated)
+                {
+                    switch (FFXIMainMenu::SelectedCommand(g_ffxiMainMenu, showMogHouse))
+                    {
+                    case FFXIMainMenu::Command::Equipment:
+                        FFXIInventoryMenu::OpenEquipment(g_ffxiInventoryMenu);
+                        g_ffxiMainMenu.open = false;
+                        break;
+                    case FFXIMainMenu::Command::Items:
+                        FFXIInventoryMenu::OpenItems(g_ffxiInventoryMenu);
+                        g_ffxiMainMenu.open = false;
+                        break;
+                    case FFXIMainMenu::Command::KeyItems:
+                        FFXIInventoryMenu::OpenKeyItems(g_ffxiInventoryMenu);
+                        g_ffxiMainMenu.open = false;
+                        break;
+                    case FFXIMainMenu::Command::None:
+                        break;
+                    }
+                }
                 InvalidateRect(hWnd, NULL, FALSE);
                 return 0;
             }
@@ -7940,6 +7983,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
 static void InitializeMainWindowState()
 {
+    InitializeStarterInventory();
     InputController::Initialize(
         g_input, g_hWnd, g_applicationSettings.enableHardwareMouseCursor);
     ApplyColorTheme(g_hWnd);
@@ -7947,10 +7991,7 @@ static void InitializeMainWindowState()
     if (g_companionViewerMode)
         SetCompanionViewerOwner(g_companionOwnerPid);
     InitFFXIPath();
-    InitCustomTextureSettings();
-    InitExtendedGraphicsSettings();
-    InitTitleBackgroundSettings();
-    InitKeyBindings();
+    ApplicationSettingsStore::Load(g_applicationSettings);
     InputController::SetKeyBindings(g_input, g_applicationSettings);
     InputController::SetCursorStyle(
         g_input, g_applicationSettings.mouseCursorStyle, g_ffxiPath);
@@ -8034,11 +8075,31 @@ static void RunApplicationFrame(void*, const float deltaSeconds)
 
     if (deltaSeconds > 0.0f)
     {
+        if (CharacterRosterController::IsActive(g_characterRosterController) &&
+            !g_savedCharacterPreviews.empty())
+        {
+            const int selected = CharacterRosterController::SelectedIndex(
+                g_characterRosterController, g_savedCharacterPreviews.size());
+            const float rosterCenter = (float)(g_savedCharacterPreviews.size() - 1) *
+                kCharacterRosterSpacing * 0.5f;
+            const float desiredFocus = (float)selected * kCharacterRosterSpacing -
+                rosterCenter;
+            const float response = 1.0f - std::exp(-6.0f *
+                std::min(deltaSeconds, 0.1f));
+            g_characterRosterFocusOffset +=
+                (desiredFocus - g_characterRosterFocusOffset) * response;
+        }
         if (g_titleScreenActive)
         {
-            g_titleCameraRailTime += deltaSeconds;
-            if (!SampleRetailTitleCamera())
-                SampleTitleCameraRail();
+            g_titleCameraRail.Advance(deltaSeconds);
+            TitleCameraRail::Pose camera;
+            if (!g_titleCameraRail.SampleRetail(camera))
+                g_titleCameraRail.SampleFallback(camera);
+            for (int axis = 0; axis < 3; ++axis)
+                g_camTarget[axis] = camera.target[axis];
+            g_camYaw = camera.yaw;
+            g_camPitch = camera.pitch;
+            g_camDist = camera.distance;
         }
         g_doorPhysicsUpdated = false;
         g_doors.Update(deltaSeconds, g_zoneCollisionMesh);
@@ -8065,6 +8126,32 @@ static void RunApplicationFrame(void*, const float deltaSeconds)
         g_metalworksElevatorAudio.Update(g_metalworksElevator, g_player.position,
             !g_applicationSettings.mirrorWorldZones, elevatorAudioAllowed);
         UpdateCameraMovement(deltaSeconds);
+        if (!IsGameMode() && (g_towerPortalInteraction.query || g_towerPortalInteraction.activating))
+            CancelTowerPortal();
+        if (std::isfinite(deltaSeconds) && deltaSeconds>0) g_towerPortalSeconds+=deltaSeconds;
+        if (g_towerPortalEffect)
+        {
+            const float right[3]={std::cos(g_camYaw),0,-std::sin(g_camYaw)};
+            g_towerPortalEffect->UpdateSound({},g_player.position,right,
+                IsGameMode() && g_applicationSettings.enableSounds &&
+                (g_applicationSettings.playSoundsInBackground || soundForeground==g_hWnd),
+                g_applicationSettings.maxSimultaneousSounds);
+            if (g_towerPortalInteraction.Tick(deltaSeconds))
+            {
+                HomePoint::Instance playerSound={1,{g_player.position[0],g_player.position[1],g_player.position[2]}};
+                g_towerPortalEffect->ActivateSound(playerSound,g_player.position,right);
+            }
+        }
+        else g_towerPortalInteraction.Tick(deltaSeconds);
+        if (g_towerPortalInteraction.activating && g_towerPortalInteraction.elapsed>=1.5 &&
+            g_towerPortalRoute)
+        {
+            const auto* route=g_towerPortalRoute;
+            const auto previous=g_towerPortalPreviousPlayer;
+            g_towerPortalRoute=nullptr;
+            g_towerPortalInteraction.Cancel(route);
+            TransitionPlayerZone(*route,previous);
+        }
         if (g_doors.physics && !g_doorPhysicsUpdated)
             g_doors.UpdatePhysics(deltaSeconds, g_zoneCollisionMesh,
                 IsGameMode() && g_playerAsset ? g_player.position : nullptr);
@@ -8189,7 +8276,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*
     GameUiConfig_Load(g_gameUiConfig);
     NpcChatWindow::SetSize(g_gameUiConfig.chatLogWidthPercent, g_gameUiConfig.chatLogHeightPercent);
     NpcChatWindow::SetTimeout(g_gameUiConfig.chatLogTimeoutSeconds);
-    NpcChatWindow::SetFont(g_gameUiConfig.chatLogFont, g_gameUiConfig.chatLogFontSize);
+    NpcChatWindow::SetTextColour(g_gameUiConfig.chatLogFontColor);
+        NpcChatWindow::SetFont(g_gameUiConfig.chatLogFont, g_gameUiConfig.chatLogFontSize);
     Win32Application::InitializeCommonControls(
         ICC_LISTVIEW_CLASSES | ICC_TREEVIEW_CLASSES | ICC_TAB_CLASSES);
 

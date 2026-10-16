@@ -8,6 +8,8 @@
 #include <algorithm>
 #include "ffxi_bitmap_font.h"
 #include "ffxi_chat_assets.h"
+#include "query.h"
+#include "ui_backbuffer.h"
 
 // A viewport-anchored log; the read-only Rich Edit retains selection and copying.
 namespace NpcChatWindow
@@ -15,15 +17,12 @@ namespace NpcChatWindow
 inline HWND window = nullptr;
 inline HWND transcript = nullptr;
 inline HWND input = nullptr;
-inline HWND choiceWindow = nullptr;
 inline std::wstring history;
-inline std::wstring choicePrompt;
-inline std::vector<std::wstring> choiceOptions;
-inline int choiceSelected = 0;
 inline HFONT font = nullptr;
 inline bool officialFont = true;
 inline std::wstring fontFace = L"Arial";
 inline int fontSize = 17;
+inline COLORREF textColour = RGB(255, 255, 255);
 inline constexpr COLORREF background = RGB(12, 18, 50);
 inline int timeoutSeconds = 15;
 inline ULONGLONG hideAt = 0;
@@ -41,9 +40,20 @@ inline bool sizeAnimating = false;
 inline constexpr float resizePixelsPerSecond = 120.0f;
 inline std::wstring lastEntry;
 inline std::wstring inputSpeaker = L"Adventurer";
+inline std::vector<std::wstring> sentMessages;
+inline int recallIndex = -1;
+inline std::wstring draft;
+inline int scrollLines = 0;
+inline int inputScrollX = 0;
+inline int InputRowHeight() { return lineHeight + 8; }
+inline int InputReserve()
+{
+    return input && (GetWindowLongPtrW(input, GWL_STYLE) & WS_VISIBLE)
+        ? InputRowHeight() + 2 : 0;
+}
+inline bool IsTyping() { return input && GetFocus() == input; }
 inline void Layout(HWND owner);
 inline void LayoutTranscript();
-inline void LayoutChoices(HWND owner);
 inline void ApplyLayout(HWND owner, int height);
 inline void CloseInput(bool restoreOwnerFocus = true);
 
@@ -63,6 +73,25 @@ inline void TrimHistoryToRetailCapacity()
         ++cut;
     }
     history.erase(0, cut);
+}
+
+inline void ApplyTranscriptColour()
+{
+    if (!transcript) return;
+    CHARFORMAT2W format{};
+    format.cbSize = sizeof(format);
+    format.dwMask = CFM_COLOR;
+    format.dwEffects = 0; // Explicit color, not the system's automatic text color.
+    format.crTextColor = textColour;
+    SendMessageW(transcript, EM_SETCHARFORMAT, SCF_DEFAULT, (LPARAM)&format);
+    SendMessageW(transcript, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&format);
+}
+
+inline void SetTextColour(COLORREF colour)
+{
+    textColour = colour;
+    ApplyTranscriptColour();
+    if (window) InvalidateRect(window, nullptr, FALSE);
 }
 
 inline void ApplyFont()
@@ -104,30 +133,29 @@ inline std::vector<std::wstring> WrapBitmapText(const std::wstring& text, int wi
 {
     std::vector<std::wstring> lines;
     std::wstring line;
-    size_t cursor = 0;
-    while (cursor <= text.size())
+    width = (std::max)(1, width);
+    for (size_t i = 0; i < text.size(); ++i)
     {
-        const size_t end = text.find_first_of(L" \r\n", cursor);
-        const size_t wordEnd = end == std::wstring::npos ? text.size() : end;
-        std::wstring word = text.substr(cursor, wordEnd - cursor);
-        if (!word.empty() && !line.empty() &&
-            FFXIBitmapFont::Measure(line + L" " + word, fontSize).cx > width)
+        const wchar_t c = text[i];
+        if (c == L'\r' || c == L'\n' || c == L'\x07')
         {
             lines.push_back(line);
             line.clear();
+            if (c == L'\r' && i + 1 < text.size() && text[i + 1] == L'\n') ++i;
+            continue;
         }
-        if (!word.empty())
+        line += c;
+        if (line.size() > 1 && FFXIBitmapFont::Measure(line, fontSize).cx > width)
         {
-            if (!line.empty()) line += L' ';
-            line += word;
+            // Prefer the last word boundary; split an oversized word to keep
+            // glyphs within the viewport. Preserve spaces rather than rebuilding words.
+            size_t cut = line.find_last_of(L" \t", line.size() - 2);
+            cut = cut == std::wstring::npos ? line.size() - 1 : cut + 1;
+            lines.push_back(line.substr(0, cut));
+            line.erase(0, cut);
         }
-        if (end == std::wstring::npos) break;
-        const bool newline = text[end] == L'\r' || text[end] == L'\n';
-        if (newline) { lines.push_back(line); line.clear(); }
-        cursor = end + 1;
-        if (text[end] == L'\r' && cursor < text.size() && text[cursor] == L'\n') ++cursor;
     }
-    if (!line.empty() || lines.empty()) lines.push_back(line);
+    lines.push_back(line);
     return lines;
 }
 
@@ -152,8 +180,10 @@ inline void PaintTranscriptBackdrop(HWND hwnd, HDC dc)
     MapWindowPoints(HWND_DESKTOP, window, reinterpret_cast<POINT*>(&child), 2);
     RECT parent{};
     GetClientRect(window, &parent);
+    parent.bottom -= InputReserve();
     const int saved = SaveDC(dc);
-    SetViewportOrgEx(dc, -child.left, -child.top, nullptr);
+    POINT origin{}; GetViewportOrgEx(dc, &origin);
+    SetViewportOrgEx(dc, origin.x - child.left, origin.y - child.top, nullptr);
     PaintStripes(dc, parent);
     RestoreDC(dc, saved);
 }
@@ -170,12 +200,6 @@ inline void Hide()
     if (input) ShowWindow(input, SW_HIDE);
     if (GetFocus() == transcript || GetFocus() == input) SetFocus(GetParent(window));
     ShowWindow(window, SW_HIDE);
-}
-
-inline void HideChoices()
-{
-    if (choiceWindow)
-        ShowWindow(choiceWindow, SW_HIDE);
 }
 
 inline void RestartTimeout()
@@ -202,7 +226,8 @@ inline void SetSize(int width, int height)
 inline void Compact(bool immediately = false)
 {
     if (!window || !IsWindowVisible(window)) return;
-    if (input && IsWindowVisible(input)) return;
+    if ((input && IsWindowVisible(input)) || scrollLines > 0) return;
+    if (!immediately && choiceWindow && IsWindowVisible(choiceWindow)) return;
     if (!immediately && (!hideAt || GetTickCount64() < hideAt)) return;
     RECT rect{}; GetClientRect(window, &rect);
     if (rect.bottom <= lineHeight + 16) { Hide(); return; }
@@ -216,6 +241,8 @@ inline void Compact(bool immediately = false)
 inline bool HandleEscape(LPARAM keyData)
 {
     if (!window || !IsWindowVisible(window)) return false;
+    if (input && IsWindowVisible(input)) { CloseInput(); return true; }
+    if (scrollLines > 0) { scrollLines = 0; RestartTimeout(); return true; }
     // One row per physical press; holding Escape must not drain the log.
     if (!(keyData & (1LL << 30))) Compact(true);
     return true;
@@ -255,6 +282,7 @@ inline void PaintFrameRect(HDC dc, RECT rect)
 inline void PaintFrame(HWND hwnd, HDC dc)
 {
     RECT rect{}; GetClientRect(hwnd, &rect);
+    rect.bottom -= InputReserve();
     PaintFrameRect(dc, rect);
 }
 
@@ -283,40 +311,21 @@ inline void Draw(IDirect3DDevice9* device)
         }
         ApplyLayout(GetParent(window), static_cast<int>(displayedHeight + 0.5f));
     }
-    IDirect3DSurface9* surface = nullptr;
-    if (FAILED(device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &surface))) return;
-    HDC dc = nullptr;
-    if (SUCCEEDED(surface->GetDC(&dc)))
+    UiBackbuffer::Draw(device, window, [](HDC dc)
     {
-        RECT rect{}; GetWindowRect(window, &rect);
-        MapWindowPoints(HWND_DESKTOP, GetParent(window), reinterpret_cast<POINT*>(&rect), 2);
-        const int saved = SaveDC(dc);
-        SetViewportOrgEx(dc, rect.left, rect.top, nullptr);
         PaintFrame(window, dc);
         RECT child{}; GetWindowRect(transcript, &child);
-        MapWindowPoints(HWND_DESKTOP, GetParent(window), reinterpret_cast<POINT*>(&child), 2);
+        MapWindowPoints(HWND_DESKTOP, window, reinterpret_cast<POINT*>(&child), 2);
         SetViewportOrgEx(dc, child.left, child.top, nullptr);
         SendMessageW(transcript, WM_PRINT, (WPARAM)dc, PRF_CLIENT | PRF_NONCLIENT | PRF_ERASEBKGND);
         if (input && IsWindowVisible(input))
         {
             RECT inputRect{}; GetWindowRect(input, &inputRect);
-            MapWindowPoints(HWND_DESKTOP, GetParent(window),
-                reinterpret_cast<POINT*>(&inputRect), 2);
+            MapWindowPoints(HWND_DESKTOP, window, reinterpret_cast<POINT*>(&inputRect), 2);
             SetViewportOrgEx(dc, inputRect.left, inputRect.top, nullptr);
-            SendMessageW(input, WM_PRINT, (WPARAM)dc,
-                PRF_CLIENT | PRF_NONCLIENT | PRF_ERASEBKGND);
+            SendMessageW(input, WM_PRINT, (WPARAM)dc, PRF_CLIENT | PRF_NONCLIENT | PRF_ERASEBKGND);
         }
-        if (choiceWindow && IsWindowVisible(choiceWindow))
-        {
-            RECT choice{}; GetWindowRect(choiceWindow, &choice);
-            MapWindowPoints(HWND_DESKTOP, GetParent(window), reinterpret_cast<POINT*>(&choice), 2);
-            SetViewportOrgEx(dc, choice.left, choice.top, nullptr);
-            SendMessageW(choiceWindow, WM_PRINT, (WPARAM)dc, PRF_CLIENT | PRF_NONCLIENT | PRF_ERASEBKGND);
-        }
-        RestoreDC(dc, saved);
-        surface->ReleaseDC(dc);
-    }
-    surface->Release();
+    });
 }
 
 inline void Layout(HWND owner)
@@ -349,7 +358,7 @@ inline void ApplyLayout(HWND owner, int height)
     RECT bounds{};
     GetClientRect(owner, &bounds);
     const int width = (std::max)(0L, bounds.right - 16) * widthPercent / 100;
-    height = (std::max)(1, (std::min)(height, (int)bounds.bottom));
+    height = (std::max)(1, (std::min)(height + InputReserve(), (int)bounds.bottom));
     SetWindowPos(window, HWND_TOP, 8, (std::max)(0L, bounds.bottom - height - 8),
         width, height, SWP_NOACTIVATE);
     LayoutTranscript();
@@ -361,126 +370,48 @@ inline void LayoutTranscript()
     if (!window || !transcript) return;
     RECT rect{}; GetClientRect(window, &rect);
     const int availableWidth = (std::max)(0, (int)rect.right - 16);
-    const bool inputVisible = input && IsWindowVisible(input);
-    const int inputHeight = lineHeight + 6;
-    const int inputReserve = inputVisible ? inputHeight + 2 : 0;
+    const int inputReserve = InputReserve();
+    const bool inputVisible = inputReserve > 0;
+    const int inputHeight = InputRowHeight();
     const int availableHeight = (std::max)(0,
         (int)rect.bottom - 16 - inputReserve);
-    int lineCount = (int)SendMessageW(transcript, EM_GETLINECOUNT, 0, 0);
+    int lineCount = officialFont ? static_cast<int>(WrapBitmapText(history,
+        (std::max)(1, availableWidth - 4)).size()) :
+        (int)SendMessageW(transcript, EM_GETLINECOUNT, 0, 0);
     if (lineCount < 1) lineCount = 1;
     const int contentHeight = lineCount * lineHeight + 4;
     const int childHeight = (std::min)(availableHeight, (std::max)(lineHeight + 4, contentHeight));
     const int childY = rect.bottom - 8 - inputReserve - childHeight;
-    MoveWindow(transcript, 8, (std::max)(8, childY), availableWidth, childHeight, TRUE);
+    // Rich Edit is the interaction/copy proxy, not the bitmap scroll renderer.
+    ShowScrollBar(transcript, SB_VERT, FALSE);
+    MoveWindow(transcript, 8, (std::max)(8, childY), availableWidth, childHeight, FALSE);
     if (inputVisible)
-        MoveWindow(input, 8, rect.bottom - 8 - inputHeight,
-            availableWidth, inputHeight, TRUE);
-}
-
-inline void PaintChoices(HWND hwnd, HDC dc)
-{
-    RECT rect{}; GetClientRect(hwnd, &rect);
-    PaintStripes(dc, rect);
-    SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, RGB(235, 235, 245));
-    HFONT oldFont = font ? (HFONT)SelectObject(dc, font) : nullptr;
-    int y = 8;
-    if (!choicePrompt.empty())
-    {
-        RECT promptRect{10, y, rect.right - 10, y + lineHeight * 2};
-        if (officialFont)
-        {
-            const auto lines = WrapBitmapText(choicePrompt, promptRect.right - promptRect.left);
-            for (size_t line = 0; line < lines.size() && line < 2; ++line)
-                FFXIBitmapFont::Draw(dc, lines[line], promptRect.left,
-                    promptRect.top + static_cast<int>(line) * lineHeight, fontSize, RGB(235, 235, 245));
-        }
-        else DrawTextW(dc, choicePrompt.c_str(), -1, &promptRect, DT_LEFT | DT_TOP | DT_WORDBREAK);
-        y = promptRect.bottom + 4;
-    }
-    constexpr int maxVisibleChoices = 12;
-    const int visibleCount = (std::min)(maxVisibleChoices, (int)choiceOptions.size());
-    const int firstVisible = (std::clamp)(choiceSelected - visibleCount / 2, 0,
-        (std::max)(0, (int)choiceOptions.size() - visibleCount));
-    const int lastVisible = firstVisible + visibleCount;
-    for (int i = firstVisible; i < lastVisible; ++i)
-    {
-        RECT row{10, y, rect.right - 10, y + lineHeight};
-        std::wstring text = (i == choiceSelected ? L"> " : L"  ") + choiceOptions[(size_t)i];
-        if (officialFont)
-            FFXIBitmapFont::Draw(dc, text, row.left, row.top + 1, fontSize, RGB(235, 235, 245));
-        else DrawTextW(dc, text.c_str(), -1, &row, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        y += lineHeight;
-    }
-    if (oldFont) SelectObject(dc, oldFont);
-    HPEN pen = CreatePen(PS_SOLID, 1, RGB(190, 197, 220));
-    HGDIOBJ oldPen = SelectObject(dc, pen);
-    MoveToEx(dc, 0, 0, nullptr); LineTo(dc, rect.right, 0);
-    MoveToEx(dc, 0, rect.bottom - 1, nullptr); LineTo(dc, rect.right, rect.bottom - 1);
-    SelectObject(dc, oldPen); DeleteObject(pen);
-}
-
-inline LRESULT CALLBACK ChoiceProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM l)
-{
-    switch (message)
-    {
-    case WM_ERASEBKGND:
-        return 1;
-    case WM_PAINT:
-    {
-        PAINTSTRUCT paint{}; HDC dc = BeginPaint(hwnd, &paint);
-        PaintChoices(hwnd, dc);
-        EndPaint(hwnd, &paint);
-        return 0;
-    }
-    case WM_PRINT:
-        PaintChoices(hwnd, (HDC)w);
-        return 0;
-    }
-    return DefWindowProcW(hwnd, message, w, l);
-}
-
-inline void EnsureChoiceWindow(HWND owner)
-{
-    if (choiceWindow) return;
-    WNDCLASSW cls = {};
-    cls.lpfnWndProc = ChoiceProcedure;
-    cls.hInstance = GetModuleHandleW(nullptr);
-    cls.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    cls.lpszClassName = L"DATuraNpcChoice";
-    RegisterClassW(&cls);
-    choiceWindow = CreateWindowExW(0, cls.lpszClassName, L"Dialogue choices",
-        WS_CHILD, 0, 0, 0, 0, owner, nullptr, cls.hInstance, nullptr);
-}
-
-inline void LayoutChoices(HWND owner)
-{
-    if (!choiceWindow || choiceOptions.empty()) return;
-    RECT bounds{}; GetClientRect(owner, &bounds);
-    RECT chat{};
-    if (window)
-    {
-        GetWindowRect(window, &chat);
-        MapWindowPoints(HWND_DESKTOP, owner, reinterpret_cast<POINT*>(&chat), 2);
-    }
-    const int width = (std::max)(220, (std::max)(0, (int)bounds.right - 16) * widthPercent / 100);
-    const int promptLines = choicePrompt.empty() ? 0 : 2;
-    const int visibleChoices = (std::min)(12, (int)choiceOptions.size());
-    const int height = 16 + (promptLines + visibleChoices) * lineHeight;
-    const int y = window && IsWindowVisible(window)
-        ? (std::max)(8, (int)chat.top - height - 6)
-        : (std::max)(8, (int)bounds.bottom - height - 8);
-    SetWindowPos(choiceWindow, HWND_TOP, 8, y, width, height, SWP_NOACTIVATE);
+        MoveWindow(input, 0, rect.bottom - inputHeight,
+            rect.right, inputHeight, TRUE);
 }
 
 inline LRESULT CALLBACK TranscriptProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM l,
     UINT_PTR, DWORD_PTR)
 {
+    if (UiBackbuffer::ConsumeNativePaint(hwnd, message)) return 0;
+    if (message == WM_ERASEBKGND) return 1;
+    if (officialFont && (message == WM_MOUSEWHEEL ||
+        (message == WM_KEYDOWN && (w == VK_PRIOR || w == VK_NEXT))))
+    {
+        const int delta = message == WM_MOUSEWHEEL ?
+            static_cast<short>(HIWORD(w)) / WHEEL_DELTA * 3 : (w == VK_PRIOR ? 7 : -7);
+        scrollLines = (std::max)(0, scrollLines + delta);
+        RestartTimeout();
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    }
     if (message == WM_PAINT || message == WM_PRINT)
     {
         PAINTSTRUCT paint{};
         HDC dc = message == WM_PAINT ? BeginPaint(hwnd, &paint) : (HDC)w;
         RECT rect{}; GetClientRect(hwnd, &rect);
+        const int saved = SaveDC(dc);
+        IntersectClipRect(dc, 0, 0, rect.right, rect.bottom);
         if (rect.right > 0 && rect.bottom > 0)
         {
             // WM_PRINT is composited after the parent frame and needs only the
@@ -492,11 +423,14 @@ inline LRESULT CALLBACK TranscriptProcedure(HWND hwnd, UINT message, WPARAM w, L
             {
                 const auto lines = WrapBitmapText(history, (std::max)(1L, rect.right - 4));
                 const int visible = (std::max)(1L, (rect.bottom - 4) / lineHeight);
-                const int first = (std::max)(0, static_cast<int>(lines.size()) - visible);
-                const int drawnLines = static_cast<int>(lines.size()) - first;
+                scrollLines = std::clamp(scrollLines, 0,
+                    (std::max)(0, static_cast<int>(lines.size()) - visible));
+                const int end = static_cast<int>(lines.size()) - scrollLines;
+                const int first = (std::max)(0, end - visible);
+                const int drawnLines = end - first;
                 int y = (std::max)(2L, rect.bottom - 2 - drawnLines * lineHeight);
-                for (int index = first; index < static_cast<int>(lines.size()); ++index, y += lineHeight)
-                    FFXIBitmapFont::Draw(dc, lines[index], 2, y, fontSize, RGB(235, 235, 245));
+                for (int index = first; index < end; ++index, y += lineHeight)
+                    FFXIBitmapFont::Draw(dc, lines[index], 2, y, fontSize, textColour);
             }
             else
             {
@@ -509,6 +443,7 @@ inline LRESULT CALLBACK TranscriptProcedure(HWND hwnd, UINT message, WPARAM w, L
                 SelectObject(buffer, old); DeleteObject(bitmap); DeleteDC(buffer);
             }
         }
+        RestoreDC(dc, saved);
         if (message == WM_PAINT) EndPaint(hwnd, &paint);
         return 0;
     }
@@ -536,6 +471,7 @@ inline void RefreshTranscript(HWND owner)
     compactedLines = 0;
     Layout(owner);
     SetWindowTextW(transcript, history.c_str());
+    ApplyTranscriptColour();
     LayoutTranscript();
     SendMessageW(transcript, EM_SETSEL, history.size(), history.size());
     SendMessageW(transcript, EM_SCROLLCARET, 0, 0);
@@ -570,8 +506,12 @@ inline void SubmitInput()
     text.resize(static_cast<size_t>((std::max)(0, length)));
     HWND owner = GetParent(window);
     CloseInput(false);
-    if (!text.empty())
+    if (text.find_first_not_of(L" \t\r\n") != std::wstring::npos)
     {
+        if (sentMessages.empty() || sentMessages.back() != text) sentMessages.push_back(text);
+        if (sentMessages.size() > 20) sentMessages.erase(sentMessages.begin());
+        recallIndex = -1;
+        scrollLines = 0;
         const std::wstring entry = inputSpeaker + L": " + text;
         lastEntry = entry;
         if (!history.empty()) history += L"\r\n";
@@ -585,11 +525,47 @@ inline void SubmitInput()
 inline LRESULT CALLBACK InputProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM l,
     UINT_PTR, DWORD_PTR)
 {
+    if (UiBackbuffer::ConsumeNativePaint(hwnd, message)) return 0;
+    if (UiBackbuffer::active && message == WM_ERASEBKGND) return 1;
+    if (message == WM_LBUTTONDOWN && officialFont)
+    {
+        SetFocus(hwnd);
+        wchar_t text[512]{}; GetWindowTextW(hwnd, text, 512);
+        const std::wstring value(text);
+        const int x = static_cast<short>(LOWORD(l)) - 4 + inputScrollX;
+        size_t index = 0;
+        int previous = 0;
+        for (; index < value.size(); ++index)
+        {
+            const int next = FFXIBitmapFont::Measure(value.substr(0, index + 1), fontSize).cx;
+            if (x < (previous + next) / 2) break;
+            previous = next;
+        }
+        SendMessageW(hwnd, EM_SETSEL, index, index);
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    }
     if (message == WM_KEYDOWN)
     {
+        if (w == VK_UP || w == VK_DOWN)
+        {
+            if (recallIndex < 0)
+            {
+                wchar_t current[512]{}; GetWindowTextW(hwnd, current, 512);
+                draft = current;
+                recallIndex = static_cast<int>(sentMessages.size());
+            }
+            recallIndex = std::clamp(recallIndex + (w == VK_UP ? -1 : 1),
+                0, static_cast<int>(sentMessages.size()));
+            SetWindowTextW(hwnd, recallIndex == static_cast<int>(sentMessages.size()) ?
+                draft.c_str() : sentMessages[recallIndex].c_str());
+            SendMessageW(hwnd, EM_SETSEL, -1, -1);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
         if (w == VK_RETURN)
         {
-            SubmitInput();
+            if (!(l & (1LL << 30))) SubmitInput();
             return 0;
         }
         if (w == VK_ESCAPE)
@@ -598,7 +574,7 @@ inline LRESULT CALLBACK InputProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM
             return 0;
         }
     }
-    if (message == WM_CHAR && (w == L'\r' || w == L'\n'))
+    if (message == WM_CHAR && (w == L'\r' || w == L'\n' || w == VK_ESCAPE))
         return 0;
     if (message == WM_ERASEBKGND)
         return 1;
@@ -607,40 +583,49 @@ inline LRESULT CALLBACK InputProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM
         PAINTSTRUCT paint{};
         HDC dc = message == WM_PAINT ? BeginPaint(hwnd, &paint) : (HDC)w;
         RECT rect{}; GetClientRect(hwnd, &rect);
-        // Back-buffer composition has already painted the complete parent
-        // surface. Native child painting needs the matching local slice.
-        if (message == WM_PAINT)
-            PaintTranscriptBackdrop(hwnd, dc);
+        // The entry row is a separate frame below the transcript, using
+        // exactly the same background and fading horizontal edges.
+        PaintFrameRect(dc, rect);
         wchar_t text[512] = {};
         GetWindowTextW(hwnd, text, static_cast<int>(_countof(text)));
+        const int saved = SaveDC(dc);
+        IntersectClipRect(dc, 2, 3, rect.right - 2, rect.bottom - 3);
+        HGDIOBJ oldFont = SelectObject(dc, font);
+        const std::wstring value(text);
+        auto measure = [&](int count) {
+            if (officialFont) return static_cast<int>(FFXIBitmapFont::Measure(value.substr(0, count), fontSize).cx);
+            SIZE size{}; GetTextExtentPoint32W(dc, value.c_str(), count, &size);
+            return static_cast<int>(size.cx);
+        };
+        DWORD first = 0, last = 0;
+        SendMessageW(hwnd, EM_GETSEL, (WPARAM)&first, (LPARAM)&last);
+        const int caret = measure(static_cast<int>(last));
+        const int available = (std::max)(1L, rect.right - 10);
+        if (caret - inputScrollX > available) inputScrollX = caret - available;
+        if (caret < inputScrollX) inputScrollX = caret;
+        inputScrollX = (std::max)(0, inputScrollX);
+        if (GetFocus() == hwnd && first != last)
+        {
+            RECT selection{4 + measure(first) - inputScrollX, 2,
+                4 + measure(last) - inputScrollX, rect.bottom - 2};
+            HBRUSH brush = CreateSolidBrush(RGB(60, 75, 120));
+            FillRect(dc, &selection, brush); DeleteObject(brush);
+        }
         SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, textColour);
         if (officialFont)
-            FFXIBitmapFont::Draw(dc, text, 4, 3, fontSize, RGB(235, 235, 245));
+            FFXIBitmapFont::Draw(dc, value, 4 - inputScrollX, 3, fontSize, textColour);
         else
+            TextOutW(dc, 4 - inputScrollX, 3, value.c_str(), static_cast<int>(value.size()));
+        const UINT blink = GetCaretBlinkTime();
+        if (GetFocus() == hwnd && (blink == INFINITE || !blink || (GetTickCount64() / blink) % 2 == 0))
         {
-            HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
-            SetTextColor(dc, RGB(235, 235, 245));
-            RECT textRect{4, 1, rect.right - 4, rect.bottom - 1};
-            DrawTextW(dc, text, -1, &textRect,
-                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-            if (oldFont) SelectObject(dc, oldFont);
+            RECT caretRect{4 + caret - inputScrollX, 3, 5 + caret - inputScrollX, rect.bottom - 3};
+            HBRUSH brush = CreateSolidBrush(textColour);
+            FillRect(dc, &caretRect, brush); DeleteObject(brush);
         }
-        if (GetFocus() == hwnd)
-        {
-            DWORD selection = static_cast<DWORD>(SendMessageW(hwnd, EM_GETSEL, 0, 0));
-            const int caretCharacter = LOWORD(selection);
-            std::wstring prefix(text, text + (std::min)(caretCharacter,
-                static_cast<int>(wcslen(text))));
-            const int caretX = 4 + (officialFont
-                ? FFXIBitmapFont::Measure(prefix, fontSize).cx
-                : LOWORD(SendMessageW(hwnd, EM_POSFROMCHAR, caretCharacter, 0)));
-            HPEN caretPen = CreatePen(PS_SOLID, 1, RGB(235, 235, 245));
-            HGDIOBJ oldPen = SelectObject(dc, caretPen);
-            MoveToEx(dc, (std::min)(caretX, (int)rect.right - 2), 3, nullptr);
-            LineTo(dc, (std::min)(caretX, (int)rect.right - 2), rect.bottom - 3);
-            SelectObject(dc, oldPen);
-            DeleteObject(caretPen);
-        }
+        SelectObject(dc, oldFont);
+        RestoreDC(dc, saved);
         if (message == WM_PAINT) EndPaint(hwnd, &paint);
         return 0;
     }
@@ -652,12 +637,13 @@ inline LRESULT CALLBACK InputProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM
 
 inline LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l)
 {
+    if (UiBackbuffer::ConsumeNativePaint(hwnd, message)) return 0;
     switch (message)
     {
     case WM_CREATE:
     {
         transcript = CreateWindowExW(0, L"RICHEDIT50W", L"",
-            WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
+            WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
             0, 0, 0, 0, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
         if (!transcript) return -1;
         ApplyFont();
@@ -667,11 +653,7 @@ inline LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l)
         lineHeight = (std::max)(1L, metrics.tmHeight);
         SelectObject(dc, previous); ReleaseDC(transcript, dc);
         SendMessageW(transcript, EM_SETBKGNDCOLOR, 0, background);
-        CHARFORMAT2W format{};
-        format.cbSize = sizeof(format);
-        format.dwMask = CFM_COLOR;
-        format.crTextColor = RGB(235, 235, 245);
-        SendMessageW(transcript, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&format);
+        ApplyTranscriptColour();
         SendMessageW(transcript, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(2, 2));
         SendMessageW(transcript, EM_EXLIMITTEXT, 0, 60000);
         SetWindowSubclass(transcript, TranscriptProcedure, 1, 0);
@@ -719,10 +701,13 @@ inline LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l)
 inline void Reset()
 {
     history.clear();
+    scrollLines = 0;
+    if (input) SetWindowTextW(input, L"");
     lastEntry.clear();
     choicePrompt.clear();
     choiceOptions.clear();
     choiceSelected = 0;
+    choiceFirstVisible = 0;
     compactedLines = 0;
     if (window) { SetWindowTextW(transcript, L""); Hide(); }
     HideChoices();
@@ -736,6 +721,7 @@ inline bool Reopen(HWND owner)
     compactedLines = 0;
     Layout(owner);
     SetWindowTextW(transcript, history.c_str());
+    ApplyTranscriptColour();
     LayoutTranscript();
     SendMessageW(transcript, EM_SETSEL, history.size(), history.size());
     SendMessageW(transcript, EM_SCROLLCARET, 0, 0);
@@ -772,34 +758,15 @@ inline bool OpenInput(HWND owner, const char* speaker)
     Layout(owner);
     ShowWindow(window, SW_SHOWNOACTIVATE);
     SetFocus(input);
+    LayoutTranscript();
+    inputScrollX = 0;
+    recallIndex = -1;
     SendMessageW(input, EM_SETSEL, GetWindowTextLengthW(input),
         GetWindowTextLengthW(input));
     KillTimer(window, closeTimer);
     hideAt = 0;
     InvalidateRect(window, nullptr, TRUE);
     return true;
-}
-
-inline void ShowChoices(HWND owner, const std::string& prompt, const std::vector<std::string>& options, int selected)
-{
-    EnsureChoiceWindow(owner);
-    if (!choiceWindow) return;
-    choicePrompt = Utf8(prompt);
-    choiceOptions.clear();
-    for (const std::string& option : options)
-        choiceOptions.push_back(Utf8(option));
-    choiceSelected = std::clamp(selected, 0, (std::max)(0, (int)choiceOptions.size() - 1));
-    LayoutChoices(owner);
-    ShowWindow(choiceWindow, SW_SHOWNOACTIVATE);
-    InvalidateRect(choiceWindow, nullptr, TRUE);
-}
-
-inline void SetChoiceSelection(HWND owner, int selected)
-{
-    if (choiceOptions.empty()) return;
-    choiceSelected = std::clamp(selected, 0, (int)choiceOptions.size() - 1);
-    LayoutChoices(owner);
-    if (choiceWindow) InvalidateRect(choiceWindow, nullptr, TRUE);
 }
 
 inline void Show(HWND owner, const std::string& name, const std::string& dialogue)

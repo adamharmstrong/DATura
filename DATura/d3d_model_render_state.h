@@ -1,27 +1,19 @@
 #pragma once
 
 #include <d3d9.h>
+#include "renderer_materials.h"
 
 struct noesisMaterial_t;
 struct noesisTex_t;
 
 namespace D3DModelRenderState
 {
-struct MaterialBindingCache
-{
-    const noesisMaterial_t *material = nullptr;
-    const noesisTex_t *texture = nullptr;
-    bool bumpMappingEnabled = false;
-    float bumpMappingIntensity = 1.0f;
-    bool valid = false;
-
-    void Invalidate();
-};
+using MaterialBindingCache = RendererBackend::MaterialBindingCache;
 
 void ApplyFixedFunctionModelState(IDirect3DDevice9 *device, bool enableMipMapping);
-void CalculateDirectionalLight(int minuteOfDay, bool automatic, float azimuthDegrees,
+void CalculateDirectionalLight(float minuteOfDay, bool automatic, float azimuthDegrees,
                                float elevationDegrees, float outDirection[3]);
-void ApplyDynamicLighting(IDirect3DDevice9 *device, int quality, int minuteOfDay,
+void ApplyDynamicLighting(IDirect3DDevice9 *device, int quality, float minuteOfDay,
                           bool indoor, bool automaticDirection, float azimuthDegrees,
                           float elevationDegrees, bool useAuthoredColor,
                           D3DCOLOR authoredMainColor, D3DCOLOR authoredSecondaryColor,
@@ -48,4 +40,20 @@ void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& ca
                               const noesisMaterial_t *material, const noesisTex_t *texture,
                               bool enableBumpMapping = false, float bumpMappingIntensity = 1.0f);
 void ReleaseFfxiPixelShaders();
+
+// Borrows the device. The existing state functions remain the D3D9 implementation
+// and compatibility entry points for callers still using the legacy API.
+class Materials final : public RendererBackend::Materials
+{
+public:
+    explicit Materials(IDirect3DDevice9* device) : device_(device) {}
+    void ApplyOpaque(MaterialBindingCache& cache, const noesisMaterial_t* material,
+        const noesisTex_t* texture, bool bump = false, float intensity = 1.0f) override
+    { ApplyOpaqueMaterial(device_, cache, material, texture, bump, intensity); }
+    void ApplyTransparent(MaterialBindingCache& cache, const noesisMaterial_t* material,
+        const noesisTex_t* texture, bool bump = false, float intensity = 1.0f) override
+    { ApplyTransparentMaterial(device_, cache, material, texture, bump, intensity); }
+private:
+    IDirect3DDevice9* device_;
+};
 }

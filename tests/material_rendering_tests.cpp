@@ -1,3 +1,4 @@
+#include "d3d9_graphics.h"
 #include "stdafx.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
@@ -5,6 +6,7 @@
 #include "d3d_model_render_state.h"
 #include "custom_texture_assets.h"
 #include "d3d_math.h"
+#include "d3d_model_buffers.h"
 #include "zone_model_render_metadata.h"
 #include "zone_environment_fog.h"
 #include "zone_environment_state.h"
@@ -22,6 +24,22 @@
 
 namespace
 {
+
+void ApplySharedOpaque(IDirect3DDevice9* device, RendererBackend::MaterialBindingCache& cache,
+    const noesisMaterial_t* material, const noesisTex_t* texture, bool bump = false, float intensity = 1.0f)
+{
+    D3DModelRenderState::Materials implementation(device);
+    RendererBackend::Materials& materials = implementation;
+    materials.ApplyOpaque(cache, material, texture, bump, intensity);
+}
+void ApplySharedTransparent(IDirect3DDevice9* device, RendererBackend::MaterialBindingCache& cache,
+    const noesisMaterial_t* material, const noesisTex_t* texture, bool bump = false, float intensity = 1.0f)
+{
+    D3DModelRenderState::Materials implementation(device);
+    RendererBackend::Materials& materials = implementation;
+    materials.ApplyTransparent(cache, material, texture, bump, intensity);
+}
+
 constexpr UINT size = 128;
 constexpr DWORD background = 0xff14283c; // RGB 20,40,60: unequal channels reveal swizzles.
 int failures = 0, assertions = 0;
@@ -46,7 +64,7 @@ struct Device
     HWND window = nullptr;
     ComPtr<IDirect3D9> d3d;
     ComPtr<IDirect3DDevice9> gpu;
-    bool Create()
+    bool Create(bool hardware=false, D3DMULTISAMPLE_TYPE samples=D3DMULTISAMPLE_NONE, UINT resolution=size)
     {
         window = CreateWindowExA(0, "STATIC", "DATura material validation", WS_POPUP,
             0, 0, size, size, nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
@@ -54,12 +72,13 @@ struct Device
         if (!window || !d3d) return false;
         D3DPRESENT_PARAMETERS pp = {};
         pp.Windowed = TRUE; pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-        pp.hDeviceWindow = window; pp.BackBufferWidth = pp.BackBufferHeight = size;
+        pp.hDeviceWindow = window; pp.BackBufferWidth = pp.BackBufferHeight = resolution;
         pp.BackBufferFormat = D3DFMT_X8R8G8B8;
+        pp.MultiSampleType=samples;
         pp.EnableAutoDepthStencil = TRUE; pp.AutoDepthStencilFormat = D3DFMT_D24S8;
         pp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
         return SUCCEEDED(d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window,
-            D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &gpu.ptr));
+            hardware ? D3DCREATE_HARDWARE_VERTEXPROCESSING : D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &gpu.ptr));
     }
     ~Device()
     {
@@ -70,25 +89,35 @@ struct Device
 };
 Capture Readback(IDirect3DDevice9* device, const std::filesystem::path& output)
 {
-    ComPtr<IDirect3DSurface9> target, staging;
-    if (FAILED(device->GetRenderTarget(0, &target.ptr)) ||
-        FAILED(device->CreateOffscreenPlainSurface(size, size, D3DFMT_X8R8G8B8,
+    ComPtr<IDirect3DSurface9> target, staging, resolved;
+    if (FAILED(device->GetRenderTarget(0, &target.ptr)))
+    { Check(false,"get native D3D9 target"); return {}; }
+    D3DSURFACE_DESC description={}; target->GetDesc(&description);
+    if(description.MultiSampleType!=D3DMULTISAMPLE_NONE)
+    {
+        if(FAILED(device->CreateRenderTarget(size,size,description.Format,D3DMULTISAMPLE_NONE,
+            0,FALSE,&resolved.ptr,nullptr)) ||
+            FAILED(device->StretchRect(target.ptr,nullptr,resolved.ptr,nullptr,D3DTEXF_NONE)))
+        { Check(false,"resolve multisampled D3D9 target"); return {}; }
+    }
+    if (
+        FAILED(device->CreateOffscreenPlainSurface(description.Width, description.Height, D3DFMT_X8R8G8B8,
             D3DPOOL_SYSTEMMEM, &staging.ptr, nullptr)) ||
-        FAILED(device->GetRenderTargetData(target.ptr, staging.ptr)))
+        FAILED(device->GetRenderTargetData(resolved ? resolved.ptr : target.ptr, staging.ptr)))
     { Check(false, "read back native D3D9 target"); return {}; }
     D3DLOCKED_RECT lock = {};
     if (FAILED(staging->LockRect(&lock, nullptr, D3DLOCK_READONLY)))
     { Check(false, "lock D3D9 target readback"); return {}; }
-    Capture pixels(size * size);
-    for (UINT row = 0; row < size; ++row)
-        memcpy(pixels.data() + row * size, static_cast<char*>(lock.pBits) + row * lock.Pitch,
-            size * sizeof(DWORD));
+    Capture pixels(description.Width * description.Height);
+    for (UINT row = 0; row < description.Height; ++row)
+        memcpy(pixels.data() + row * description.Width, static_cast<char*>(lock.pBits) + row * lock.Pitch,
+            description.Width * sizeof(DWORD));
     staging->UnlockRect();
     if (!output.empty())
     {
         BITMAPFILEHEADER file = {};
         BITMAPINFOHEADER info = {};
-        info.biSize = sizeof(info); info.biWidth = size; info.biHeight = -LONG(size);
+        info.biSize = sizeof(info); info.biWidth = description.Width; info.biHeight = -LONG(description.Height);
         info.biPlanes = 1; info.biBitCount = 32;
         file.bfType = 0x4d42; file.bfOffBits = sizeof(file) + sizeof(info);
         file.bfSize = file.bfOffBits + static_cast<DWORD>(pixels.size() * sizeof(DWORD));
@@ -175,6 +204,7 @@ struct Texture
 {
     ComPtr<IDirect3DTexture9> gpu;
     noesisTex_t info;
+    std::unique_ptr<D3D9Graphics::Texture> resource;
     bool Create(IDirect3DDevice9* device, DWORD color, int dxt3Nibble = -1)
     {
         const D3DFORMAT format = dxt3Nibble >= 0 ? D3DFMT_DXT3 : D3DFMT_A8R8G8B8;
@@ -197,7 +227,7 @@ struct Texture
             DWORD* row = reinterpret_cast<DWORD*>(static_cast<char*>(lock.pBits) + y * lock.Pitch);
             for (int x = 0; x < 4; ++x) row[x] = color;
         }
-        gpu->UnlockRect(0); info.pD3DTex = gpu.ptr;
+        gpu->UnlockRect(0); gpu->AddRef(); resource = std::make_unique<D3D9Graphics::Texture>(gpu.ptr); info.gpuTexture = resource.get();
         info.w = 4; info.h = 4;
         info.texType = dxt3Nibble >= 0 ? NOESISTEX_DXT3 : NOESISTEX_RGBA32;
         return true;
@@ -218,7 +248,7 @@ struct Texture
                 row[x] = D3DCOLOR_ARGB(255, levels[x], levels[x], levels[x]);
         }
         gpu->UnlockRect(0);
-        info.pD3DTex = gpu.ptr; info.w = 4; info.h = 4; info.texType = NOESISTEX_RGBA32;
+        gpu->AddRef(); resource = std::make_unique<D3D9Graphics::Texture>(gpu.ptr); info.gpuTexture = resource.get(); info.w = 4; info.h = 4; info.texType = NOESISTEX_RGBA32;
         return true;
     }
 };
@@ -249,8 +279,8 @@ void TestAlpha(IDirect3DDevice9* device, const std::filesystem::path& output)
     auto draw = [&](noesisMaterial_t& material, Texture& texture, DWORD diffuse, bool blended)
     {
         D3DModelRenderState::MaterialBindingCache cache;
-        if (blended) { BlendState(device); D3DModelRenderState::ApplyTransparentMaterial(device, cache, &material, &texture.info); }
-        else D3DModelRenderState::ApplyOpaqueMaterial(device, cache, &material, &texture.info);
+        if (blended) { BlendState(device); ApplySharedTransparent(device, cache, &material, &texture.info); }
+        else ApplySharedOpaque(device, cache, &material, &texture.info);
         ImmediateQuad(device, -.85f, .85f, 2, diffuse);
     };
     auto pixels = Frame(device, [&] { draw(opaque, transparent, 0x00808080, false); }, output / "opaque-zero-alpha.bmp");
@@ -273,6 +303,24 @@ void TestAlpha(IDirect3DDevice9* device, const std::filesystem::path& output)
     Expect(pixels, 64, 64, {128,255,255}, "MODULATE2X RGB clamps saturated channels independently");
 }
 
+void TestUiShader(IDirect3DDevice9* device)
+{
+    Texture texture;
+    if (!texture.Create(device, 0, 4)) return;
+    const auto draw = [&](float maximumOpacity)
+    {
+        BlendState(device);
+        device->SetTexture(0, texture.gpu.ptr);
+        Check(D3DModelRenderState::SetFfxiUiPixelShader(device, true, 1.0f, maximumOpacity),
+            "shared UI shader compiles and binds");
+        ImmediateQuad(device, -.85f, .85f, 2, 0xffffffff);
+    };
+    auto pixels = Frame(device, [&] { draw(1.0f); });
+    Expect(pixels, 64, 64, {138,20,30}, "shared UI shader preserves DXT3 half opacity");
+    pixels = Frame(device, [&] { draw(.25f); });
+    Expect(pixels, 64, 64, {79,30,45}, "shared UI shader preserves maximum opacity clamp");
+}
+
 void TestTextureTransitions(IDirect3DDevice9* device, const std::filesystem::path& output)
 {
     Texture texture;
@@ -286,8 +334,8 @@ void TestTextureTransitions(IDirect3DDevice9* device, const std::filesystem::pat
             if (transparent) BlendState(device);
             auto bind = [&](noesisMaterial_t* material, noesisTex_t* tex)
             {
-                if (transparent) D3DModelRenderState::ApplyTransparentMaterial(device, cache, material, tex);
-                else D3DModelRenderState::ApplyOpaqueMaterial(device, cache, material, tex);
+                if (transparent) ApplySharedTransparent(device, cache, material, tex);
+                else ApplySharedOpaque(device, cache, material, tex);
             };
             bind(&textured, &texture.info);
             ImmediateQuad(device, -.9f, -.1f, 2, 0x80808080);
@@ -311,7 +359,7 @@ void TestClassicBumpMapping(IDirect3DDevice9* device, const std::filesystem::pat
     const auto draw = [&](const bool enabled)
     {
         D3DModelRenderState::MaterialBindingCache cache;
-        D3DModelRenderState::ApplyOpaqueMaterial(
+        ApplySharedOpaque(
             device, cache, &opaque, &ramp.info, enabled, 1.0f);
         ImmediateQuad(device, -.85f, .85f, 2, 0x80808080);
     };
@@ -401,7 +449,7 @@ void TestFog(IDirect3DDevice9* device, const std::filesystem::path& output)
         {
             ZoneEnvironmentFog::Apply(device, environment);
             D3DModelRenderState::MaterialBindingCache cache;
-            D3DModelRenderState::ApplyOpaqueMaterial(device, cache, &opaque, textured ? &texture.info : nullptr);
+            ApplySharedOpaque(device, cache, &opaque, textured ? &texture.info : nullptr);
             for (int step = 0; step < 3; ++step)
                 ImmediateQuad(device, -.95f + step * .65f, -.35f + step * .65f,
                     2.f + step * 2.f, textured ? 0x80808080 : 0xff804020);
@@ -410,29 +458,64 @@ void TestFog(IDirect3DDevice9* device, const std::filesystem::path& output)
         Expect(pixels, 62,64,{80,64,96}, textured ? "textured surface halfway through fog interpolates RGB" : "untextured surface halfway through fog interpolates RGB");
         Expect(pixels, 103,64,{32,64,160}, textured ? "textured surface at fog end becomes fog color" : "untextured surface at fog end becomes fog color");
     }
-    for (int invalid = 0; invalid < 4; ++invalid)
+    for (int invalid = 0; invalid < 7; ++invalid)
     {
         auto value = environment;
         if (invalid == 0) value.valid = false;
         if (invalid == 1) value.fogFar = 0;
         if (invalid == 2) value.fogFar = value.fogNear;
         if (invalid == 3) value.fogFar = std::numeric_limits<float>::quiet_NaN();
+        if (invalid == 4) value.fogFar = std::numeric_limits<float>::infinity();
+        if (invalid == 5) value.fogNear = -std::numeric_limits<float>::infinity();
+        if (invalid == 6) { value.fogNear = -2; value.fogFar = 0; }
         auto pixels = Frame(device, [&]
         {
             ZoneEnvironmentFog::Apply(device, environment);
             ZoneEnvironmentFog::Apply(device, value);
             D3DModelRenderState::MaterialBindingCache cache;
-            D3DModelRenderState::ApplyOpaqueMaterial(device, cache, &opaque, nullptr);
+            ApplySharedOpaque(device, cache, &opaque, nullptr);
             ImmediateQuad(device, -.85f,.85f,8,0xff804020);
         });
         Expect(pixels,64,64,{128,64,32}, "disabled/invalid fog cannot retain previous weather fog");
+        pixels = Frame(device, [&]
+        {
+            ModelRenderer::Context actor;
+            actor.device = device;
+            actor.useAuthoredFog = value.valid;
+            actor.authoredFogColor = value.fogColor;
+            actor.authoredFogNear = value.fogNear;
+            actor.authoredFogFar = value.fogFar;
+            ModelRenderer::PrepareFixedFunctionPass(actor, D3DMath::BuildIdentity());
+            D3DModelRenderState::MaterialBindingCache cache;
+            ApplySharedOpaque(device, cache, &opaque, nullptr);
+            ImmediateQuad(device, -.85f,.85f,8,0xff804020);
+        });
+        Expect(pixels,64,64,{128,64,32}, "actor pass rejects disabled and nonfinite zone fog");
+    }
+    for (bool inWorld : {true, false})
+    {
+        auto actorPixels = Frame(device, [&]
+        {
+            ModelRenderer::Context actor;
+            actor.device = device;
+            actor.useAuthoredFog = inWorld;
+            actor.authoredFogColor = environment.fogColor;
+            actor.authoredFogNear = environment.fogNear;
+            actor.authoredFogFar = environment.fogFar;
+            ModelRenderer::PrepareFixedFunctionPass(actor, D3DMath::BuildIdentity());
+            D3DModelRenderState::MaterialBindingCache cache;
+            ApplySharedOpaque(device, cache, &opaque, nullptr);
+            ImmediateQuad(device, -.85f,.85f,8,0xff804020);
+        }, output / (inWorld ? "fog-world-actor.bmp" : "fog-preview-actor.bmp"));
+        Expect(actorPixels,64,64,inWorld ? std::array<int,3>{32,64,160} : std::array<int,3>{128,64,32},
+            inWorld ? "world actor beyond fog end shares zone atmosphere" : "preview actor clears zone atmosphere");
     }
     auto pixels = Frame(device, [&]
     {
         ZoneEnvironmentFog::Apply(device, environment);
         Prepare(device); // Exactly the standalone-model pass boundary used by main.cpp.
         D3DModelRenderState::MaterialBindingCache cache;
-        D3DModelRenderState::ApplyOpaqueMaterial(device, cache, &opaque, nullptr);
+        ApplySharedOpaque(device, cache, &opaque, nullptr);
         ImmediateQuad(device,-.85f,.85f,8,0xff804020);
     });
     Expect(pixels,64,64,{128,64,32}, "standalone-model preparation clears prior zone fog");
@@ -451,8 +534,373 @@ void TestFog(IDirect3DDevice9* device, const std::filesystem::path& output)
     Expect(pixels,64,88,{128,64,32}, "sky dome beyond fog end retains authored color");
 }
 
+void TestDirectionalShadows(IDirect3DDevice9* device, const std::filesystem::path& output)
+{
+    std::filesystem::create_directories(output);
+    auto opaque = Material("shadow-fixture",true);
+    noesisMaterial_t* materials[] = {&opaque};
+    noesisMatData_t data = {}; data.mats = materials; data.matCount = 1;
+    Model terrain, actor;
+    terrain.value.submeshes.push_back(Quad("shadow-fixture",-.85f,.85f,8,0xffffffff));
+    actor.value.submeshes.push_back(Quad("shadow-fixture",-.2f,.2f,4,0xffffffff));
+    terrain.Prepare(device,&data); actor.Prepare(device,&data);
+    const auto identity = D3DMath::BuildIdentity();
+    ModelRenderer::Context context; context.device=device;
+    context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
+    context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
+    context.useAuthoredLightDirection=true;
+    context.authoredMainLightDirection[0]=.6f; context.authoredMainLightDirection[2]=.8f;
+    context.shadowMaxDistance=16; context.shadowOpacity=.5f;
+    const auto draw = [&](bool shadow, bool castActor, bool changeSharedPose=false)
+    {
+        ModelRenderer::BeginDirectionalShadowFrame();
+        ModelRenderer::DrawGeometry(context,&terrain.value,identity);
+        auto actorContext=context; actorContext.rendersZoneObjects=false;
+        actorContext.dynamicActorShadows=castActor;
+        ModelRenderer::DrawGeometry(actorContext,&actor.value,identity);
+        const auto pose=actor.value.submeshes[0].cpuVerts;
+        if(changeSharedPose)
+        {
+            for(auto& vertex:actor.value.submeshes[0].cpuVerts) vertex.pos[0]+=100;
+            D3DModelBuffers::UploadVertices(actor.value.submeshes[0]);
+        }
+        if(shadow) Check(ModelRenderer::DrawDirectionalShadowFrame(),"render sunlight depth and receiver passes");
+        else ModelRenderer::BeginDirectionalShadowFrame();
+        if(changeSharedPose)
+        {
+            actor.value.submeshes[0].cpuVerts=pose;
+            D3DModelBuffers::UploadVertices(actor.value.submeshes[0]);
+        }
+        CheckBaseline(device);
+    };
+    const auto baseline=Frame(device,[&]{draw(false,true);},output/"sun-shadow-disabled.bmp");
+    const auto shadow=Frame(device,[&]{draw(true,true);},output/"sun-shadow-actor.bmp");
+    Expect(baseline,88,64,{255,255,255},"unshadowed receiver fixture");
+    Expect(shadow,88,64,{128,128,128},"actor blocks oblique sunlight on actual receiver",3);
+    Expect(shadow,25,64,{255,255,255},"unoccluded receiver stays bright");
+    for(auto& vertex:actor.value.submeshes[0].cpuVerts) vertex.diffuse=0xffff0000;
+    D3DModelBuffers::UploadVertices(actor.value.submeshes[0]);
+    const auto casterOnly=Frame(device,[&]
+    {
+        ModelRenderer::BeginDirectionalShadowFrame();
+        ModelRenderer::DrawGeometry(context,&terrain.value,identity);
+        auto actorContext=context; actorContext.rendersZoneObjects=false;
+        ModelRenderer::SubmitDirectionalShadowCaster(actorContext,&actor.value,identity);
+        Check(ModelRenderer::DrawDirectionalShadowFrame(),"render camera-hidden actor as a shadow-only caster");
+        CheckBaseline(device);
+    },output/"sun-shadow-camera-hidden-actor.bmp");
+    Expect(casterOnly,88,64,{128,128,128},"camera-hidden actor still casts onto visible ground",3);
+    Expect(casterOnly,64,64,{255,255,255},"shadow-only actor does not enter the camera color pass");
+    for(auto& vertex:actor.value.submeshes[0].cpuVerts) vertex.diffuse=0xffffffff;
+    D3DModelBuffers::UploadVertices(actor.value.submeshes[0]);
+    // Real zone ground contains overlapping/coplanar pieces. Shadow composition
+    // must not depend on how many of those pieces pass the receiver depth test.
+    terrain.value.ReleaseD3DBuffers();
+    terrain.value.submeshes.push_back(terrain.value.submeshes[0]);
+    terrain.Prepare(device,&data);
+    const auto overlapping=Frame(device,[&]{draw(true,true);},output/"sun-shadow-overlap.bmp");
+    Expect(overlapping,88,64,{128,128,128},"coplanar receivers apply shadow opacity exactly once",3);
+    for(int frame=0;frame<8;++frame)
+    {
+        context.cameraPosition[0]=frame*.004f;
+        auto movingView=D3DMath::BuildRotationY(frame*.0002f);
+        movingView._41=-context.cameraPosition[0];
+        const auto moving=Frame(device,[&]
+        {
+            device->SetTransform(D3DTS_VIEW,&movingView);
+            draw(true,true);
+        });
+        Expect(moving,88,64,{128,128,128},"overlapping receiver stays stable during small camera movements",3);
+        Expect(moving,25,64,{255,255,255},"camera motion does not shadow unoccluded ground");
+    }
+    context.cameraPosition[0]=0;
+    const auto preservedStencil=Frame(device,[&]
+    {
+        device->Clear(0,nullptr,D3DCLEAR_STENCIL,0,1,3);
+        draw(true,true);
+        device->SetRenderState(D3DRS_STENCILENABLE,TRUE);
+        device->SetRenderState(D3DRS_STENCILMASK,0xff);
+        device->SetRenderState(D3DRS_STENCILWRITEMASK,0);
+        device->SetRenderState(D3DRS_STENCILREF,3);
+        device->SetRenderState(D3DRS_STENCILFUNC,D3DCMP_EQUAL);
+        device->SetRenderState(D3DRS_STENCILPASS,D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILFAIL,D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILZFAIL,D3DSTENCILOP_KEEP);
+        ImmediateQuad(device,-.85f,.85f,1,0xffffff00);
+        device->SetRenderState(D3DRS_STENCILENABLE,FALSE);
+    });
+    Expect(preservedStencil,88,64,{255,255,0},"receiver coverage preserves other stencil bits and clears its reserved bit");
+    terrain.value.ReleaseD3DBuffers(); terrain.value.submeshes.pop_back(); terrain.Prepare(device,&data);
+    const auto noActor=Frame(device,[&]{draw(true,false);});
+    Expect(noActor,88,64,{255,255,255},"disabled actor casting removes its shadow");
+    context.authoredMainLightDirection[0]=.9995f;
+    context.authoredMainLightDirection[2]=.03f;
+    for(int frame=0;frame<6;++frame)
+    {
+        auto rotatingView=D3DMath::BuildRotationY((frame-3)*.015f);
+        const auto grazing=Frame(device,[&]
+        {
+            device->SetTransform(D3DTS_VIEW,&rotatingView);
+            draw(true,false);
+        });
+        Expect(grazing,25,64,{255,255,255},"grazing sunlight does not create rotating self-shadow stripes",3);
+    }
+    context.authoredMainLightDirection[0]=.6f;
+    context.authoredMainLightDirection[2]=.8f;
+    context.shadowCenterValid=true; context.shadowCenter[2]=8;
+    for(int frame=0;frame<9;++frame)
+    {
+        // Orbit from the side where the caster does not hide the sampled ground.
+        const float yaw=frame*.075f;
+        context.cameraPosition[0]=8*sinf(yaw);
+        context.cameraPosition[2]=8-8*cosf(yaw);
+        const auto orbitView=D3DMath::BuildLookAtLH(context.cameraPosition[0],0,
+            context.cameraPosition[2],0,0,8);
+        const auto projection=D3DMath::BuildPerspectiveFovLH(1.5707963268f,1,.1f,20);
+        const auto vp=D3DMath::Multiply(orbitView,projection);
+        const float clipX=3*vp._11+8*vp._31+vp._41;
+        const float clipW=3*vp._14+8*vp._34+vp._44;
+        const int sampleX=static_cast<int>((clipX/clipW+1)*size*.5f);
+        const auto orbit=Frame(device,[&]
+        {
+            device->SetTransform(D3DTS_VIEW,&orbitView);
+            draw(true,true);
+        });
+        Expect(orbit,sampleX,64,{128,128,128},"world-space shadow remains present across a wide camera orbit",3);
+    }
+    context.shadowCenterValid=false;
+    context.cameraPosition[0]=context.cameraPosition[2]=0;
+    const auto sharedPose=Frame(device,[&]{draw(true,true,true);});
+    Expect(sharedPose,88,64,{128,128,128},"shared actor buffer updates preserve the submitted shadow pose",3);
+    context.useAuthoredFog=true; context.authoredFogNear=0; context.authoredFogFar=1;
+    const auto fogged=Frame(device,[&]{draw(true,true);});
+    Expect(fogged,88,64,{255,255,255},"fully fogged receivers are not darkened by the shadow composite");
+    context.useAuthoredFog=false;
+    // A sloping receiver cannot be represented by the old single ground-Y plane.
+    for(auto& vertex:terrain.value.submeshes[0].cpuVerts) vertex.pos[2] += vertex.pos[0]*.15f;
+    terrain.value.ReleaseD3DBuffers(); terrain.Prepare(device,&data);
+    const auto slope=Frame(device,[&]{draw(true,true);},output/"sun-shadow-slope.bmp");
+    Expect(slope,88,64,{128,128,128},"sun shadow follows a sloping receiver",3);
+    Texture transparent; Check(transparent.Create(device,0x00ffffff),"create cutout shadow fixture");
+    auto cutout=Material("shadow-fixture",true,.5f); cutout.texIdx=0;
+    noesisMaterial_t* actorMaterials[]={&cutout}; noesisTex_t* textures[]={&transparent.info};
+    noesisMatData_t actorData={}; actorData.mats=actorMaterials; actorData.matCount=1;
+    actorData.textures=textures; actorData.texCount=1;
+    actor.value.ReleaseD3DBuffers(); actor.Prepare(device,&actorData);
+    // Metadata is cached by production models, so update the fixture binding explicitly.
+    actor.value.submeshes[0].pResolvedMaterial=&cutout;
+    actor.value.submeshes[0].pResolvedTexture=&transparent.info;
+    const auto holes=Frame(device,[&]{draw(true,true);},output/"sun-shadow-cutout.bmp");
+    Expect(holes,88,64,{255,255,255},"transparent cutout texels do not cast solid shadows");
+    actor.value.submeshes[0].pResolvedMaterial=&opaque;
+    actor.value.submeshes[0].pResolvedTexture=nullptr;
+    ModelRenderer::ReleaseDirectionalShadowResources();
+    const auto recreated=Frame(device,[&]{draw(true,true);});
+    Expect(recreated,88,64,{128,128,128},"shadow resources recreate after release",3);
+    ModelRenderer::ReleaseDirectionalShadowResources();
+}
+
+void TestLayeredDirectionalShadows(IDirect3DDevice9* device, const std::filesystem::path& output)
+{
+    std::filesystem::create_directories(output);
+    auto opaque=Material("layered-ground",true);
+    noesisMaterial_t* materials[]={&opaque};
+    noesisMatData_t data={}; data.mats=materials; data.matCount=1;
+    const auto identity=D3DMath::BuildIdentity();
+    const auto projection=D3DMath::BuildPerspectiveFovLH(1.5707963268f,1,.1f,1000);
+    ModelRenderer::Context context; context.device=device;
+    context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
+    context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
+    context.useAuthoredLightDirection=true;
+    context.authoredMainLightDirection[0]=.6f; context.authoredMainLightDirection[2]=.8f;
+    context.shadowMaxDistance=160; context.shadowOpacity=.5f;
+    context.shadowCenterValid=true; context.shadowCenter[2]=400;
+    // The lower surface is invisible to the camera but farther from the light.
+    // At this distance its camera-depth gap is smaller than the old receiver
+    // offset, so it used to claim coverage and shade the visible surface above.
+    for(int order=0;order<2;++order)
+    {
+        Model ground, actor;
+        auto visible=Quad("layered-ground",-.85f,.85f,400,0xffffffff);
+        auto hidden=Quad("layered-ground",-.85f,.85f,400.5f,0xffffffff);
+        ground.value.submeshes.push_back(order==0 ? hidden : visible);
+        ground.value.submeshes.push_back(order==0 ? visible : hidden);
+        // A real caster remains in the map: its shadow hits x=125 on z=400,
+        // while the caster itself sits away from the sampled visible ground.
+        actor.value.submeshes.push_back(Quad("layered-ground",15.0f/280,55.0f/280,280,0xffffffff));
+        ground.Prepare(device,&data); actor.Prepare(device,&data);
+        for(int frame=0;frame<5;++frame)
+        {
+            const float yaw=(frame-2)*.08f;
+            context.cameraPosition[0]=400*sinf(yaw);
+            context.cameraPosition[2]=400-400*cosf(yaw);
+            const auto view=D3DMath::BuildLookAtLH(context.cameraPosition[0],0,
+                context.cameraPosition[2],0,0,400);
+            const auto vp=D3DMath::Multiply(view,projection);
+            const auto screenX=[&](float worldX)
+            {
+                const float clipX=worldX*vp._11+400*vp._31+vp._41;
+                const float clipW=worldX*vp._14+400*vp._34+vp._44;
+                return static_cast<int>((clipX/clipW+1)*size*.5f);
+            };
+            const auto render=[&](bool shadows)
+            {
+                device->SetTransform(D3DTS_VIEW,&view);
+                device->SetTransform(D3DTS_PROJECTION,&projection);
+                ModelRenderer::BeginDirectionalShadowFrame();
+                ModelRenderer::DrawGeometry(context,&ground.value,identity);
+                auto actorContext=context; actorContext.rendersZoneObjects=false;
+                ModelRenderer::DrawGeometry(actorContext,&actor.value,identity);
+                if(shadows) Check(ModelRenderer::DrawDirectionalShadowFrame(),
+                    "render separated ground layers with sunlight shadows");
+                else ModelRenderer::BeginDirectionalShadowFrame();
+                CheckBaseline(device);
+            };
+            const auto baseline=Frame(device,[&]{render(false);});
+            const auto layered=Frame(device,[&]{render(true);},frame==2 ?
+                output/(order==0 ? "sun-shadow-layer-hidden-first.bmp" :
+                    "sun-shadow-layer-visible-first.bmp") : std::filesystem::path{});
+            Expect(baseline,screenX(0),64,{255,255,255},"visible stacked ground is bright before shadowing");
+            Expect(layered,screenX(0),64,{255,255,255},
+                "hidden ground layers cannot shadow the visible surface during camera rotation",3);
+            Expect(layered,screenX(125),64,{128,128,128},
+                "genuine caster shadows remain on stacked ground in either layer order",3);
+        }
+    }
+    ModelRenderer::ReleaseDirectionalShadowResources();
+}
+
+void TestTemporalShadowEdges(IDirect3DDevice9* device, const std::filesystem::path& output)
+{
+    std::filesystem::create_directories(output);
+    auto opaque=Material("temporal-shadow",true);
+    noesisMaterial_t* materials[]={&opaque};
+    noesisMatData_t data={}; data.mats=materials; data.matCount=1;
+    Model ground, actor;
+    ground.value.submeshes.push_back(Quad("temporal-shadow",-.85f,.85f,8,0xffffffff));
+    actor.value.submeshes.push_back(Quad("temporal-shadow",-.2f,.2f,4,0xffffffff));
+    ground.Prepare(device,&data); actor.Prepare(device,&data);
+    const auto identity=D3DMath::BuildIdentity();
+    ModelRenderer::Context context; context.device=device;
+    context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
+    context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
+    context.useAuthoredLightDirection=true;
+    context.authoredMainLightDirection[0]=.6f; context.authoredMainLightDirection[2]=.8f;
+    context.shadowMaxDistance=160; context.shadowOpacity=.5f;
+    context.shadowCenterValid=true; context.shadowCenter[2]=8;
+    const auto render=[&]
+    {
+        ModelRenderer::BeginDirectionalShadowFrame();
+        ModelRenderer::DrawGeometry(context,&ground.value,identity);
+        auto actorContext=context; actorContext.rendersZoneObjects=false;
+        ModelRenderer::DrawGeometry(actorContext,&actor.value,identity);
+        Check(ModelRenderer::DrawDirectionalShadowFrame(),"render temporal shadow edge fixture");
+        CheckBaseline(device);
+    };
+    for(int movement=0;movement<2;++movement)
+    {
+        Capture previous;
+        int largestChange=0, changedPixels=0;
+        for(int frame=0;frame<33;++frame)
+        {
+            context.authoredMainLightDirection[0]=.6f+(movement==0 ? (frame-16)*.00002f : 0);
+            context.shadowCenter[0]=movement==1 ? (frame-16)*.006f : 0;
+            const auto capture=Frame(device,render,frame==16 ? output/
+                (movement==0 ? "sun-shadow-tiny-light-motion.bmp" : "sun-shadow-subtexel-focus.bmp") :
+                std::filesystem::path{});
+            if(!previous.empty() && capture.size()==previous.size())
+                // This region contains both filtered shadow edges, away from the
+                // visible actor and terrain borders. It deliberately includes
+                // partial coverage: interior-only samples miss temporal aliasing.
+                for(int y=36;y<92;++y) for(int x=78;x<102;++x)
+                {
+                    const int index=y*size+x;
+                    const int change=std::abs(int(capture[index]&255)-int(previous[index]&255));
+                    largestChange=(std::max)(largestChange,change);
+                    if(change>8) ++changedPixels;
+                }
+            previous=capture;
+        }
+        std::cout<<"Temporal shadow "<<(movement==0 ? "light" : "focus")
+            <<" edge maximum frame change: "<<largestChange
+            <<", changes above 8: "<<changedPixels<<'\n';
+        Check(largestChange<=3,movement==0 ?
+            "subpixel sun motion does not abruptly change filtered shadow edges" :
+            "subtexel focus motion leaves world-space shadow edges stable");
+    }
+    ModelRenderer::ReleaseDirectionalShadowResources();
+}
+
+void TestHighResolutionShadowSlope(IDirect3DDevice9* device, UINT resolution,
+    const std::filesystem::path& output)
+{
+    std::filesystem::create_directories(output);
+    auto opaque=Material("unoccluded-close-ground",true);
+    noesisMaterial_t* materials[]={&opaque};
+    noesisMatData_t data={}; data.mats=materials; data.matCount=1;
+    Model ground;
+    ground.value.submeshes.push_back(Quad("unoccluded-close-ground",-.85f,.85f,2,0xffffffff));
+    ground.Prepare(device,&data);
+    const auto identity=D3DMath::BuildIdentity();
+    ModelRenderer::Context context; context.device=device;
+    context.lightingQuality=2; context.dynamicObjectShadows=true;
+    context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
+    context.useAuthoredLightDirection=true;
+    context.authoredMainLightDirection[0]=1; context.authoredMainLightDirection[2]=.02f;
+    context.shadowMaxDistance=160; context.shadowOpacity=.5f;
+    context.shadowCenterValid=true; context.shadowCenter[2]=2;
+    for(int frame=0;frame<5;++frame)
+    {
+        const float yaw=(frame-2)*.035f;
+        context.cameraPosition[0]=2*sinf(yaw);
+        context.cameraPosition[2]=2-2*cosf(yaw);
+        const auto view=D3DMath::BuildLookAtLH(context.cameraPosition[0],0,
+            context.cameraPosition[2],0,0,2);
+        const auto capture=Frame(device,[&]
+        {
+            device->SetTransform(D3DTS_VIEW,&view);
+            ModelRenderer::BeginDirectionalShadowFrame();
+            ModelRenderer::DrawGeometry(context,&ground.value,identity);
+            Check(ModelRenderer::DrawDirectionalShadowFrame(),"render full-resolution grazing-light fixture");
+            CheckBaseline(device);
+        },frame==2 ? output/"sun-shadow-grazing-close.bmp" : std::filesystem::path{});
+        int darkest=255, unexpected=0;
+        if(capture.size()==resolution*resolution)
+            // With one unobstructed planar receiver, no ground pixel can be
+            // legitimately occluded. A wide interior region exposes slope
+            // correction that changes with the screen-space pixel footprint.
+            for(UINT y=resolution/3;y<resolution*2/3;++y)
+                for(UINT x=resolution/3;x<resolution*2/3;++x)
+                {
+                    const int value=capture[y*resolution+x]&255;
+                    darkest=(std::min)(darkest,value);
+                    if(value<252) ++unexpected;
+                }
+        else unexpected=1;
+        std::cout<<"Grazing slope "<<resolution<<" frame "<<frame
+            <<" darkest="<<darkest<<", false shadow pixels="<<unexpected<<'\n';
+        Check(unexpected==0,"unoccluded grazing ground remains bright at full resolution during camera orbit");
+    }
+    ModelRenderer::ReleaseDirectionalShadowResources();
+}
+
 void TestEnvironmentInterpolation()
 {
+    ZoneEnvironmentState::SetTimeOverride(721);
+    Check(ZoneEnvironmentState::CurrentMinuteOfDayPrecise()==721.0,
+        "fractional sun clock preserves exact manual time overrides");
+    ZoneEnvironmentState::SetTimeOverride(-1);
+    Check(ZoneEnvironmentState::CurrentMinuteOfDayPrecise()==1439.0,
+        "fractional sun clock wraps negative manual time overrides");
+    ZoneEnvironmentState::ClearTimeOverride();
+    float first[3]={}, quarter[3]={}, half[3]={};
+    D3DModelRenderState::CalculateDirectionalLight(720.0f,true,0,0,first);
+    D3DModelRenderState::CalculateDirectionalLight(720.25f,true,0,0,quarter);
+    D3DModelRenderState::CalculateDirectionalLight(720.5f,true,0,0,half);
+    Check(quarter[0]<first[0] && quarter[0]>half[0],
+        "sun direction advances between whole game minutes");
+    Check(std::abs(quarter[0]*quarter[0]+quarter[1]*quarter[1]+quarter[2]*quarter[2]-1)<.00001f,
+        "fractional sun direction stays normalized");
     std::vector<ff11EnvironmentRecord_t> records(2);
     for (auto& record : records) strcpy_s(record.directoryPath,"test/weat/fine");
     records[0].minuteOfDay = 0; records[1].minuteOfDay = 720;
@@ -473,10 +921,88 @@ void TestEnvironmentInterpolation()
     ZoneEnvironmentState::Update(data,cache,weather,records,360);
     Check(data.fogFar == 0,"fog-off sentinel switches off at the record midpoint without inventing short-range fog");
 }
+
+#include "installed_zone_fog_cases.h"
+
+void TestInstalledSunShadows(IDirect3DDevice9* device, const std::filesystem::path& root,
+                             const std::filesystem::path& output)
+{
+    const auto path=root/"ROM/1/35.DAT";
+    std::ifstream stream(path,std::ios::binary|std::ios::ate);
+    Check(stream.good(),"open installed Bastok Markets DAT for shadow validation");
+    if(!stream.good()) return;
+    std::vector<BYTE> bytes(static_cast<size_t>(stream.tellg()));
+    stream.seekg(0); stream.read(reinterpret_cast<char*>(bytes.data()),bytes.size());
+    noeRAPI_t rapi(device); rapi.SetCurrentFilePath(path.string().c_str());
+    ff11Opts_t options={}; options.renderWater=true; options.renderEnvironment=true;
+    const auto previous=gpFF11Opts; gpFF11Opts=&options;
+    int count=0; auto* model=Model_FF11_LoadDAT(bytes.data(),static_cast<int>(bytes.size()),count,&rapi);
+    gpFF11Opts=previous;
+    Check(model!=nullptr,"load installed Bastok Markets geometry");
+    if(!model) return;
+    ZoneModelRenderMetadata::Prepare(model,device);
+    ModelRenderer::Context context; context.device=device; context.rendersZoneObjects=true;
+    context.geometryPass=ModelRenderer::GeometryPass::Opaque;
+    context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
+    context.useAuthoredLightDirection=true; context.authoredMainLightDirection[0]=.6f;
+    context.authoredMainLightDirection[1]=-.7f; context.authoredMainLightDirection[2]=.4f;
+    context.cameraPosition[0]=-276; context.cameraPosition[1]=-24; context.cameraPosition[2]=-42;
+    context.minuteOfDay=720;
+    context.shadowOpacity=.5f;
+    const auto view=D3DMath::BuildLookAtLH(-276,-24,-42,-276,-12.93f,-68);
+    const auto projection=D3DMath::BuildPerspectiveFovLH(.9f,1,.1f,1000);
+    const auto identity=D3DMath::BuildIdentity();
+    const auto draw=[&](bool shadows)
+    {
+        device->SetTransform(D3DTS_VIEW,&view); device->SetTransform(D3DTS_PROJECTION,&projection);
+        ModelRenderer::BeginDirectionalShadowFrame();
+        ModelRenderer::PrepareFixedFunctionPass(context,identity);
+        ModelRenderer::DrawGeometry(context,model,identity);
+        if(shadows) Check(ModelRenderer::DrawDirectionalShadowFrame(),"render installed zone sunlight shadows");
+        else ModelRenderer::BeginDirectionalShadowFrame();
+        auto transparent=context; transparent.geometryPass=ModelRenderer::GeometryPass::Transparent;
+        ModelRenderer::PrepareFixedFunctionPass(transparent,identity);
+        ModelRenderer::DrawGeometry(transparent,model,identity);
+        CheckBaseline(device);
+    };
+    const auto baseline=Frame(device,[&]{draw(false);},output/"bastok-sun-disabled.bmp");
+    const auto shadow=Frame(device,[&]{draw(true);},output/"bastok-sun-shadow.bmp");
+    int changed=0;
+    for(size_t i=0;i<baseline.size();++i) if(baseline[i]!=shadow[i]) ++changed;
+    Check(changed>20,"sunlight occlusion visibly changes installed Bastok terrain");
+    std::cout<<"Bastok sunlight shadow pixels: "<<changed<<'\n';
+    ModelRenderer::ReleaseDirectionalShadowResources();
+}
 }
 int main(int argc, char** argv)
 {
-    const std::filesystem::path output = argc > 1 ? argv[1] : "tests/bin/material-rendering/captures";
+    if (argc == 3 && std::string(argv[1]) == "--shadow-temporal")
+    {
+        Device device;
+        Check(device.Create(true),"create temporal shadow validation device");
+        if(!device.gpu) return 2;
+        TestTemporalShadowEdges(device.gpu.ptr,argv[2]);
+        TestHighResolutionShadowSlope(device.gpu.ptr,size,std::filesystem::path(argv[2])/"128");
+        Device fullResolution;
+        Check(fullResolution.Create(true,D3DMULTISAMPLE_NONE,1920),"create full-resolution shadow validation device");
+        if(fullResolution.gpu) TestHighResolutionShadowSlope(fullResolution.gpu.ptr,1920,
+            std::filesystem::path(argv[2])/"1920");
+        std::cout<<"Temporal shadows: "<<assertions<<" assertions, "<<failures<<" failures\n";
+        return failures ? 1 : 0;
+    }
+    if (argc == 4 && std::string(argv[1]) == "--zone-fog")
+    {
+        std::filesystem::create_directories(argv[3]);
+        Device device;
+        Check(device.Create(true, D3DMULTISAMPLE_NONE, 640), "create hardware zone fog capture device");
+        if (!device.gpu) return 2;
+        TestInstalledZoneFog(device.gpu.ptr, argv[2], argv[3]);
+        std::cout << "Installed zone fog: " << assertions << " assertions, " << failures << " failures\n";
+        return failures ? 1 : 0;
+    }
+    const bool materialsOnly = argc == 3 && std::string(argv[1]) == "--materials-only";
+    const std::filesystem::path output = materialsOnly ? argv[2] :
+        (argc > 1 ? argv[1] : "tests/bin/material-rendering/captures");
     std::filesystem::create_directories(output);
     TestEnvironmentInterpolation();
     Device device;
@@ -487,10 +1013,42 @@ int main(int argc, char** argv)
     Check(CustomTextureAssets::SupportsPbr(device.gpu.ptr),
         "optional metallic/roughness PBR shader compiles on the D3D9 device");
     TestAlpha(device.gpu.ptr,output);
+    TestUiShader(device.gpu.ptr);
     TestTextureTransitions(device.gpu.ptr,output);
     TestClassicBumpMapping(device.gpu.ptr,output);
     TestDepthOrdering(device.gpu.ptr,output);
     TestFog(device.gpu.ptr,output);
+    if (materialsOnly)
+    {
+        std::cout << "Material/depth/fog (without shadows): " << assertions << " assertions, " << failures << " failures\n";
+        return failures ? 1 : 0;
+    }
+    TestDirectionalShadows(device.gpu.ptr,output);
+    TestLayeredDirectionalShadows(device.gpu.ptr,output);
+    TestTemporalShadowEdges(device.gpu.ptr,output);
+    TestHighResolutionShadowSlope(device.gpu.ptr,size,output/"slope-128");
+    if(argc>2) TestInstalledSunShadows(device.gpu.ptr,argv[2],output);
+    Device hardware;
+    Check(hardware.Create(true),"create hardware vertex-processing shadow validation device");
+    if(hardware.gpu)
+    {
+        TestDirectionalShadows(hardware.gpu.ptr,output/"hardware");
+        TestLayeredDirectionalShadows(hardware.gpu.ptr,output/"hardware");
+    }
+    if(hardware.d3d && SUCCEEDED(hardware.d3d->CheckDeviceMultiSampleType(D3DADAPTER_DEFAULT,
+        D3DDEVTYPE_HAL,D3DFMT_X8R8G8B8,TRUE,D3DMULTISAMPLE_4_SAMPLES,nullptr)) &&
+        SUCCEEDED(hardware.d3d->CheckDeviceMultiSampleType(D3DADAPTER_DEFAULT,
+            D3DDEVTYPE_HAL,D3DFMT_D24S8,TRUE,D3DMULTISAMPLE_4_SAMPLES,nullptr)))
+    {
+        Device multisampled;
+        Check(multisampled.Create(true,D3DMULTISAMPLE_4_SAMPLES),"create 4x MSAA layered-shadow validation device");
+        if(multisampled.gpu) TestLayeredDirectionalShadows(multisampled.gpu.ptr,output/"msaa-4x");
+    }
+    {
+        Device fullResolution;
+        Check(fullResolution.Create(true,D3DMULTISAMPLE_NONE,1920),"create full-resolution grazing-shadow validation device");
+        if(fullResolution.gpu) TestHighResolutionShadowSlope(fullResolution.gpu.ptr,1920,output/"slope-1920");
+    }
     std::cout << "Material/depth/fog: " << assertions << " assertions, " << failures << " failures\n";
     return failures ? 1 : 0;
 }

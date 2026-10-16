@@ -1,62 +1,44 @@
 #pragma once
 
 #include <d3d9.h>
+#include "renderer_interface.h"
+#include "d3d9_graphics.h"
 
 namespace D3D9Device
 {
-    enum class InitializeResult
-    {
-        Success,
-        Direct3DUnavailable,
-        NoSupportedDevice,
-    };
-
-    enum class FrameStatus
-    {
-        Ready,
-        Uninitialized,
-        DeviceLost,
-        ResetFailed,
-    };
-
-    struct DisplayConfiguration
-    {
-        bool borderless = false;
-        bool fullscreen = false;
-        int width = 1280;
-        int height = 720;
-        int renderWidth = 1280;
-        int renderHeight = 720;
-        int antiAliasingSamples = 0;
-        int postProcessAntiAliasingMode = 0;
-    };
-
-    using DefaultPoolCallback = void (*)();
+    using InitializeResult = RendererBackend::InitializeResult;
+    using FrameStatus = RendererBackend::FrameStatus;
+    using DisplayConfiguration = RendererBackend::DisplayConfiguration;
+    using DefaultPoolCallback = RendererBackend::DefaultPoolCallback;
 
     // Owns the D3D9 interfaces and all presentation/reset state. Rendering
     // code may borrow Device(), but it must not retain or release that pointer.
-    class Runtime final
+    class Runtime final : public RendererBackend::Interface
     {
     public:
         Runtime() = default;
-        ~Runtime();
+        ~Runtime() override;
 
         Runtime(const Runtime&) = delete;
         Runtime& operator=(const Runtime&) = delete;
 
         void SetDefaultPoolCallbacks(DefaultPoolCallback releaseResources,
-                                     DefaultPoolCallback recreateResources);
-        InitializeResult Initialize(HWND window, const DisplayConfiguration& display);
-        bool ApplyDisplayConfiguration(const DisplayConfiguration& display);
-        bool Resize(int clientWidth, int clientHeight);
-        FrameStatus PrepareFrame();
-        HRESULT ResolveFrame();
-        HRESULT Present();
-        void Shutdown();
+                                     DefaultPoolCallback recreateResources) override;
+        InitializeResult Initialize(HWND window, const DisplayConfiguration& display) override;
+        bool ApplyDisplayConfiguration(const DisplayConfiguration& display) override;
+        bool Resize(int clientWidth, int clientHeight) override;
+        FrameStatus PrepareFrame() override;
+        HRESULT ResolveFrame() override;
+        HRESULT Present() override;
+        RendererBackend::OverlayContext* AcquireOverlay() override
+        { return D3D9Graphics::AcquireOverlay(device_); }
+        void Shutdown() override;
 
         IDirect3DDevice9* Device() const { return device_; }
-        bool IsInitialized() const { return device_ != nullptr; }
-        bool IsDeviceLost() const { return deviceLost_; }
+        IDirect3DDevice9* LegacyD3D9Device() const override { return device_; }
+        bool IsInitialized() const override { return device_ != nullptr; }
+        bool IsDeviceLost() const override { return deviceLost_; }
+        RendererBackend::Graphics& GetGraphics() override { return graphics_; }
 
     private:
         bool ResetWithBackBufferSize(int width, int height);
@@ -67,9 +49,10 @@ namespace D3D9Device
         void ReleaseMultisampleTargets();
         bool CreatePostProcessResources();
         void ReleasePostProcessResources();
-        HRESULT ApplyPostProcess(IDirect3DSurface9* backBuffer);
+        HRESULT ApplyPostProcess(RendererBackend::RenderTarget* backBuffer);
 
         HWND window_ = nullptr;
+        D3D9Graphics::Context graphics_;
         IDirect3D9* d3d_ = nullptr;
         IDirect3DDevice9* device_ = nullptr;
         D3DPRESENT_PARAMETERS parameters_ = {};
@@ -78,17 +61,17 @@ namespace D3D9Device
         DefaultPoolCallback recreateResources_ = nullptr;
         bool deviceLost_ = false;
         bool applyingDisplayConfiguration_ = false;
-        IDirect3DSurface9* multisampleColor_ = nullptr;
-        IDirect3DSurface9* multisampleDepth_ = nullptr;
-        IDirect3DTexture9* sceneTexture_ = nullptr;
-        IDirect3DTexture9* edgeTexture_ = nullptr;
-        IDirect3DTexture9* blendTexture_ = nullptr;
-        IDirect3DVertexShader9* fullscreenVertexShader_ = nullptr;
-        IDirect3DVertexDeclaration9* fullscreenVertexDeclaration_ = nullptr;
-        IDirect3DPixelShader9* fxaaShader_ = nullptr;
-        IDirect3DPixelShader9* smaaEdgeShader_ = nullptr;
-        IDirect3DPixelShader9* smaaBlendShader_ = nullptr;
-        IDirect3DPixelShader9* smaaNeighborhoodShader_ = nullptr;
+        RendererBackend::RenderTarget* multisampleColor_ = nullptr;
+        RendererBackend::RenderTarget* multisampleDepth_ = nullptr;
+        RendererBackend::RenderTarget* sceneTexture_ = nullptr;
+        RendererBackend::RenderTarget* edgeTexture_ = nullptr;
+        RendererBackend::RenderTarget* blendTexture_ = nullptr;
+        RendererBackend::Shader* fullscreenVertexShader_ = nullptr;
+        RendererBackend::VertexLayout* fullscreenVertexDeclaration_ = nullptr;
+        RendererBackend::Shader* fxaaShader_ = nullptr;
+        RendererBackend::Shader* smaaEdgeShader_ = nullptr;
+        RendererBackend::Shader* smaaBlendShader_ = nullptr;
+        RendererBackend::Shader* smaaNeighborhoodShader_ = nullptr;
         bool frameResolved_ = true;
     };
 
@@ -100,6 +83,6 @@ namespace D3D9Device
                                    int viewportHeight, POINT point);
     int BeginGdiViewportMapping(HDC hdc, HWND window, int viewportWidth,
                                 int viewportHeight);
-    void PrepareScreenSpaceUiRenderState(IDirect3DDevice9* device, DWORD vertexFvf);
+    void PrepareScreenSpaceUiRenderState(IDirect3DDevice9* device, RendererBackend::BuiltinVertexLayout layout);
 
 }

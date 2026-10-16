@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "zone_object_transform.h"
 
 #include "d3d_math.h"
@@ -24,10 +25,10 @@ void ApplyWorldTransform(IDirect3DDevice9 *device, const std::string& objectName
         if (overrideIt != overrides.end())
         {
             const D3DMATRIX world = BuildWorldMatrix(overrideIt->second);
-            device->SetTransform(D3DTS_WORLD, &world);
+            D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &world._11);
             return;
         }
     }
-    device->SetTransform(D3DTS_WORLD, &baseWorld);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &baseWorld._11);
 }
 }

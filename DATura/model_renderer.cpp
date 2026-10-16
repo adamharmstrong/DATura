@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "model_renderer.h"
 
 #include "d3d_math.h"
@@ -15,6 +16,7 @@
 
 namespace ModelRenderer
 {
+#include "directional_shadow_map.inl"
 namespace
 {
 float EvaluatePointLightKeyframe(const ff11KeyframeRecord_t* keyframe,
@@ -74,7 +76,7 @@ void ApplyAuthoredPointLights(const Context& context, const float referencePosit
     constexpr int kFirstPointLight = 2;
     constexpr int kPointLightSlots = 6;
     for (int slot = 0; slot < kPointLightSlots; ++slot)
-        context.device->LightEnable(kFirstPointLight + slot, FALSE);
+        D3D9Graphics::Context(context.device).EnableLight(kFirstPointLight + slot, false);
 
     if (context.lightingQuality <= 0 || !context.authoredGenerators)
         return;
@@ -162,15 +164,15 @@ void ApplyAuthoredPointLights(const Context& context, const float referencePosit
     for (int index = 0; index < count; ++index)
     {
         const Candidate& candidate = candidates[index];
-        D3DLIGHT9 light = {};
-        light.Type = D3DLIGHT_POINT;
-        light.Diffuse = { candidate.red, candidate.green, candidate.blue, 1.0f };
-        light.Position = candidate.position;
-        light.Range = candidate.range;
-        light.Attenuation0 = 1.0f;
-        light.Attenuation1 = 1.0f / candidate.range;
-        context.device->SetLight(kFirstPointLight + index, &light);
-        context.device->LightEnable(kFirstPointLight + index, TRUE);
+        RendererBackend::Light light = {};
+        light.type = RendererBackend::LightType::Point;
+        light.diffuse = { candidate.red, candidate.green, candidate.blue, 1.0f };
+        light.position = {candidate.position.x, candidate.position.y, candidate.position.z};
+        light.range = candidate.range;
+        light.attenuation0 = 1.0f;
+        light.attenuation1 = 1.0f / candidate.range;
+        D3D9Graphics::Context(context.device).SetLight(kFirstPointLight + index, light);
+        D3D9Graphics::Context(context.device).EnableLight(kFirstPointLight + index, true);
     }
 }
 
@@ -287,32 +289,31 @@ bool IsGroundLikeShadowCaster(const noesisModel_t::Submesh& submesh)
 void ApplyPlanarShadowState(IDirect3DDevice9* device, const D3DMATRIX& shadowWorld,
                             const Context& context)
 {
-    device->SetFVF(FFXI_VERTEX_FVF);
-    device->SetTransform(D3DTS_WORLD, &shadowWorld);
-    device->SetPixelShader(nullptr);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_COLORVERTEX, FALSE);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-    device->SetRenderState(D3DRS_DEPTHBIAS,
-        D3DModelRenderState::FloatBits(-0.00001f));
-    device->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetTexture(0, nullptr);
-    device->SetTexture(1, nullptr);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &shadowWorld._11);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::vertexColor, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthCompare, RendererBackend::Compare::LessEqual);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthBias, RendererBackend::FloatFromBits(D3DModelRenderState::FloatBits(-0.00001f)));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::slopeDepthBias, RendererBackend::FloatFromBits(0));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).BindTexture(0, nullptr);
+    D3D9Graphics::Context(device).BindTexture(1, nullptr);
     const DWORD alpha = static_cast<DWORD>(std::clamp(context.shadowOpacity, 0.0f, 1.0f) * 255.0f);
-    device->SetRenderState(D3DRS_TEXTUREFACTOR, context.shadowDebugVisualization
+    D3D9Graphics::Context(device).SetTextureFactor(context.shadowDebugVisualization
         ? D3DCOLOR_ARGB(alpha, 220, 24, 24) : D3DCOLOR_ARGB(alpha, 0, 0, 0));
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TFACTOR);
-    device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-    device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::SelectArg1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Factor);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::SelectArg1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Factor);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Disable);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Disable);
 }
 
 void ApplyWaterMaterial(IDirect3DDevice9* device, const noesisModel_t::Submesh& mesh,
@@ -320,22 +321,21 @@ void ApplyWaterMaterial(IDirect3DDevice9* device, const noesisModel_t::Submesh& 
 {
     const auto& water = *mesh.water;
     const auto* texture = mesh.pResolvedTexture;
-    IDirect3DTexture9* d3dTexture = texture ? texture->pD3DTex : nullptr;
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE,
-        water.twoSided || !mesh.pResolvedMaterial || (mesh.pResolvedMaterial->flags & NMATFLAG_TWOSIDED)
-            ? D3DCULL_NONE : D3DCULL_CW);
-    device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-    D3DBLEND source = D3DBLEND_SRCALPHA;
-    D3DBLEND destination = D3DBLEND_INVSRCALPHA;
+    IDirect3DTexture9* d3dTexture = texture ? D3D9Graphics::NativeTexture(texture->gpuTexture) : nullptr;
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, water.twoSided || !mesh.pResolvedMaterial || (mesh.pResolvedMaterial->flags & NMATFLAG_TWOSIDED)
+            ? RendererBackend::Cull::None : RendererBackend::Cull::Clockwise);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blendOperation, RendererBackend::BlendOperation::Add);
+    RendererBackend::BlendFactor source = RendererBackend::BlendFactor::SourceAlpha;
+    RendererBackend::BlendFactor destination = RendererBackend::BlendFactor::InverseSourceAlpha;
     switch (water.blendMode & 0xff)
     {
-    case 0x00: source = D3DBLEND_ONE; destination = D3DBLEND_ZERO; break;
-    case 0x46: case 0x47: source = D3DBLEND_ZERO; break;
-    case 0x48: case 0x49: case 0x68: destination = D3DBLEND_ONE; break;
+    case 0x00: source = RendererBackend::BlendFactor::One; destination = RendererBackend::BlendFactor::Zero; break;
+    case 0x46: case 0x47: source = RendererBackend::BlendFactor::Zero; break;
+    case 0x48: case 0x49: case 0x68: destination = RendererBackend::BlendFactor::One; break;
     }
-    device->SetRenderState(D3DRS_SRCBLEND, source);
-    device->SetRenderState(D3DRS_DESTBLEND, destination);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, source);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, destination);
     D3DModelRenderState::SetTextureStageForOptionalTexture(device, d3dTexture, D3DTOP_MODULATE2X);
     device->SetTexture(1, d3dTexture);
     const bool shader = D3DModelRenderState::SetFfxiTexturePixelShader(device, true,
@@ -347,27 +347,27 @@ void ApplyWaterMaterial(IDirect3DDevice9* device, const noesisModel_t::Submesh& 
         // alpha. Stage one supplies the shader's RGB doubling and generator tint.
         if (!d3dTexture)
         {
-            device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_ADD);
-            device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
-            device->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+            D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Add);
+            D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Diffuse);
+            D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg2, RendererBackend::TextureArgument::Diffuse);
         }
         const float fallbackScale = d3dTexture ? 0.5f : 1.0f;
-        device->SetRenderState(D3DRS_TEXTUREFACTOR, D3DCOLOR_COLORVALUE(
+        D3D9Graphics::Context(device).SetTextureFactor(D3DCOLOR_COLORVALUE(
             std::clamp(state.colorScale[0] * fallbackScale, 0.0f, 1.0f),
             std::clamp(state.colorScale[1] * fallbackScale, 0.0f, 1.0f),
             std::clamp(state.colorScale[2] * fallbackScale, 0.0f, 1.0f), state.opacity));
-        device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
-        device->SetTextureStageState(1, D3DTSS_COLORARG1, D3DTA_CURRENT);
-        device->SetTextureStageState(1, D3DTSS_COLORARG2, D3DTA_TFACTOR);
-        device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
-        device->SetTextureStageState(1, D3DTSS_ALPHAARG1, D3DTA_CURRENT);
-        device->SetTextureStageState(1, D3DTSS_ALPHAARG2, D3DTA_TFACTOR);
+        D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Modulate2X);
+        D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Current);
+        D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorArg2, RendererBackend::TextureArgument::Factor);
+        D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Modulate);
+        D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Current);
+        D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaArg2, RendererBackend::TextureArgument::Factor);
     }
     D3DMATRIX uv = D3DMath::BuildIdentity();
     uv._31 = state.uvOffset[0];
     uv._32 = state.uvOffset[1];
-    device->SetTransform(D3DTS_TEXTURE0, &uv);
-    device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT2);
+    D3D9Graphics::Context(device).SetTextureTransform(0, &uv._11);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Count2);
 }
 }
 
@@ -397,6 +397,7 @@ void TextureScrollState::Update(IDirect3DDevice9* const device,
 void DrawActorPlanarShadow(const Context& context, noesisModel_t* const model,
                            const D3DMATRIX& baseWorld)
 {
+    if (DirectionalShadowMap::active) return;
     IDirect3DDevice9* const device = context.device;
     if (!device || !model || context.rendersZoneObjects ||
         !context.dynamicActorShadows)
@@ -437,12 +438,13 @@ void DrawActorPlanarShadow(const Context& context, noesisModel_t* const model,
     ApplyPlanarShadowState(device, shadowWorld, context);
     for (const size_t index : model->opaqueSubmeshOrder)
         D3DModelBuffers::DrawSubmesh(device, model, model->submeshes[index]);
-    device->SetTransform(D3DTS_WORLD, &baseWorld);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &baseWorld._11);
 }
 
 void DrawZoneObjectPlanarShadows(const Context& context, noesisModel_t* const model,
                                  const D3DMATRIX& baseWorld)
 {
+    if (DirectionalShadowMap::active) return;
     IDirect3DDevice9* const device = context.device;
     if (!device || !model || !context.rendersZoneObjects ||
         !context.dynamicObjectShadows)
@@ -553,14 +555,14 @@ void DrawZoneObjectPlanarShadows(const Context& context, noesisModel_t* const mo
             lastReport = now;
         }
     }
-    device->SetTransform(D3DTS_WORLD, &baseWorld);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &baseWorld._11);
 }
 
 void PrepareFixedFunctionPass(const Context& context, const D3DMATRIX& baseWorld)
 {
     if (!context.device)
         return;
-    context.device->SetFVF(FFXI_VERTEX_FVF);
+    D3D9Graphics::Context(context.device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model);
     D3DModelRenderState::ApplyFixedFunctionModelState(
         context.device, context.enableMipMapping);
     D3DModelRenderState::ApplyDynamicLighting(
@@ -573,55 +575,58 @@ void PrepareFixedFunctionPass(const Context& context, const D3DMATRIX& baseWorld
         context.useAuthoredLightDirection, context.authoredMainLightDirection);
     const bool fogEnabled = context.useAuthoredFog &&
         std::isfinite(context.authoredFogNear) && std::isfinite(context.authoredFogFar) &&
+        context.authoredFogFar > 0.0f &&
         context.authoredFogFar > context.authoredFogNear;
-    context.device->SetRenderState(D3DRS_FOGENABLE, fogEnabled ? TRUE : FALSE);
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::fog, ((fogEnabled ? TRUE : FALSE) != FALSE));
     if (fogEnabled)
     {
-        context.device->SetRenderState(D3DRS_FOGCOLOR, context.authoredFogColor);
-        context.device->SetRenderState(D3DRS_FOGTABLEMODE, D3DFOG_NONE);
-        context.device->SetRenderState(D3DRS_FOGVERTEXMODE, D3DFOG_LINEAR);
-        context.device->SetRenderState(
-            D3DRS_FOGSTART, D3DModelRenderState::FloatBits(context.authoredFogNear));
-        context.device->SetRenderState(
-            D3DRS_FOGEND, D3DModelRenderState::FloatBits(context.authoredFogFar));
+        D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::fogColor, uint32_t(context.authoredFogColor));
+        D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::fogTableMode, RendererBackend::FogMode::None);
+        D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::fogVertexMode, RendererBackend::FogMode::Linear);
+        D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::fogStart, RendererBackend::FloatFromBits(D3DModelRenderState::FloatBits(context.authoredFogNear)));
+        D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::fogEnd, RendererBackend::FloatFromBits(D3DModelRenderState::FloatBits(context.authoredFogFar)));
     }
     ApplyAuthoredPointLights(context, context.cameraPosition);
-    context.device->SetRenderState(D3DRS_ZENABLE, TRUE);
-    context.device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-    context.device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    context.device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    context.device->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESS);
-    context.device->SetRenderState(D3DRS_DEPTHBIAS, 0);
-    context.device->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-    context.device->SetTransform(D3DTS_WORLD, &baseWorld);
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((TRUE) != FALSE));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::blend, ((FALSE) != FALSE));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::depthCompare, RendererBackend::Compare::Less);
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::depthBias, RendererBackend::FloatFromBits(0));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::slopeDepthBias, RendererBackend::FloatFromBits(0));
+    D3D9Graphics::Context(context.device).SetTransform(RendererBackend::Transform::World, &baseWorld._11);
 }
 
 void DrawOpaqueBatch(const Context& context,
-                     D3DModelRenderState::MaterialBindingCache& cache,
+                     RendererBackend::MaterialBindingCache& cache,
                      TextureScrollState& textureAnimation, noesisModel_t* const model,
                      const noesisModel_t::OpaqueBatch& batch)
 {
+    D3DModelRenderState::Materials fallbackMaterials(context.device);
     if (!context.device || !model)
         return;
-    D3DModelRenderState::ApplyOpaqueMaterial(
-        context.device, cache, batch.pMaterial, batch.pTexture,
+    (context.materials ? *context.materials : static_cast<RendererBackend::Materials&>(fallbackMaterials)).ApplyOpaque(
+        cache, batch.pMaterial, batch.pTexture,
         context.enableBumpMapping && context.rendersZoneObjects,
         context.bumpMappingIntensity);
     textureAnimation.Update(
         context.device, context.rendersZoneObjects && batch.animatedWater,
         0.012f, 0.006f);
-    D3DModelBuffers::DrawOpaqueBatch(context.device, model, batch);
+    if (context.graphics) D3DModelBuffers::DrawOpaqueBatch(*context.graphics, model, batch);
+    else D3DModelBuffers::DrawOpaqueBatch(context.device, model, batch);
 }
 
 void DrawGeometry(const Context& context, noesisModel_t* pModel,
                   const D3DMATRIX& baseWorld)
 {
+    D3DModelRenderState::Materials fallbackMaterials(context.device);
     if (!context.device || !pModel)
         return;
+    DirectionalShadowMap::Submit(context, pModel, baseWorld);
     ModelRenderer::TextureScrollState textureAnimation;
     textureAnimation.Reset(context.device);
 
-    D3DModelRenderState::MaterialBindingCache materialCache;
+    RendererBackend::MaterialBindingCache materialCache;
 
     const auto& renderVisibility = context.visibility;
     const float wind = ZoneVegetationAnimation::Weight(
@@ -681,18 +686,19 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
             if (sm.hasBounds)
             {
                 D3DMATRIX objectWorld = baseWorld;
-                context.device->GetTransform(D3DTS_WORLD, &objectWorld);
+                D3D9Graphics::Context(context.device).QueryTransform(RendererBackend::Transform::World, &objectWorld._11);
                 float worldCenter[3] = {};
                 TransformPoint(objectWorld, sm.boundsCenter, worldCenter);
                 ApplyAuthoredPointLights(context, worldCenter);
             }
-            D3DModelRenderState::ApplyOpaqueMaterial(
-                context.device, materialCache, sm.pResolvedMaterial, sm.pResolvedTexture,
+            (context.materials ? *context.materials : static_cast<RendererBackend::Materials&>(fallbackMaterials)).ApplyOpaque(
+                materialCache, sm.pResolvedMaterial, sm.pResolvedTexture,
                 context.enableBumpMapping && context.rendersZoneObjects,
                 context.bumpMappingIntensity);
             textureAnimation.Update(
                 context.device, context.rendersZoneObjects && sm.animatedWater, 0.012f, 0.006f);
-            D3DModelBuffers::DrawSubmesh(context.device, pModel, sm);
+            if (context.graphics) D3DModelBuffers::DrawSubmesh(*context.graphics, pModel, sm);
+            else D3DModelBuffers::DrawSubmesh(context.device, pModel, sm);
         }
     }
 
@@ -737,17 +743,19 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
             return a.distanceSq > b.distanceSq;
         });
 
-    context.device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    context.device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    context.device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    context.device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    context.device->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-    context.device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    context.device->SetRenderState(D3DRS_DEPTHBIAS, D3DModelRenderState::FloatBits(-0.000001f));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::blend, ((TRUE) != FALSE));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::depthCompare, RendererBackend::Compare::LessEqual);
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::depthBias, RendererBackend::FloatFromBits(D3DModelRenderState::FloatBits(-0.000001f)));
     materialCache.Invalidate();
 
-    DWORD sceneLighting = FALSE;
-    context.device->GetRenderState(D3DRS_LIGHTING, &sceneLighting);
+    RendererBackend::LightingState sceneLightingState;
+    bool sceneLighting = false;
+    if (D3D9Graphics::Context(context.device).QueryLightingState(sceneLightingState))
+        sceneLighting = sceneLightingState.enabled.value_or(false);
     const double seconds = context.animationSeconds >= 0.0 && std::isfinite(context.animationSeconds)
         ? context.animationSeconds : GetTickCount64() * 0.001;
     bool previousWater = false;
@@ -761,14 +769,14 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
         if (sm.hasBounds)
         {
             D3DMATRIX objectWorld = baseWorld;
-            context.device->GetTransform(D3DTS_WORLD, &objectWorld);
+            D3D9Graphics::Context(context.device).QueryTransform(RendererBackend::Transform::World, &objectWorld._11);
             float worldCenter[3] = {};
             TransformPoint(objectWorld, sm.boundsCenter, worldCenter);
             ApplyAuthoredPointLights(context, worldCenter);
         }
         if (sm.water)
         {
-            const auto state = ZoneWater::Evaluate(*sm.water, context.minuteOfDay, seconds);
+            const auto state = ZoneWater::Evaluate(*sm.water, static_cast<int>(context.minuteOfDay), seconds);
             if (state.opacity <= 0.0f) continue;
             ApplyWaterMaterial(context.device, sm, state);
             materialCache.Invalidate();
@@ -778,32 +786,33 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
         {
             if (previousWater)
             {
-                context.device->SetRenderState(D3DRS_LIGHTING, sceneLighting);
-                context.device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-                context.device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-                context.device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-                context.device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-                context.device->SetTexture(1, nullptr);
-                context.device->SetPixelShader(nullptr);
+                D3D9Graphics::Context(context.device).SetLightingField(&RendererBackend::LightingState::enabled, (sceneLighting != FALSE));
+                D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+                D3D9Graphics::Context(context.device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
+                D3D9Graphics::Context(context.device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Disable);
+                D3D9Graphics::Context(context.device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Disable);
+                D3D9Graphics::Context(context.device).BindTexture(1, nullptr);
+                D3D9Graphics::Context(context.device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
                 textureAnimation.Reset(context.device);
                 previousWater = false;
             }
-            D3DModelRenderState::ApplyTransparentMaterial(
-                context.device, materialCache, sm.pResolvedMaterial, sm.pResolvedTexture,
+            (context.materials ? *context.materials : static_cast<RendererBackend::Materials&>(fallbackMaterials)).ApplyTransparent(
+                materialCache, sm.pResolvedMaterial, sm.pResolvedTexture,
                 context.enableBumpMapping && context.rendersZoneObjects,
                 context.bumpMappingIntensity);
             textureAnimation.Update(
                 context.device, context.rendersZoneObjects && sm.animatedWater, -0.009f, 0.004f);
         }
-        D3DModelBuffers::DrawSubmesh(context.device, pModel, sm);
+        if (context.graphics) D3DModelBuffers::DrawSubmesh(*context.graphics, pModel, sm);
+        else D3DModelBuffers::DrawSubmesh(context.device, pModel, sm);
     }
 
     if (previousWater)
     {
-        context.device->SetRenderState(D3DRS_LIGHTING, sceneLighting);
-        context.device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-        context.device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-        context.device->SetTexture(1, nullptr);
+        D3D9Graphics::Context(context.device).SetLightingField(&RendererBackend::LightingState::enabled, (sceneLighting != FALSE));
+        D3D9Graphics::Context(context.device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Disable);
+        D3D9Graphics::Context(context.device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Disable);
+        D3D9Graphics::Context(context.device).BindTexture(1, nullptr);
         textureAnimation.Reset(context.device);
     }
 
@@ -817,22 +826,22 @@ void RestoreModelPassState(IDirect3DDevice9* const device,
 {
     if (!device)
         return;
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-    device->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESS);
-    device->SetRenderState(D3DRS_DEPTHBIAS, 0);
-    device->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-    device->SetTexture(0, nullptr);
-    device->SetTexture(1, nullptr);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blendOperation, RendererBackend::BlendOperation::Add);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthCompare, RendererBackend::Compare::Less);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthBias, RendererBackend::FloatFromBits(0));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::slopeDepthBias, RendererBackend::FloatFromBits(0));
+    D3D9Graphics::Context(device).BindTexture(0, nullptr);
+    D3D9Graphics::Context(device).BindTexture(1, nullptr);
     textureAnimation.Update(device, false, 0.0f, 0.0f);
-    device->SetPixelShader(nullptr);
-    device->SetTransform(D3DTS_WORLD, &baseWorld);
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE2X);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &baseWorld._11);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Modulate2X);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Modulate2X);
     device->SetStreamSource(0, nullptr, 0, 0);
     device->SetIndices(nullptr);
 }

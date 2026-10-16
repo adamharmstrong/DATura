@@ -159,7 +159,8 @@ Capture CaptureTarget(IDirect3DDevice9* device, const std::filesystem::path& out
 
 
 Capture DrawSky(IDirect3DDevice9* device, noesisModel_t* model, int minute,
-                bool missingCurves, const std::filesystem::path& output, const char *weatherPath = "f_ko/weat/fine")
+                bool missingCurves, const std::filesystem::path& output, const char *weatherPath = "f_ko/weat/fine",
+                int celestialFocus = 0)
 {
     auto generators = gFF11LastGeneratorRecords;
     auto curves = gFF11LastKeyframeRecords;
@@ -177,7 +178,24 @@ Capture DrawSky(IDirect3DDevice9* device, noesisModel_t* model, int minute,
     for (size_t i = 0; i < cache.weatherGroups.size(); ++i)
         if (!strcmp(cache.weatherGroups[i]->directoryPath, weatherPath)) weather = static_cast<int>(i);
     ZoneEnvironmentState::Update(env, cache, weather, gFF11LastEnvironmentRecords, minute);
-    const auto view = D3DMath::BuildLookAtLH(-307.369f, -20.025f, 233.480f, -284.089f, -41.906f, 328.520f);
+    auto view = D3DMath::BuildLookAtLH(-307.369f, -20.025f, 233.480f, -284.089f, -41.906f, 328.520f);
+    if (celestialFocus)
+    {
+        const unsigned char mode = minute < 720 ? 14 : 15;
+        ff11GeneratorRecord_t probe = {};
+        probe.attachmentMode = mode;
+        ZoneEnvironmentRenderState::Data state;
+        state.generator = &probe;
+        const auto world = ZoneEnvironmentRenderState::BuildCelestialWorld(state, minute,
+            -307.369f, -20.025f, 233.480f);
+        view = D3DMath::BuildLookAtLH(-307.369f, -20.025f, 233.480f,
+            world._41, world._42, world._43);
+        for (auto& g : generators)
+        {
+            if (g.attachmentMode != mode || celestialFocus == 2) g.generatorFlags &= ~0x10u;
+            if (celestialFocus == 3) { g.hasColor = true; g.colorBgra &= 0x00ffffffu; }
+        }
+    }
     const auto projection = D3DMath::BuildPerspectiveFovLH(3.14159265f / 4, 1, 0.1f, 3000);
     device->SetTransform(D3DTS_VIEW, &view);
     device->SetTransform(D3DTS_PROJECTION, &projection);
@@ -192,7 +210,7 @@ Capture DrawSky(IDirect3DDevice9* device, noesisModel_t* model, int minute,
     sky.ringColors = env.ringColors;
     ZoneSkyDome::Draw(device, sky, -307.369f, -20.025f, 233.480f, 3000);
     ZoneEnvironmentRenderState::DrawCameraShells(device, model, true, env.weatherPath,
-        generators, curves, -307.369f, -20.025f, 233.480f);
+        generators, curves, -307.369f, -20.025f, 233.480f, 1.0f, minute);
     device->EndScene();
     return CaptureTarget(device, output);
 }
@@ -230,6 +248,49 @@ int main(int argc, char** argv)
     Check(clouds == 2, "both fine cloud layers are tested");
     const std::filesystem::path output = "tests/bin/sky-rendering/captures";
     std::filesystem::create_directories(output);
+    int celestialGenerators = 0;
+    for (const auto& g : gFF11LastGeneratorRecords)
+    {
+        if (g.attachmentMode != 14 && g.attachmentMode != 15) continue;
+        ++celestialGenerators;
+        ZoneEnvironmentRenderState::Data state;
+        state.generator = &g;
+        Check(ZoneEnvironmentRenderState::IsCelestial(state), "celestial attachment is recognized");
+        const auto a = ZoneEnvironmentRenderState::BuildCelestialWorld(state, 300, 0, 0, 0);
+        const auto b = ZoneEnvironmentRenderState::BuildCelestialWorld(state, 300, 100, 200, 300);
+        Check(std::abs(b._41-a._41-100) < 0.001f &&
+              std::abs(b._42-a._42-200) < 0.001f &&
+              std::abs(b._43-a._43-300) < 0.001f, "celestial follows camera without parallax");
+    }
+    Check(celestialGenerators > 0, "real DAT supplies celestial generators");
+    ff11GeneratorRecord_t orbitProbe = {};
+    ZoneEnvironmentRenderState::Data orbitState;
+    orbitState.generator = &orbitProbe;
+    orbitProbe.attachmentMode = 14;
+    const auto sunNoon = ZoneEnvironmentRenderState::BuildCelestialWorld(orbitState, 720, 0, 0, 0);
+    const auto sunMidnight = ZoneEnvironmentRenderState::BuildCelestialWorld(orbitState, 0, 0, 0, 0);
+    orbitProbe.attachmentMode = 15;
+    const auto moonMidnight = ZoneEnvironmentRenderState::BuildCelestialWorld(orbitState, 0, 0, 0, 0);
+    Check(std::abs(sunNoon._42+1000) < 0.001f && std::abs(sunMidnight._42-1000) < 0.001f &&
+          std::abs(moonMidnight._42+900) < 0.001f, "sun and moon occupy correct native Y-down hemisphere and distance");
+    Check(std::abs(sunNoon._11*sunNoon._41 + sunNoon._12*sunNoon._42 + 1000) < 0.001f,
+          "celestial local +X faces camera");
+    for (int minute : {600, 1200})
+    {
+        const auto visible = DrawSky(device.device.ptr, model, minute, false,
+            output / ("celestial-"+std::to_string(minute)+".bmp"), "f_ko/weat/fine", 1);
+        const auto absent = DrawSky(device.device.ptr, model, minute, false,
+            {}, "f_ko/weat/fine", 2);
+        const auto faded = DrawSky(device.device.ptr, model, minute, false,
+            {}, "f_ko/weat/fine", 3);
+        Check(ChangedPixels(faded, absent) == 0, "authored alpha hides untextured celestial meshes");
+        const auto changed = ChangedPixels(visible, absent);
+        std::cout << "Celestial " << minute << " changed pixels: " << changed << '\n';
+        Check(changed > 100, "sun or moon produces actual pixels from authored mesh");
+        // The sun's authored 80x halo spans the sky; the 20x moon is bounded.
+        if (minute == 1200)
+            Check(changed < imageSize*imageSize/2, "moon remains bounded instead of becoming a slab");
+    }
     for (int minute : {0, 720})
     {
         const auto prefix = output / std::to_string(minute);

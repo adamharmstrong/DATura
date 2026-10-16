@@ -58,8 +58,8 @@ struct ff11Opts_t
     bool renderEnvironment;       // also render unplaced sky / weather / celestial map geometry
     bool renderWater;             // render supported generator-owned world water surfaces
     bool renderEffectMeshes;       // render decoded 0x1F/0x21 geometry and the base pose of 0x25 morph meshes
-    bool collectCollision;         // collect map triangles for runtime collision
-    bool collectCollisionUnreferenced; // include unreferenced collision/helper map geometry
+    bool collectCollision;         // decode authored zone collision; visual MMBs never imply collision
+    bool collectCollisionUnreferenced; // legacy caller compatibility; no visual/helper collision is inferred
     bool keepNames;               // retain chunk / object names on materials etc.
     bool optimizeGeo;             // call rpgOptimize() before constructing the final model
     bool preferPaletteOverDxt;     // for 0x81 combo textures, prefer palette source over client-like DXT
@@ -166,6 +166,7 @@ struct ff11GeneratorRecord_t
     char directoryPath[128];
     unsigned int sourceDataOffset; // payload offset within the source DAT; distinguishes reused generator names
     unsigned short attachFlags;
+    unsigned char attachmentMode; // low nibbles of generator header bytes 0 and 2
     unsigned short emissionVariance;
     unsigned short framesPerEmission;
     unsigned char particlesPerEmission;
@@ -368,6 +369,10 @@ struct ff11CollisionTriangle_t
 };
 
 extern std::vector<ff11CollisionTriangle_t> gFF11LastCollisionTriangles;
+// Explicit opt-in for a registered moving solid (door/lift), never static foliage.
+// Model vertices are scene-space; mirrorX converts them back to native DAT space.
+void Model_FF11_CollectMovingObjectCollision(const noesisModel_t* model,
+    ff11MapObjectDebug_t& object, bool mirrorX);
 
 struct ff11CollisionMeshDebug_t
 {

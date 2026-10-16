@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "custom_texture_assets.h"
 #include "noesis_rapi.h"
 
@@ -16,7 +17,7 @@ namespace
 {
 struct CachedTexture
 {
-    IDirect3DTexture9* texture = nullptr;
+    RendererBackend::Texture* texture = nullptr;
     int width = 0;
     int height = 0;
 };
@@ -27,13 +28,13 @@ bool g_pbrEnabled = false;
 std::string g_hdFolder;
 std::string g_pbrFolder;
 std::map<std::string, CachedTexture> g_cache;
-IDirect3DPixelShader9* g_pbrShader = nullptr;
+RendererBackend::Shader* g_pbrShader = nullptr;
 bool g_pbrShaderTried = false;
 
 void ClearCache()
 {
     for (auto& item : g_cache)
-        if (item.second.texture) item.second.texture->Release();
+        if (item.second.texture) delete item.second.texture;
     g_cache.clear();
 }
 
@@ -87,22 +88,15 @@ CachedTexture Load(const std::filesystem::path& path)
             if (SUCCEEDED(converter->CopyPixels(nullptr, width * 4,
                     static_cast<UINT>(pixels.size()), pixels.data())))
             {
-                IDirect3DTexture9* texture = nullptr;
-                if (SUCCEEDED(g_device->CreateTexture(width, height, 0, D3DUSAGE_AUTOGENMIPMAP,
-                        D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &texture, nullptr)))
-                {
-                    D3DLOCKED_RECT lock = {};
-                    if (SUCCEEDED(texture->LockRect(0, &lock, nullptr, 0)))
-                    {
-                        for (UINT y = 0; y < height; ++y)
-                            memcpy(static_cast<BYTE*>(lock.pBits) + y * lock.Pitch,
-                                pixels.data() + static_cast<size_t>(y) * width * 4, width * 4);
-                        texture->UnlockRect(0);
-                        texture->GenerateMipSubLevels();
-                        result = {texture, static_cast<int>(width), static_cast<int>(height)};
-                    }
-                    else texture->Release();
-                }
+                D3D9Graphics::Context graphics(g_device);
+                RendererBackend::TextureUpload upload;
+                upload.width = static_cast<int>(width);
+                upload.height = static_cast<int>(height);
+                upload.data = pixels.data();
+                upload.dataSize = pixels.size();
+                upload.allowMipFallback = false;
+                if (auto* texture = graphics.CreateTexture(upload))
+                    result = {texture, static_cast<int>(width), static_cast<int>(height)};
             }
         }
     }
@@ -137,18 +131,10 @@ bool EnsurePbrShader(IDirect3DDevice9* device)
         " float ta=(AlphaParams.y>.5)?saturate(a.a*1.875):a.a;\n"
         " float alpha=((AlphaParams.x>.5)?ta*saturate(diffuse.a*2):1)*AlphaParams.z;\n"
         " return float4(saturate(rgb),saturate(alpha)); }\n";
-    ID3DBlob* code = nullptr; ID3DBlob* errors = nullptr;
-    const HRESULT compiled = D3DCompile(source, sizeof(source) - 1, "DATuraPBR", nullptr,
-        nullptr, "main", "ps_3_0", 0, 0, &code, &errors);
-    if (FAILED(compiled))
-    {
-        if (errors) { OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer())); errors->Release(); }
-        return false;
-    }
-    const HRESULT created = device->CreatePixelShader(
-        static_cast<const DWORD*>(code->GetBufferPointer()), &g_pbrShader);
-    code->Release(); if (errors) errors->Release();
-    return SUCCEEDED(created);
+    D3D9Graphics::Context graphics(device);
+    g_pbrShader = graphics.CreateShader({RendererBackend::ShaderStage::Pixel,
+        source, sizeof(source) - 1, "DATuraPBR", "main", "ps_3_0"});
+    return g_pbrShader != nullptr;
 }
 }
 
@@ -171,7 +157,7 @@ Texture ResolveBase(const noesisTex_t* original)
     CachedTexture loaded;
     if (g_pbrEnabled) loaded = Load(FindFile(g_pbrFolder, stem, "_albedo"));
     if (!loaded.texture && g_hdEnabled) loaded = Load(FindFile(g_hdFolder, stem, ""));
-    return {loaded.texture, loaded.width, loaded.height};
+    return {D3D9Graphics::NativeTexture(loaded.texture), loaded.width, loaded.height};
 }
 
 bool SupportsPbr(IDirect3DDevice9* device)
@@ -191,16 +177,18 @@ bool ApplyPbrShader(IDirect3DDevice9* device, const noesisTex_t* original,
     if (!normal.texture || !roughness.texture || !metallic.texture) return false;
     const float alpha[4] = {useAuthoredAlpha ? 1.0f : 0.0f,
         expandDxt3Alpha ? 1.0f : 0.0f, opacityScale, 0.0f};
-    device->SetTexture(0, baseTexture); device->SetTexture(1, normal.texture);
-    device->SetTexture(2, roughness.texture); device->SetTexture(3, metallic.texture);
-    device->SetPixelShader(g_pbrShader); device->SetPixelShaderConstantF(0, alpha, 1);
+    device->SetTexture(0, baseTexture); D3D9Graphics::Context(device).BindTexture(1, normal.texture);
+    D3D9Graphics::Context(device).BindTexture(2, roughness.texture); D3D9Graphics::Context(device).BindTexture(3, metallic.texture);
+    D3D9Graphics::Context graphics(device);
+    graphics.BindShader(RendererBackend::ShaderStage::Pixel, g_pbrShader);
+    graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 0, alpha, 1);
     return true;
 }
 
 void Release()
 {
     ClearCache();
-    if (g_pbrShader) { g_pbrShader->Release(); g_pbrShader = nullptr; }
+    if (g_pbrShader) { delete g_pbrShader; g_pbrShader = nullptr; }
     g_pbrShaderTried = false; g_device = nullptr;
 }
 }

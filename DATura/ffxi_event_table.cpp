@@ -68,7 +68,9 @@ bool Parse(const std::vector<std::uint8_t>& bytes, std::vector<EntityScripts>& o
             event.references.reserve(immediateCount);
             for (std::uint32_t r = 0; r < immediateCount; ++r)
                 event.references.push_back(U32(bytes, immediateCountAt + 4ull + r * 4ull));
-            event.code.assign(bytes.begin() + codeAt + start, bytes.begin() + codeAt + stop);
+            event.entryOffset = start;
+            event.endOffset = stop;
+            event.code.assign(bytes.begin() + codeAt, bytes.begin() + codeAt + codeSize);
             scripts.events.push_back(std::move(event));
         }
         if (!scripts.events.empty()) out.push_back(std::move(scripts));
@@ -111,7 +113,8 @@ std::vector<std::uint16_t> MessageIds(const Event& event)
     // message forms: direct speaker, actor speaker, unnamed, unnamed actor,
     // and actor-pair. The message operand sits at a different offset for the
     // actor forms; treating every message as opcode+u16 misses most NPC lines.
-    for (std::size_t p = 0; p < event.code.size(); ++p)
+    const std::size_t end = event.endOffset ? event.endOffset : event.code.size();
+    for (std::size_t p = event.entryOffset; p < end; ++p)
     {
         std::size_t operandOffset = 0;
         std::size_t width = 0;

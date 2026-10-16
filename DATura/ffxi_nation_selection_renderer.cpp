@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "ffxi_nation_selection_renderer.h"
 
 #include "d3d9_device.h"
@@ -53,7 +54,7 @@ void DrawTextures(const Context& context)
 
         noesisTex_t* crest = FFXITitleAssets::FindTitleTexture(
             context.titleUiModel, crestTextures[index]);
-        if (!crest || !crest->pD3DTex)
+        if (!crest || !D3D9Graphics::NativeTexture(crest->gpuTexture))
             continue;
 
         const int crestAvailable = std::max<int>(32, card.right - card.left - 48);
@@ -73,7 +74,7 @@ void DrawTextures(const Context& context)
         context.titleUiModel, "buttonto");
     if (!buttonTexture)
         buttonTexture = FFXITitleAssets::FindTitleTexture(context.titleUiModel, "lrbutton");
-    if (buttonTexture && buttonTexture->pD3DTex)
+    if (buttonTexture && D3D9Graphics::NativeTexture(buttonTexture->gpuTexture))
     {
         const ActionButtonRects buttons = GetActionButtonRects(ui, width, height);
         FFXITitleUiPrimitives::DrawButton(context.device, context.enableMipMapping, buttonTexture,

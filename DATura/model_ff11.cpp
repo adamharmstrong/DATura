@@ -1,4 +1,4 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #include "noesis_rapi.h"
 #include "model_ff11.h"
 #include "model_ff11_decrypt.h"
@@ -343,28 +343,6 @@ static noesisModel_t *Model_FF11_ConstructModelFromHandlerSet(noeRAPI_t *pRapi, 
 				gFF11LastMapObjects.back().visualCollisionCount = gFF11LastCollisionTriangles.size() - collisionStart;
 			}
 
-			if (gpFF11Opts && gpFF11Opts->collectCollision && gpFF11Opts->collectCollisionUnreferenced)
-			{
-				RichMat43 collisionTransform;
-				for (int mapGeoIndex = 0; mapGeoIndex < mapGeoCount; ++mapGeoIndex)
-				{
-					const CFFXIMapGeoHandler::SMapGeoData &mapGeoData = mapGeoList[mapGeoIndex];
-					bool isReferenced = false;
-					for (CFFXIMapHandler::TMapObjectList::const_iterator it = mapObjects.begin(); it != mapObjects.end(); ++it)
-					{
-						const CFFXIMapHandler::SInterpretedMapObject &mapObject = *it;
-						if (ZoneLod::SameFamily(mapGeoData.mpMapGeoHdr->mObjectName, mapObject.mObjectName))
-						{
-							isReferenced = true;
-							break;
-						}
-					}
-
-					if (!isReferenced)
-						pMapGeoHandler->RenderMapObjectGeo(pRapi, mapGeoIndex, collisionTransform, false, NULL, false);
-				}
-			}
-
 			// MZB tables do not place the river and sea sheets. Their persistent
 			// generators name MMB resources in their own scope or a parent effe
 			// scope. Keep them as world geometry and leave weather shell selection
@@ -627,6 +605,41 @@ int Model_FF11_GetLastCollisionTriangleCount()
 	return (int)gFF11LastCollisionTriangles.size();
 }
 
+void Model_FF11_CollectMovingObjectCollision(const noesisModel_t* model,
+    ff11MapObjectDebug_t& object, bool mirrorX)
+{
+    if (!model || object.replacedByRoom || object.visualCollisionCount != 0)
+        return;
+    object.visualCollisionStart = gFF11LastCollisionTriangles.size();
+    for (const auto& mesh : model->submeshes)
+    {
+        if (mesh.objectName != object.displayName ||
+            (mesh.zoneLod.enabled && !(mesh.zoneLod.levelMask & 1)))
+            continue;
+        for (size_t index = 0; index + 2 < mesh.cpuIndices.size(); index += 3)
+        {
+            ff11CollisionTriangle_t triangle = {};
+            bool valid = true;
+            for (int vertex = 0; vertex < 3; ++vertex)
+            {
+                // MirrorOnX also reverses winding. Undo both parts before the
+                // runtime collision builder applies the scene conversion.
+                const int corner = mirrorX && vertex > 0 ? 3 - vertex : vertex;
+                const auto source = mesh.cpuIndices[index + corner];
+                if (source >= mesh.cpuVerts.size()) { valid = false; break; }
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const float value = mesh.cpuVerts[source].pos[axis];
+                    valid &= std::isfinite(value);
+                    triangle.p[vertex][axis] = (mirrorX && axis == 0) ? -value : value;
+                }
+            }
+            if (valid) gFF11LastCollisionTriangles.push_back(triangle);
+        }
+    }
+    object.visualCollisionCount = gFF11LastCollisionTriangles.size() - object.visualCollisionStart;
+}
+
 const float *Model_FF11_GetLastCollisionTrianglePoints(int index)
 {
 	if (index < 0 || index >= (int)gFF11LastCollisionTriangles.size())
@@ -868,6 +881,7 @@ static void Model_FF11_TryAnnotateGeneratorChunk(ff11DatChunkDebug_t &chunkDebug
 	};
 
 	generator.attachFlags = readU16(0x00);
+	generator.attachmentMode = (pChunkData[0] & 0x0f) | ((pChunkData[2] & 0x0f) << 4);
 	generator.emissionVariance = readU16(0x64);
 	generator.framesPerEmission = readU16(0x66);
 	generator.particlesPerEmission = pChunkData[0x68];

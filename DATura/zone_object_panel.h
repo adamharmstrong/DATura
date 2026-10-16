@@ -137,6 +137,12 @@ struct State
     HWND rawDataTree = NULL;
     HWND collisionDataTree = NULL;
     HWND loadingLabel = NULL;
+    HWND loadingOverlay = NULL;
+    HWND loadingProgress = NULL;
+    int loadingCompleted = 0;
+    int loadingTotal = 0;
+    ULONGLONG loadingStarted = 0;
+    ULONGLONG loadingUpdated = 0;
     HWND placedShowAllButton = NULL;
     HWND placedHideAllButton = NULL;
     HWND unreferencedShowAllButton = NULL;

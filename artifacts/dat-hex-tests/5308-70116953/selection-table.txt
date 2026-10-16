@@ -1,0 +1,6 @@
+DATura hex export
+Source: C:\Users\nanob\source\repos\DATura\artifacts\dat-hex-tests\5308-70116953\original.DAT
+Buffer snapshot: offset 0x64, 2 bytes
+
+Offset (hex)       Hex bytes                                          Decoded text
+0000000000000064  82 A0                                            あ

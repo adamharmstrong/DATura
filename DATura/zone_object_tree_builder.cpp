@@ -67,6 +67,8 @@ void Build(const Context& context)
     ZoneObjectTreeView::AddZoneTreeItem(rawTree, chunkRoot, text);
     for (int index = 0; index < (int)gFF11LastDatChunks.size(); ++index)
     {
+        if (context.progress)
+            context.progress(context.progressContext, "Building DAT chunk tree");
         const ff11DatChunkDebug_t& chunk = gFF11LastDatChunks[index];
         sprintf_s(text, "%03d: %s type 0x%02X %s", index, chunk.name, chunk.type,
                   chunk.supported ? "handled" : "unhandled");
@@ -175,6 +177,8 @@ void Build(const Context& context)
 
     for (int index = 0; index < Model_FF11_GetLastMapObjectCount(); ++index)
     {
+        if (context.progress)
+            context.progress(context.progressContext, "Building geometry trees");
         const ff11MapObjectDebug_t& object = gFF11LastMapObjects[index];
         const HTREEITEM parent = object.referencedByMap ? placementRoot : unreferencedRoot;
         if (object.referencedByMap)
@@ -194,6 +198,8 @@ void Build(const Context& context)
     const HTREEITEM collisionGridRoot = ZoneObjectTreeView::AddZoneTreeItem(collisionTree, collisionRoot, "Collision grid");
     for (int index = 0; index < Model_FF11_GetLastCollisionMeshCount(); ++index)
     {
+        if (context.progress)
+            context.progress(context.progressContext, "Building collision tree");
         const ff11CollisionMeshDebug_t* mesh = Model_FF11_GetLastCollisionMesh(index);
         if (!mesh)
             continue;

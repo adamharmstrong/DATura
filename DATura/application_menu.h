@@ -30,6 +30,7 @@ enum class Action
     ShowZoneGeometryDiagnostics,
     ShowDatReplacements,
     OpenResourceDat,
+    ShowDatHexReader,
     ShowTextureViewer,
     ShowCompanionBrowser,
     ShowAudioPlayer,

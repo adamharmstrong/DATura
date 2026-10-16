@@ -1,0 +1,2 @@
+@call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
+@cl.exe /nologo /Gy /O2 /MD /std:c++20 /EHsc /I DATura /Foartifacts\sun-shadow-tests\ /Feartifacts\sun-shadow-tests\fractional-clock-check.exe artifacts\sun-shadow-tests\fractional-clock-check.cpp DATura\zone_environment_state.cpp DATura\d3d_model_render_state.cpp DATura\d3d_bump_mapping.cpp DATura\custom_texture_assets.cpp DATura\d3d_math.cpp DATura\zone_environment_identity.cpp /link /OPT:REF /INCREMENTAL:NO /DEBUG:NONE

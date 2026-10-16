@@ -20,6 +20,8 @@ struct Controls
     HWND rawDataTree;
     HWND collisionDataTree;
     HWND loadingLabel;
+    HWND loadingOverlay;
+    HWND loadingProgress;
     HWND placedShowAllButton;
     HWND placedHideAllButton;
     HWND unreferencedShowAllButton;

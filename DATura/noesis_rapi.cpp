@@ -6,6 +6,7 @@
 #include "stdafx.h"
 #include "ffxi_dat_resolver.h"
 #include "noesis_rapi.h"
+#include "d3d9_graphics.h"
 #include <stdarg.h>
 #include <algorithm>
 #include <array>
@@ -68,7 +69,7 @@ noeRAPI_t::~noeRAPI_t()
     // Textures (release D3D resources too)
     for (noesisTex_t *t : mTexPool)
     {
-        if (t->pD3DTex) { t->pD3DTex->Release(); t->pD3DTex = nullptr; }
+        if (t->gpuTexture) { delete t->gpuTexture; t->gpuTexture = nullptr; }
         if (t->shouldFreeData && t->data) free(t->data);
         if (t->name) free(t->name);
         delete t;
@@ -380,7 +381,7 @@ noesisTex_t *noeRAPI_t::Noesis_TextureAllocEx(const char *name, int w, int h,
     pTex->data          = data;
     pTex->dataLen       = dataLen;
     pTex->texType       = texType;
-    pTex->pD3DTex       = nullptr;
+    pTex->gpuTexture       = nullptr;
     pTex->shouldFreeData = true;
 
     // Transfer ownership of data from mAllocs to the texture object so the
@@ -392,31 +393,32 @@ noesisTex_t *noeRAPI_t::Noesis_TextureAllocEx(const char *name, int w, int h,
     mTexPool.push_back(pTex);
 
     // Upload to D3D9 immediately if we have a device
-    if (mpDevice && data && w > 0 && h > 0)
+    if ((mpGraphics || mpDevice) && data && w > 0 && h > 0)
         UploadTexture(pTex);
 
     return pTex;
 }
 
-// Upload a noesisTex_t to a D3D9 texture.  Called lazily if no device at alloc time.
+// Decode on the CPU, then upload through the graphics resource interface.
 void noeRAPI_t::UploadTexture(noesisTex_t *pTex)
 {
-    if (!mpDevice || !pTex || pTex->pD3DTex || !pTex->data ||
+    if ((!mpGraphics && !mpDevice) || !pTex || pTex->gpuTexture || !pTex->data ||
         pTex->w <= 0 || pTex->h <= 0 || pTex->dataLen <= 0)
         return;
 
-    D3DFORMAT sourceFmt = D3DFMT_A8R8G8B8;
+    using RendererBackend::TextureFormat;
+    TextureFormat sourceFmt = TextureFormat::Bgra8;
     switch (pTex->texType)
     {
-    case NOESISTEX_DXT1: sourceFmt = D3DFMT_DXT1; break;
-    case NOESISTEX_DXT3: sourceFmt = D3DFMT_DXT3; break;
-    case NOESISTEX_DXT5: sourceFmt = D3DFMT_DXT5; break;
-    default:              sourceFmt = D3DFMT_A8R8G8B8; break;
+    case NOESISTEX_DXT1: sourceFmt = TextureFormat::BC1; break;
+    case NOESISTEX_DXT3: sourceFmt = TextureFormat::BC2; break;
+    case NOESISTEX_DXT5: sourceFmt = TextureFormat::BC3; break;
+    default:              sourceFmt = TextureFormat::Bgra8; break;
     }
 
-    const bool sourceIsCompressed = sourceFmt != D3DFMT_A8R8G8B8;
-    const D3DFORMAT fmt =
-        (sourceIsCompressed && !mTextureCompressionEnabled) ? D3DFMT_A8R8G8B8 : sourceFmt;
+    const bool sourceIsCompressed = sourceFmt != TextureFormat::Bgra8;
+    const TextureFormat fmt =
+        (sourceIsCompressed && !mTextureCompressionEnabled) ? TextureFormat::Bgra8 : sourceFmt;
 
     size_t requiredDataSize = 0;
     if (!sourceIsCompressed)
@@ -428,7 +430,7 @@ void noeRAPI_t::UploadTexture(noesisTex_t *pTex)
     }
     else
     {
-        const size_t blockSize = (sourceFmt == D3DFMT_DXT1) ? 8 : 16;
+        const size_t blockSize = (sourceFmt == TextureFormat::BC1) ? 8 : 16;
         requiredDataSize = (((size_t)pTex->w + 3) / 4) *
                            (((size_t)pTex->h + 3) / 4) * blockSize;
     }
@@ -454,70 +456,15 @@ void noeRAPI_t::UploadTexture(noesisTex_t *pTex)
         uploadData = reinterpret_cast<const unsigned char *>(expandedPixels.data());
     }
 
-    IDirect3DTexture9 *pTex9 = nullptr;
-    bool autoGenerateMips = true;
-    HRESULT hr = mpDevice->CreateTexture(pTex->w, pTex->h, 0,
-                                          D3DUSAGE_AUTOGENMIPMAP,
-                                          fmt, D3DPOOL_MANAGED, &pTex9, nullptr);
-    if (FAILED(hr))
-    {
-        // Some older drivers reject automatic generation for compressed formats.
-        // Preserve the validated top-level texture as a one-level fallback.
-        autoGenerateMips = false;
-        hr = mpDevice->CreateTexture(pTex->w, pTex->h, 1, 0,
-                                     fmt, D3DPOOL_MANAGED, &pTex9, nullptr);
-    }
-    if (FAILED(hr))
-    {
-        OutputDebugStringA("WARNING: CreateTexture failed\n");
-        return;
-    }
-
-    D3DLOCKED_RECT lr;
-    if (FAILED(pTex9->LockRect(0, &lr, nullptr, 0)))
-    {
-        OutputDebugStringA("WARNING: Texture LockRect failed\n");
-        pTex9->Release();
-        return;
-    }
-
-    if (fmt == D3DFMT_A8R8G8B8)
-    {
-            // RGBA32: each texel = 4 bytes.
-            // Source data from Noesis is D3DCOLOR (ARGB) — matches D3DFMT_A8R8G8B8 directly.
-		const unsigned char *pSrc = uploadData;
-		unsigned char       *pDst = (unsigned char *)lr.pBits;
-		for (int y = 0; y < pTex->h; ++y)
-		{
-			memcpy(pDst, pSrc, pTex->w * 4);
-			pSrc += pTex->w * 4;
-			pDst += lr.Pitch;
-		}
-    }
-    else
-    {
-            // DXT: rows of 4-texel blocks, each row is ceil(w/4) * blockSize bytes.
-		const int blockSize = (fmt == D3DFMT_DXT1) ? 8 : 16;
-		const int rowBytes  = ((pTex->w + 3) / 4) * blockSize;
-		const unsigned char *pSrc = uploadData;
-		unsigned char       *pDst = (unsigned char *)lr.pBits;
-		const int blockRows = (pTex->h + 3) / 4;
-		for (int by = 0; by < blockRows; ++by)
-		{
-			memcpy(pDst, pSrc, rowBytes);
-			pSrc += rowBytes;
-			pDst += lr.Pitch;
-		}
-    }
-    pTex9->UnlockRect(0);
-
-    if (autoGenerateMips && pTex9->GetLevelCount() > 1)
-    {
-        pTex9->SetAutoGenFilterType(D3DTEXF_LINEAR);
-        pTex9->GenerateMipSubLevels();
-    }
-
-    pTex->pD3DTex = pTex9;
+    RendererBackend::TextureUpload upload;
+    upload.width = pTex->w;
+    upload.height = pTex->h;
+    upload.data = uploadData;
+    upload.dataSize = expandedPixels.empty() ? size_t(pTex->dataLen) : expandedPixels.size() * 4;
+    upload.format = fmt;
+    D3D9Graphics::Context legacy(mpDevice);
+    RendererBackend::Graphics& graphics = mpGraphics ? *mpGraphics : legacy;
+    pTex->gpuTexture = graphics.CreateTexture(upload);
 }
 
 void noeRAPI_t::SetTextureCompressionEnabled(bool enabled)
@@ -528,10 +475,10 @@ void noeRAPI_t::SetTextureCompressionEnabled(bool enabled)
     mTextureCompressionEnabled = enabled;
     for (noesisTex_t *pTex : mTexPool)
     {
-        if (pTex && pTex->pD3DTex)
+        if (pTex && pTex->gpuTexture)
         {
-            pTex->pD3DTex->Release();
-            pTex->pD3DTex = nullptr;
+            delete pTex->gpuTexture;
+            pTex->gpuTexture = nullptr;
         }
     }
     UploadPendingTextures();
@@ -541,7 +488,7 @@ void noeRAPI_t::SetTextureCompressionEnabled(bool enabled)
 void noeRAPI_t::UploadPendingTextures()
 {
     for (noesisTex_t *pTex : mTexPool)
-        if (!pTex->pD3DTex)
+        if (!pTex->gpuTexture)
             UploadTexture(pTex);
 }
 
@@ -1191,7 +1138,9 @@ noesisModel_t *noeRAPI_t::rpgConstructModel()
     }
 
     // Upload to D3D9 if we have a device
-    if (mpDevice)
+    if (mpGraphics)
+        pMdl->BuildBuffers(*mpGraphics);
+    else if (mpDevice)
         pMdl->BuildD3DBuffers(mpDevice);
 
     mModelPool.push_back(pMdl);
@@ -1258,6 +1207,12 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
     if (!pDevice)
         return;
 
+    D3D9Graphics::Context graphics(pDevice);
+    BuildBuffers(graphics);
+}
+
+void noesisModel_t::BuildBuffers(RendererBackend::Graphics& graphics)
+{
     UpdateSubmeshBounds();
     for (Submesh& sm : submeshes) sm.uploadedWindWeight = 0.0f;
 
@@ -1309,16 +1264,14 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
             StaticBufferGroup &group = staticBufferGroups[index];
             const UINT vbSize = (UINT)((size_t)group.vertCount * sizeof(FFXIVertex));
             const UINT ibSize = (UINT)((size_t)group.indexCount * sizeof(DWORD));
-            HRESULT hr = pDevice->CreateVertexBuffer(vbSize, D3DUSAGE_WRITEONLY,
-                FFXI_VERTEX_FVF, D3DPOOL_MANAGED, &group.pVB, nullptr);
-            if (FAILED(hr))
+            group.pVB = graphics.CreateMeshBuffer(RendererBackend::BufferKind::Vertex, vbSize);
+            if (!group.pVB)
             {
                 sharedBuildOk = false;
                 break;
             }
-            hr = pDevice->CreateIndexBuffer(ibSize, D3DUSAGE_WRITEONLY,
-                D3DFMT_INDEX32, D3DPOOL_MANAGED, &group.pIB, nullptr);
-            if (FAILED(hr))
+            group.pIB = graphics.CreateMeshBuffer(RendererBackend::BufferKind::Index32, ibSize);
+            if (!group.pIB)
             {
                 sharedBuildOk = false;
                 break;
@@ -1326,12 +1279,12 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
 
             FFXIVertex *pVBData = nullptr;
             DWORD *pIBData = nullptr;
-            const bool vbLocked = SUCCEEDED(group.pVB->Lock(0, 0, (void **)&pVBData, 0));
-            const bool ibLocked = SUCCEEDED(group.pIB->Lock(0, 0, (void **)&pIBData, 0));
+            const bool vbLocked = group.pVB->Map(0, 0, (void **)&pVBData);
+            const bool ibLocked = group.pIB->Map(0, 0, (void **)&pIBData);
             if (!vbLocked || !ibLocked)
             {
-                if (vbLocked) group.pVB->Unlock();
-                if (ibLocked) group.pIB->Unlock();
+                if (vbLocked) group.pVB->Unmap();
+                if (ibLocked) group.pIB->Unmap();
                 sharedBuildOk = false;
                 break;
             }
@@ -1345,8 +1298,8 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
                 memcpy(pIBData + sm.staticStartIndex, sm.cpuIndices.data(),
                     sm.cpuIndices.size() * sizeof(DWORD));
             }
-            group.pVB->Unlock();
-            group.pIB->Unlock();
+            group.pVB->Unmap();
+            group.pIB->Unmap();
         }
 
         if (sharedBuildOk)
@@ -1354,9 +1307,9 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
 
         for (StaticBufferGroup &group : staticBufferGroups)
         {
-            if (group.pOpaqueBatchIB) { group.pOpaqueBatchIB->Release(); group.pOpaqueBatchIB = nullptr; }
-            if (group.pIB) { group.pIB->Release(); group.pIB = nullptr; }
-            if (group.pVB) { group.pVB->Release(); group.pVB = nullptr; }
+            if (group.pOpaqueBatchIB) { delete group.pOpaqueBatchIB; group.pOpaqueBatchIB = nullptr; }
+            if (group.pIB) { delete group.pIB; group.pIB = nullptr; }
+            if (group.pVB) { delete group.pVB; group.pVB = nullptr; }
         }
         staticBufferGroups.clear();
         for (Submesh &sm : submeshes)
@@ -1374,27 +1327,25 @@ void noesisModel_t::BuildD3DBuffers(IDirect3DDevice9 *pDevice)
         if (sm.pVB && sm.pIB) continue;
 
         const UINT vbSize = (UINT)(sm.cpuVerts.size() * sizeof(FFXIVertex));
-        HRESULT hr = pDevice->CreateVertexBuffer(vbSize, D3DUSAGE_WRITEONLY,
-            FFXI_VERTEX_FVF, D3DPOOL_MANAGED, &sm.pVB, nullptr);
-        if (FAILED(hr)) continue;
+        sm.pVB = graphics.CreateMeshBuffer(RendererBackend::BufferKind::Vertex, vbSize);
+        if (!sm.pVB) continue;
 
         void *pVBData = nullptr;
-        if (SUCCEEDED(sm.pVB->Lock(0, 0, &pVBData, 0)))
+        if (sm.pVB->Map(0, 0, &pVBData))
         {
             memcpy(pVBData, sm.cpuVerts.data(), vbSize);
-            sm.pVB->Unlock();
+            sm.pVB->Unmap();
         }
 
         const UINT ibSize = (UINT)(sm.cpuIndices.size() * sizeof(DWORD));
-        hr = pDevice->CreateIndexBuffer(ibSize, D3DUSAGE_WRITEONLY,
-            D3DFMT_INDEX32, D3DPOOL_MANAGED, &sm.pIB, nullptr);
-        if (FAILED(hr)) continue;
+        sm.pIB = graphics.CreateMeshBuffer(RendererBackend::BufferKind::Index32, ibSize);
+        if (!sm.pIB) continue;
 
         void *pIBData = nullptr;
-        if (SUCCEEDED(sm.pIB->Lock(0, 0, &pIBData, 0)))
+        if (sm.pIB->Map(0, 0, &pIBData))
         {
             memcpy(pIBData, sm.cpuIndices.data(), ibSize);
-            sm.pIB->Unlock();
+            sm.pIB->Unmap();
         }
     }
 }
@@ -1467,10 +1418,10 @@ void noesisModel_t::RestoreBindPose(IDirect3DDevice9 *pDevice)
         {
             void *pVBData = nullptr;
             const UINT vbSize = (UINT)(sm.cpuVerts.size() * sizeof(FFXIVertex));
-            if (SUCCEEDED(sm.pVB->Lock(0, 0, &pVBData, 0)))
+            if (sm.pVB->Map(0, 0, &pVBData))
             {
                 memcpy(pVBData, sm.cpuVerts.data(), vbSize);
-                sm.pVB->Unlock();
+                sm.pVB->Unmap();
             }
         }
     }
@@ -1613,10 +1564,10 @@ void noesisModel_t::UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice)
         {
             void *pVBData = nullptr;
             const UINT vbSize = (UINT)(sm.cpuVerts.size() * sizeof(FFXIVertex));
-            if (SUCCEEDED(sm.pVB->Lock(0, 0, &pVBData, 0)))
+            if (sm.pVB->Map(0, 0, &pVBData))
             {
                 memcpy(pVBData, sm.cpuVerts.data(), vbSize);
-                sm.pVB->Unlock();
+                sm.pVB->Unmap();
             }
         }
     }
@@ -1626,16 +1577,16 @@ void noesisModel_t::ReleaseD3DBuffers()
 {
     for (StaticBufferGroup &group : staticBufferGroups)
     {
-        if (group.pOpaqueBatchIB) { group.pOpaqueBatchIB->Release(); group.pOpaqueBatchIB = nullptr; }
-        if (group.pIB) { group.pIB->Release(); group.pIB = nullptr; }
-        if (group.pVB) { group.pVB->Release(); group.pVB = nullptr; }
+        if (group.pOpaqueBatchIB) { delete group.pOpaqueBatchIB; group.pOpaqueBatchIB = nullptr; }
+        if (group.pIB) { delete group.pIB; group.pIB = nullptr; }
+        if (group.pVB) { delete group.pVB; group.pVB = nullptr; }
     }
     staticBufferGroups.clear();
     opaqueBatches.clear();
     for (Submesh &sm : submeshes)
     {
-        if (sm.pVB) { sm.pVB->Release(); sm.pVB = nullptr; }
-        if (sm.pIB) { sm.pIB->Release(); sm.pIB = nullptr; }
+        if (sm.pVB) { delete sm.pVB; sm.pVB = nullptr; }
+        if (sm.pIB) { delete sm.pIB; sm.pIB = nullptr; }
         sm.staticBufferGroupIndex = -1;
         sm.staticVertexOffset = 0;
         sm.staticStartIndex = 0;

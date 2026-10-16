@@ -4,6 +4,7 @@
 #include "ffxi_stat_system.h"
 #include "ffxi_install_path.h"
 #include <commctrl.h>
+#include <commdlg.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -81,6 +82,12 @@ enum ControlId
     IDC_CONFIG_BUMP_INTENSITY = 8363,
     IDC_CONFIG_BUMP_INTENSITY_LABEL = 8364,
     IDC_CONFIG_BUMP_INTENSITY_VALUE = 8365,
+    IDC_CONFIG_CHAT_COLOR = 8500,
+    IDC_CONFIG_NAME_FONT = 8501,
+    IDC_CONFIG_NAME_SIZE = 8502,
+    IDC_CONFIG_NAME_COLOR = 8503,
+    IDC_CONFIG_NAME_FONT_LABEL = 8504,
+    IDC_CONFIG_NAME_SIZE_LABEL = 8505,
     IDC_CONFIG_CHAT_FONT = 8366,
     IDC_CONFIG_CHAT_FONT_SIZE = 8369,
     IDC_CONFIG_MOVEMENT_STYLE = 8367,
@@ -166,6 +173,9 @@ enum ControlId
     ,IDC_CONFIG_KEY_CAMERA_DEBUG = 8451
     ,IDC_CONFIG_KEY_BUMP_MAPPING = 8452
     ,IDC_CONFIG_KEY_MAIN_MENU = 8453
+    ,IDC_CONFIG_TRIGGER_VOLUMES = 8454
+    ,IDC_CONFIG_ARRIVAL_VOLUMES = 8455
+    ,IDC_CONFIG_ZONE_LINE_MARKERS = 8456
 };
 
 constexpr LONG_PTR kNoConfigTab = 0;
@@ -384,6 +394,8 @@ void UpdatePageScroll(ConfigDialog::State& state, const int requestedOffset)
 
 BOOL CALLBACK TagInterfaceTabChild(HWND child, LPARAM)
 {
+    // These controls already use final Interface-page coordinates and tags.
+    if (GetDlgCtrlID(child) >= IDC_CONFIG_CHAT_COLOR && GetDlgCtrlID(child) <= IDC_CONFIG_NAME_SIZE_LABEL) return TRUE;
     const int id = GetDlgCtrlID(child);
     if (id == IDC_CONFIG_CLOSE || id == IDC_CONFIG_APPLY ||
         (id >= IDC_CONFIG_CATEGORY_GENERAL &&
@@ -668,6 +680,12 @@ void CreateControls(ConfigDialog::State& state)
     Win32PanelControls::AddPanelControl(
         window, "BUTTON", "Mirror world zones", BS_AUTOCHECKBOX,
         IDC_CONFIG_MIRROR_WORLD, 428, 224, 220, 22);
+    Win32PanelControls::AddPanelControl(window, "BUTTON", "Show zone exit triggers (red boxes)",
+        BS_AUTOCHECKBOX, IDC_CONFIG_TRIGGER_VOLUMES, 28, 280, 330, 22);
+    Win32PanelControls::AddPanelControl(window, "BUTTON", "Show zone arrival areas (blue boxes)",
+        BS_AUTOCHECKBOX, IDC_CONFIG_ARRIVAL_VOLUMES, 28, 310, 350, 22);
+    Win32PanelControls::AddPanelControl(window, "BUTTON", "FFXII-style dotted zone lines",
+        BS_AUTOCHECKBOX, IDC_CONFIG_ZONE_LINE_MARKERS, 24, 368, 360, 22);
     Win32PanelControls::AddPanelControl(
         window, "STATIC", "Texture Storage", 0, IDC_CONFIG_TEXTURE_STORAGE_LABEL, 428, 256, 120, 22);
     const HWND textureCompression = Win32PanelControls::AddPanelCombo(
@@ -837,6 +855,24 @@ void CreateControls(ConfigDialog::State& state)
         ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP, IDC_CONFIG_CHAT_FONT_SIZE, 494, 635, 50, 24);
     SendMessageA(chatFontSize, EM_SETLIMITTEXT, 2, 0);
 
+    const HWND nameFont = Win32PanelControls::AddPanelCombo(window, IDC_CONFIG_NAME_FONT, 142, 432, 260, 180);
+    for (const char* face : {"FFXI", "Arial", "Segoe UI", "Tahoma", "Verdana", "Consolas"})
+        SendMessageA(nameFont, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(face));
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Font", 0, IDC_CONFIG_NAME_FONT_LABEL, 28, 436, 100, 22);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Font size", 0, IDC_CONFIG_NAME_SIZE_LABEL, 428, 436, 65, 22);
+    Win32PanelControls::AddPanelControl(window, "EDIT", "16", ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP,
+        IDC_CONFIG_NAME_SIZE, 494, 432, 50, 24);
+    Win32PanelControls::AddPanelControl(window, "BUTTON", "Text color...", BS_PUSHBUTTON | WS_TABSTOP,
+        IDC_CONFIG_NAME_COLOR, 564, 432, 140, 26);
+    Win32PanelControls::AddPanelControl(window, "BUTTON", "Text color...", BS_PUSHBUTTON | WS_TABSTOP,
+        IDC_CONFIG_CHAT_COLOR, 564, 246, 140, 26);
+    for (int id : {IDC_CONFIG_CHAT_COLOR, IDC_CONFIG_NAME_FONT, IDC_CONFIG_NAME_SIZE,
+        IDC_CONFIG_NAME_COLOR, IDC_CONFIG_NAME_FONT_LABEL, IDC_CONFIG_NAME_SIZE_LABEL})
+    {
+        HWND control = GetDlgItem(window, id);
+        SetWindowLongPtrA(control, GWLP_USERDATA, ControlPageTag(kInterfacePage));
+        SendMessageA(control, WM_SETFONT, SendMessageA(GetDlgItem(window, IDC_CONFIG_CHAT_FONT), WM_GETFONT, 0, 0), FALSE);
+    }
     const HWND children[] =
     {
         path,
@@ -885,6 +921,9 @@ void CreateControls(ConfigDialog::State& state)
         GetDlgItem(window, IDC_CONFIG_DOOR_INTERACTION),
         GetDlgItem(window, IDC_CONFIG_ENV_ANIM),
         GetDlgItem(window, IDC_CONFIG_MIRROR_WORLD),
+        GetDlgItem(window, IDC_CONFIG_TRIGGER_VOLUMES),
+        GetDlgItem(window, IDC_CONFIG_ARRIVAL_VOLUMES),
+        GetDlgItem(window, IDC_CONFIG_ZONE_LINE_MARKERS),
         GetDlgItem(window, IDC_CONFIG_TEXTURE_COMPRESSION),
         GetDlgItem(window, IDC_CONFIG_MAP_TEXTURE_COMPRESSION),
         GetDlgItem(window, IDC_CONFIG_WEATHER_EFFECTS),
@@ -933,6 +972,14 @@ void CreateControls(ConfigDialog::State& state)
     for (const int id : debugShadowControls)
         if (const HWND control = GetDlgItem(window, id))
             SetWindowLongPtrA(control, GWLP_USERDATA, ControlPageTag(kDebugPage));
+    SetWindowLongPtrA(GetDlgItem(window, IDC_CONFIG_TRIGGER_VOLUMES), GWLP_USERDATA,
+        ControlPageTag(kDebugPage));
+    SetWindowLongPtrA(GetDlgItem(window, IDC_CONFIG_ARRIVAL_VOLUMES), GWLP_USERDATA,
+        ControlPageTag(kDebugPage));
+    SetWindowLongPtrA(GetDlgItem(window, IDC_CONFIG_COLLISION), GWLP_USERDATA,
+        ControlPageTag(kDebugPage));
+    SetWindowLongPtrA(GetDlgItem(window, IDC_CONFIG_ZONE_LINE_MARKERS), GWLP_USERDATA,
+        ControlPageTag(kGraphicsPage));
     for (int index = 0; index < kBindingCount; ++index)
     {
         const HWND button = GetDlgItem(window, IDC_CONFIG_KEY_FORWARD + index);
@@ -978,6 +1025,7 @@ void CreateControls(ConfigDialog::State& state)
     place(IDC_CONFIG_DRAW_DISTANCE_LABEL, 428, 340, 120, 22);
     place(IDC_CONFIG_DRAW_DISTANCE, 574, 336, 158, 160);
     place(IDC_CONFIG_WEATHER_EFFECTS, 428, 368, 220, 22);
+    place(IDC_CONFIG_ZONE_LINE_MARKERS, 24, 368, 360, 22);
 
     place(IDC_CONFIG_LIGHTING_LABEL, 24, 438, 72, 22);
     place(IDC_CONFIG_LIGHTING_QUALITY, 96, 434, 180, 100);
@@ -1006,6 +1054,9 @@ void CreateControls(ConfigDialog::State& state)
     }
     place(IDC_CONFIG_SHADOW_RECEIVER_LABEL, 28, 234, 120, 22);
     place(IDC_CONFIG_SHADOW_RECEIVER_QUALITY, 154, 230, 180, 100);
+    place(IDC_CONFIG_TRIGGER_VOLUMES, 28, 280, 330, 22);
+    place(IDC_CONFIG_ARRIVAL_VOLUMES, 28, 310, 350, 22);
+    place(IDC_CONFIG_COLLISION, 28, 340, 190, 22);
 
     // General: keep each panel's controls on separate, padded rows.
     place(IDC_CONFIG_TITLE_BACKGROUND_LABEL, 24, 202, 118, 22);
@@ -1030,7 +1081,6 @@ void CreateControls(ConfigDialog::State& state)
     place(IDC_CONFIG_GAME_MODE_LABEL, 24, 496, 88, 22);
     place(IDC_CONFIG_EDIT_GAME, 116, 492, 56, 26);
     place(IDC_CONFIG_EDIT_MODE_LABEL, 180, 496, 84, 22);
-    place(IDC_CONFIG_COLLISION, 24, 530, 190, 22);
     place(IDC_CONFIG_MOVEMENT_STYLE_LABEL, 390, 496, 138, 22);
     place(IDC_CONFIG_MOVEMENT_STYLE, 536, 492, 196, 120);
     place(IDC_CONFIG_SCENE_CLOCK_LABEL, 390, 532, 138, 22);
@@ -1592,16 +1642,48 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 Notify(*state, ConfigDialog::Command::ChatLogChanged);
             }
             return 0;
+        case IDC_CONFIG_CHAT_COLOR:
+        case IDC_CONFIG_NAME_COLOR:
+            if (HIWORD(wParam) == BN_CLICKED && state->gameUi)
+            {
+                static COLORREF custom[16]{};
+                const bool chat = LOWORD(wParam) == IDC_CONFIG_CHAT_COLOR;
+                CHOOSECOLORA picker{};
+                picker.lStructSize = sizeof(picker);
+                picker.hwndOwner = window;
+                picker.rgbResult = chat ? state->gameUi->chatLogFontColor : state->gameUi->playerNameplate.fontColor;
+                picker.lpCustColors = custom;
+                picker.Flags = CC_FULLOPEN | CC_RGBINIT;
+                if (ChooseColorA(&picker))
+                {
+                    if (chat) state->gameUi->chatLogFontColor = picker.rgbResult;
+                    else state->gameUi->playerNameplate.fontColor = picker.rgbResult;
+                    Notify(*state, chat ? ConfigDialog::Command::ChatLogChanged : ConfigDialog::Command::PlayerNameplateChanged);
+                }
+            }
+            return 0;
+        case IDC_CONFIG_NAME_SIZE:
+            if (HIWORD(wParam) == EN_KILLFOCUS && state->gameUi)
+            {
+                BOOL valid = FALSE;
+                const UINT size = GetDlgItemInt(window, IDC_CONFIG_NAME_SIZE, &valid, FALSE);
+                if (valid) state->gameUi->playerNameplate.fontSize = std::clamp(static_cast<int>(std::min(size, 32u)), 10, 32);
+                Notify(*state, ConfigDialog::Command::PlayerNameplateChanged);
+            }
+            return 0;
+        case IDC_CONFIG_NAME_FONT:
         case IDC_CONFIG_CHAT_FONT:
             if (HIWORD(wParam) == CBN_SELCHANGE && state->gameUi)
             {
                 const int selected = static_cast<int>(SendDlgItemMessageA(
-                    window, IDC_CONFIG_CHAT_FONT, CB_GETCURSEL, 0, 0));
+                    window, LOWORD(wParam), CB_GETCURSEL, 0, 0));
                 static const char* fonts[] = {"FFXI", "Arial", "Segoe UI", "Tahoma", "Verdana", "Consolas"};
                 if (selected >= 0 && selected < static_cast<int>(std::size(fonts)))
                 {
-                    strcpy_s(state->gameUi->chatLogFont, fonts[selected]);
-                    Notify(*state, ConfigDialog::Command::ChatLogChanged);
+                    const bool chat = LOWORD(wParam) == IDC_CONFIG_CHAT_FONT;
+                    if (chat) strcpy_s(state->gameUi->chatLogFont, fonts[selected]);
+                    else strcpy_s(state->gameUi->playerNameplate.font, fonts[selected]);
+                    Notify(*state, chat ? ConfigDialog::Command::ChatLogChanged : ConfigDialog::Command::PlayerNameplateChanged);
                 }
             }
             return 0;
@@ -1637,6 +1719,21 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             state->settings->showCollisionGeometry =
                 SendDlgItemMessageA(window, IDC_CONFIG_COLLISION, BM_GETCHECK, 0, 0) == BST_CHECKED;
             Notify(*state, ConfigDialog::Command::CollisionVisibilityChanged);
+            return 0;
+        case IDC_CONFIG_TRIGGER_VOLUMES:
+            state->settings->showZoneTriggerVolumes = SendDlgItemMessageA(window,
+                IDC_CONFIG_TRIGGER_VOLUMES, BM_GETCHECK, 0, 0) == BST_CHECKED;
+            ConfigDialog::Sync(*state);
+            return 0;
+        case IDC_CONFIG_ARRIVAL_VOLUMES:
+            state->settings->showZoneArrivalVolumes = SendDlgItemMessageA(window,
+                IDC_CONFIG_ARRIVAL_VOLUMES, BM_GETCHECK, 0, 0) == BST_CHECKED;
+            ConfigDialog::Sync(*state);
+            return 0;
+        case IDC_CONFIG_ZONE_LINE_MARKERS:
+            state->settings->showZoneLineMarkers = SendDlgItemMessageA(window,
+                IDC_CONFIG_ZONE_LINE_MARKERS, BM_GETCHECK, 0, 0) == BST_CHECKED;
+            ConfigDialog::Sync(*state);
             return 0;
         case IDC_CONFIG_ENABLE_SOUNDS:
             state->settings->enableSounds =
@@ -1854,7 +1951,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             case 3:
                 panels[0] = {14, 82, 746, 170}; titles[0] = "Menu";
                 panels[1] = {14, 184, 746, 282}; titles[1] = "Chat Log";
-                panels[2] = {14, 296, 746, 438}; titles[2] = "Nameplates";
+                panels[2] = {14, 296, 746, 478}; titles[2] = "Nameplates";
                 panelCount = 3;
                 break;
             case 4:
@@ -2026,6 +2123,11 @@ void Sync(State& state)
         for (int i = 0; i < static_cast<int>(std::size(fonts)); ++i)
             if (_stricmp(state.gameUi->chatLogFont, fonts[i]) == 0) { chatFontIndex = i; break; }
         SendDlgItemMessageA(state.window, IDC_CONFIG_CHAT_FONT, CB_SETCURSEL, chatFontIndex, 0);
+        SetDlgItemInt(state.window, IDC_CONFIG_NAME_SIZE, state.gameUi->playerNameplate.fontSize, FALSE);
+        int nameFontIndex = 0;
+        for (int i = 0; i < static_cast<int>(std::size(fonts)); ++i)
+            if (_stricmp(state.gameUi->playerNameplate.font, fonts[i]) == 0) { nameFontIndex = i; break; }
+        SendDlgItemMessageA(state.window, IDC_CONFIG_NAME_FONT, CB_SETCURSEL, nameFontIndex, 0);
         const auto* icon = FFXIPlayerIcons::Find(state.gameUi->playerNameplate.icon);
         const int selected = icon ? static_cast<int>(icon - FFXIPlayerIcons::Catalog) + 1 : 0;
         SendDlgItemMessageA(state.window, IDC_CONFIG_PLAYER_ICON, CB_SETCURSEL, selected, 0);
@@ -2163,6 +2265,12 @@ void Sync(State& state)
         std::clamp(settings.mouseCursorStyle, 0, 3), 0);
     SendDlgItemMessageA(state.window, IDC_CONFIG_MIRROR_WORLD, BM_SETCHECK,
         settings.mirrorWorldZones ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendDlgItemMessageA(state.window, IDC_CONFIG_TRIGGER_VOLUMES, BM_SETCHECK,
+        settings.showZoneTriggerVolumes ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendDlgItemMessageA(state.window, IDC_CONFIG_ARRIVAL_VOLUMES, BM_SETCHECK,
+        settings.showZoneArrivalVolumes ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendDlgItemMessageA(state.window, IDC_CONFIG_ZONE_LINE_MARKERS, BM_SETCHECK,
+        settings.showZoneLineMarkers ? BST_CHECKED : BST_UNCHECKED, 0);
     SendDlgItemMessageA(state.window, IDC_CONFIG_DRAW_DISTANCE, CB_SETCURSEL,
         settings.drawDistanceIndex, 0);
     SendDlgItemMessageA(state.window, IDC_CONFIG_TEXTURE_COMPRESSION, CB_SETCURSEL,

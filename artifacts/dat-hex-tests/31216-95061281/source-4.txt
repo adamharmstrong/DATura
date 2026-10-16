@@ -1,0 +1,4 @@
+const
+  Data: array[0..2] of Byte = (
+    $AA, $BB, $CC
+  );

@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "d3d_model_render_state.h"
 
 #include "d3d_bump_mapping.h"
@@ -13,7 +14,7 @@ namespace D3DModelRenderState
 {
 namespace
 {
-IDirect3DPixelShader9 *g_uiPixelShader = nullptr;
+RendererBackend::Shader* g_uiPixelShader = nullptr;
 bool g_uiPixelShaderTried = false;
 
 bool EnsureFfxiUiPixelShader(IDirect3DDevice9 *device)
@@ -34,42 +35,13 @@ bool EnsureFfxiUiPixelShader(IDirect3DDevice9 *device)
         "    return texel * diffuse;\n"
         "}\n";
 
-    ID3DBlob *byteCode = nullptr;
-    ID3DBlob *errors = nullptr;
-    const HRESULT compileHr = D3DCompile(kShaderSource, sizeof(kShaderSource) - 1,
-        "DATuraFfxiUi", nullptr, nullptr, "main", "ps_2_0",
-        0, 0, &byteCode, &errors);
-    if (FAILED(compileHr))
-    {
-        if (errors)
-            OutputDebugStringA(static_cast<const char *>(errors->GetBufferPointer()));
-        if (errors)
-            errors->Release();
+    D3D9Graphics::Context graphics(device);
+    g_uiPixelShader = graphics.CreateShader({ RendererBackend::ShaderStage::Pixel,
+        kShaderSource, sizeof(kShaderSource) - 1, "DATuraFfxiUi", "main", "ps_2_0" });
+    if (!g_uiPixelShader)
         return false;
-    }
-
-    const HRESULT shaderHr = device->CreatePixelShader(
-        static_cast<const DWORD *>(byteCode->GetBufferPointer()), &g_uiPixelShader);
-    byteCode->Release();
-    if (errors)
-        errors->Release();
-    if (FAILED(shaderHr))
-    {
-        g_uiPixelShader = nullptr;
-        OutputDebugStringA("WARNING: Unable to create FFXI UI pixel shader.\n");
-        return false;
-    }
     return true;
 }
-}
-
-void MaterialBindingCache::Invalidate()
-{
-    material = nullptr;
-    texture = nullptr;
-    bumpMappingEnabled = false;
-    bumpMappingIntensity = 1.0f;
-    valid = false;
 }
 
 void ApplyFixedFunctionModelState(IDirect3DDevice9 *device, const bool enableMipMapping)
@@ -77,46 +49,44 @@ void ApplyFixedFunctionModelState(IDirect3DDevice9 *device, const bool enableMip
     if (!device)
         return;
 
-    device->SetVertexShader(nullptr);
-    device->SetPixelShader(nullptr);
-    device->SetTexture(1, nullptr);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Vertex, nullptr);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).BindTexture(1, nullptr);
 
     // Keep the D3D9 renderer in the same fixed-function lane as FFXI's D3D8 client.
-    device->SetRenderState(D3DRS_COLORVERTEX, TRUE);
-    device->SetRenderState(D3DRS_NORMALIZENORMALS, TRUE);
-    device->SetRenderState(D3DRS_SPECULARENABLE, FALSE);
-    device->SetRenderState(D3DRS_DITHERENABLE, TRUE);
-    device->SetRenderState(D3DRS_FOGENABLE, FALSE);
-    device->SetRenderState(D3DRS_RANGEFOGENABLE, FALSE);
-    device->SetRenderState(D3DRS_CLIPPING, TRUE);
-    device->SetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, D3DMCS_COLOR1);
-    device->SetRenderState(D3DRS_AMBIENTMATERIALSOURCE, D3DMCS_COLOR1);
-    device->SetRenderState(D3DRS_SPECULARMATERIALSOURCE, D3DMCS_MATERIAL);
-    device->SetRenderState(D3DRS_EMISSIVEMATERIALSOURCE, D3DMCS_MATERIAL);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::vertexColor, true);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::normalizeNormals, true);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::specular, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::dither, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fog, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::rangeFog, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::clipping, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::diffuseSource, RendererBackend::MaterialSource::DiffuseVertex);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::ambientSource, RendererBackend::MaterialSource::DiffuseVertex);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::specularSource, RendererBackend::MaterialSource::Material);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::emissiveSource, RendererBackend::MaterialSource::Material);
 
-    device->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
-    device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
-    device->SetTextureStageState(0, D3DTSS_RESULTARG, D3DTA_CURRENT);
-    device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-    device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-    device->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
-    device->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::coordinateIndex, uint32_t(0));
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Disabled);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::result, RendererBackend::TextureArgument::Current);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Disable);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Disable);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::coordinateIndex, uint32_t(1));
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Disabled);
 
-    device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
-    device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
-    device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_MIPFILTER,
-                            enableMipMapping ? D3DTEXF_LINEAR : D3DTEXF_NONE);
-    device->SetSamplerState(1, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
-    device->SetSamplerState(1, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);
-    device->SetSamplerState(1, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(1, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(1, D3DSAMP_MIPFILTER,
-                            enableMipMapping ? D3DTEXF_LINEAR : D3DTEXF_NONE);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::addressU, RendererBackend::TextureAddress::Wrap);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::addressV, RendererBackend::TextureAddress::Wrap);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::minFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::magFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::mipFilter, enableMipMapping ? RendererBackend::TextureFilter::Linear : RendererBackend::TextureFilter::None);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::addressU, RendererBackend::TextureAddress::Wrap);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::addressV, RendererBackend::TextureAddress::Wrap);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::minFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::magFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::mipFilter, enableMipMapping ? RendererBackend::TextureFilter::Linear : RendererBackend::TextureFilter::None);
 }
 
-void CalculateDirectionalLight(const int minuteOfDay, const bool automatic,
+void CalculateDirectionalLight(const float minuteOfDay, const bool automatic,
                                const float azimuthDegrees, const float elevationDegrees,
                                float outDirection[3])
 {
@@ -129,9 +99,11 @@ void CalculateDirectionalLight(const int minuteOfDay, const bool automatic,
         // XiArea::SetSunMoonTime rotates the retail light through one complete
         // vertical orbit per Vana'diel day. At night the main light passes
         // below the horizon and the inverse secondary light illuminates the scene.
-        const float orbit =
-            (static_cast<float>((minuteOfDay % 1440 + 1440) % 1440) / 1440.0f) *
-            6.2831853f + elevationDegrees * kRadiansPerDegree;
+        float minute = std::isfinite(minuteOfDay) ? std::fmod(minuteOfDay, 1440.0f) : 0.0f;
+        if (minute < 0.0f)
+            minute += 1440.0f;
+        const float orbit = (minute / 1440.0f) * 6.2831853f +
+            elevationDegrees * kRadiansPerDegree;
         const float horizontal = sinf(orbit);
         const float compass = azimuthDegrees * kRadiansPerDegree;
         outDirection[0] = horizontal * cosf(compass);
@@ -150,7 +122,7 @@ void CalculateDirectionalLight(const int minuteOfDay, const bool automatic,
     outDirection[2] = horizontal * sinf(azimuth);
 }
 
-void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const int minuteOfDay,
+void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const float minuteOfDay,
                           const bool indoor, const bool automaticDirection,
                           const float azimuthDegrees, const float elevationDegrees,
                           const bool useAuthoredColor, const D3DCOLOR authoredMainColor,
@@ -163,26 +135,29 @@ void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const int
 
     if (quality <= 0)
     {
-        device->SetRenderState(D3DRS_LIGHTING, FALSE);
-        device->LightEnable(0, FALSE);
-        device->LightEnable(1, FALSE);
+        D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+        D3D9Graphics::Context(device).EnableLight(0, false);
+        D3D9Graphics::Context(device).EnableLight(1, false);
         return;
     }
 
     // A Vana'diel day drives a low, warm sun at dawn/dusk and a cooler overhead sun at noon.
-    const float dayAngle = (static_cast<float>(minuteOfDay % 1440) / 1440.0f) * 6.2831853f;
+    float minute = std::isfinite(minuteOfDay) ? std::fmod(minuteOfDay, 1440.0f) : 0.0f;
+    if (minute < 0.0f)
+        minute += 1440.0f;
+    const float dayAngle = (minute / 1440.0f) * 6.2831853f;
     const float altitude = sinf(dayAngle - 1.5707963f);
     const float daylight = indoor ? 0.0f : fmaxf(0.0f, altitude);
     const float sunIntensity = indoor ? 0.28f : 0.22f + 0.78f * daylight;
     const float ambient = indoor ? 0.42f : 0.22f + 0.30f * daylight;
 
-    D3DLIGHT9 sun = {};
-    sun.Type = D3DLIGHT_DIRECTIONAL;
+    RendererBackend::Light sun = {};
+    sun.type = RendererBackend::LightType::Directional;
     if (useAuthoredColor)
     {
         const float power = std::isfinite(authoredLightPower)
             ? fmaxf(authoredLightPower, 0.0f) : 1.0f;
-        sun.Diffuse = {
+        sun.diffuse = {
             (static_cast<float>((authoredMainColor >> 16) & 0xff) / 255.0f) * power,
             (static_cast<float>((authoredMainColor >> 8) & 0xff) / 255.0f) * power,
             (static_cast<float>(authoredMainColor & 0xff) / 255.0f) * power,
@@ -191,7 +166,7 @@ void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const int
     }
     else
     {
-        sun.Diffuse = { 1.0f, 0.88f + 0.12f * daylight,
+        sun.diffuse = { 1.0f, 0.88f + 0.12f * daylight,
                         0.72f + 0.28f * daylight, 1.0f };
     }
     float direction[3] = {};
@@ -206,36 +181,36 @@ void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const int
         CalculateDirectionalLight(minuteOfDay, automaticDirection, azimuthDegrees,
                                   elevationDegrees, direction);
     }
-    sun.Direction = { direction[0], direction[1], direction[2] };
-    sun.Attenuation0 = 1.0f;
-    device->SetLight(0, &sun);
-    device->LightEnable(0, TRUE);
+    sun.direction = { direction[0], direction[1], direction[2] };
+    sun.attenuation0 = 1.0f;
+    D3D9Graphics::Context(device).SetLight(0, sun);
+    D3D9Graphics::Context(device).EnableLight(0, true);
     if (useAuthoredColor && !useAuthoredDirection)
     {
         const float power = std::isfinite(authoredLightPower)
             ? fmaxf(authoredLightPower, 0.0f) : 1.0f;
-        D3DLIGHT9 fill = {};
-        fill.Type = D3DLIGHT_DIRECTIONAL;
-        fill.Diffuse = {
+        RendererBackend::Light fill = {};
+        fill.type = RendererBackend::LightType::Directional;
+        fill.diffuse = {
             (static_cast<float>((authoredSecondaryColor >> 16) & 0xff) / 255.0f) * power,
             (static_cast<float>((authoredSecondaryColor >> 8) & 0xff) / 255.0f) * power,
             (static_cast<float>(authoredSecondaryColor & 0xff) / 255.0f) * power,
             1.0f
         };
-        fill.Direction = { -direction[0], -direction[1], -direction[2] };
-        fill.Attenuation0 = 1.0f;
-        device->SetLight(1, &fill);
-        device->LightEnable(1, TRUE);
+        fill.direction = { -direction[0], -direction[1], -direction[2] };
+        fill.attenuation0 = 1.0f;
+        D3D9Graphics::Context(device).SetLight(1, fill);
+        D3D9Graphics::Context(device).EnableLight(1, true);
     }
     else
     {
-        device->LightEnable(1, FALSE);
+        D3D9Graphics::Context(device).EnableLight(1, false);
     }
-    device->SetRenderState(D3DRS_LIGHTING, TRUE);
-    device->SetRenderState(D3DRS_AMBIENT, useAuthoredColor
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, true);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::ambient, uint32_t(useAuthoredColor
         ? authoredAmbientColor
-        : D3DCOLOR_COLORVALUE(ambient * 0.82f, ambient * 0.88f, ambient, 1.0f));
-    device->SetRenderState(D3DRS_SPECULARENABLE, FALSE);
+        : D3DCOLOR_COLORVALUE(ambient * 0.82f, ambient * 0.88f, ambient, 1.0f)));
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::specular, false);
 }
 
 void SetTextureStageForOptionalTexture(IDirect3DDevice9 *device, IDirect3DTexture9 *texture,
@@ -247,19 +222,19 @@ void SetTextureStageForOptionalTexture(IDirect3DDevice9 *device, IDirect3DTextur
     device->SetTexture(0, texture);
     if (texture)
     {
-        device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
-        device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-        device->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
-        device->SetTextureStageState(0, D3DTSS_ALPHAOP, alphaOp);
-        device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-        device->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Modulate2X);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Texture);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg2, RendererBackend::TextureArgument::Diffuse);
+        D3D9Graphics::Context(device).SetLegacyTextureAlphaOperation(0, alphaOp);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Texture);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg2, RendererBackend::TextureArgument::Diffuse);
     }
     else
     {
-        device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-        device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
-        device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-        device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::SelectArg1);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Diffuse);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::SelectArg1);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Diffuse);
     }
 }
 
@@ -270,15 +245,15 @@ void SetTextureScroll(IDirect3DDevice9 *device, const bool enabled, const float 
         return;
     if (!enabled)
     {
-        device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+        D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Disabled);
         return;
     }
     const float seconds = (float)(GetTickCount64() % 1000000ULL) * 0.001f;
     D3DMATRIX texture = D3DMath::BuildIdentity();
     texture._31 = fmodf(seconds * speedU, 1.0f);
     texture._32 = fmodf(seconds * speedV, 1.0f);
-    device->SetTransform(D3DTS_TEXTURE0, &texture);
-    device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT2);
+    D3D9Graphics::Context(device).SetTextureTransform(0, &texture._11);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Count2);
 }
 
 DWORD FloatBits(const float value)
@@ -307,7 +282,7 @@ bool SetFfxiUiPixelShader(IDirect3DDevice9 *device, const bool expandDxt3Alpha,
     if (!EnsureFfxiUiPixelShader(device))
     {
         if (device)
-            device->SetPixelShader(nullptr);
+            D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
         return false;
     }
 
@@ -318,8 +293,9 @@ bool SetFfxiUiPixelShader(IDirect3DDevice9 *device, const bool expandDxt3Alpha,
         0.0f,
         0.0f
     };
-    device->SetPixelShader(g_uiPixelShader);
-    device->SetPixelShaderConstantF(0, alphaParams, 1);
+    D3D9Graphics::Context graphics(device);
+    graphics.BindShader(RendererBackend::ShaderStage::Pixel, g_uiPixelShader);
+    graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 0, alphaParams, 1);
     return true;
 }
 
@@ -341,14 +317,14 @@ void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
     const float alphaRef = material ? material->alphaTest : 0.0f;
     const CustomTextureAssets::Texture customTexture = CustomTextureAssets::ResolveBase(texture);
     IDirect3DTexture9 *d3dTexture = customTexture.texture ? customTexture.texture :
-        (texture ? texture->pD3DTex : nullptr);
+        (texture ? D3D9Graphics::NativeTexture(texture->gpuTexture) : nullptr);
     const bool expandDxt3Alpha = texture && texture->texType == NOESISTEX_DXT3;
-    device->SetRenderState(D3DRS_CULLMODE, twoSided ? D3DCULL_NONE : D3DCULL_CW);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaRef > 0.0f ? TRUE : FALSE);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, twoSided ? RendererBackend::Cull::None : RendererBackend::Cull::Clockwise);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((alphaRef > 0.0f ? TRUE : FALSE) != FALSE));
     if (alphaRef > 0.0f)
     {
-        device->SetRenderState(D3DRS_ALPHAREF, (DWORD)(alphaRef * 255.0f));
-        device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaReference, uint32_t((DWORD)(alphaRef * 255.0f)));
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaCompare, RendererBackend::Compare::Greater);
     }
     const bool pbrActive = d3dTexture && CustomTextureAssets::ApplyPbrShader(
         device, texture, d3dTexture, alphaRef > 0.0f, expandDxt3Alpha, 1.0f);
@@ -360,8 +336,8 @@ void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
         customTexture.texture ? static_cast<float>(customTexture.height) :
             (texture ? static_cast<float>(texture->h) : 0.0f)));
     if (!d3dTexture)
-        device->SetPixelShader(nullptr); // Untextured materials use fixed-function vertex color.
-    if (!pbrActive) { device->SetTexture(1, nullptr); device->SetTexture(2, nullptr); device->SetTexture(3, nullptr); }
+        D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr); // Untextured materials use fixed-function vertex color.
+    if (!pbrActive) { D3D9Graphics::Context(device).BindTexture(1, nullptr); D3D9Graphics::Context(device).BindTexture(2, nullptr); D3D9Graphics::Context(device).BindTexture(3, nullptr); }
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 :
         (alphaRef > 0.0f ? D3DTOP_MODULATE4X : D3DTOP_MODULATE2X));
@@ -384,9 +360,9 @@ void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& ca
     const bool twoSided = !material || (material->flags & NMATFLAG_TWOSIDED) != 0;
     const CustomTextureAssets::Texture customTexture = CustomTextureAssets::ResolveBase(texture);
     IDirect3DTexture9 *d3dTexture = customTexture.texture ? customTexture.texture :
-        (texture ? texture->pD3DTex : nullptr);
+        (texture ? D3D9Graphics::NativeTexture(texture->gpuTexture) : nullptr);
     const bool expandDxt3Alpha = texture && texture->texType == NOESISTEX_DXT3;
-    device->SetRenderState(D3DRS_CULLMODE, twoSided ? D3DCULL_NONE : D3DCULL_CW);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, twoSided ? RendererBackend::Cull::None : RendererBackend::Cull::Clockwise);
     const bool pbrActive = d3dTexture && CustomTextureAssets::ApplyPbrShader(
         device, texture, d3dTexture, true, expandDxt3Alpha, 1.0f);
     const bool shaderActive = pbrActive || (d3dTexture && SetFfxiTexturePixelShader(
@@ -397,8 +373,8 @@ void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& ca
         customTexture.texture ? static_cast<float>(customTexture.height) :
             (texture ? static_cast<float>(texture->h) : 0.0f)));
     if (!d3dTexture)
-        device->SetPixelShader(nullptr);
-    if (!pbrActive) { device->SetTexture(1, nullptr); device->SetTexture(2, nullptr); device->SetTexture(3, nullptr); }
+        D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    if (!pbrActive) { D3D9Graphics::Context(device).BindTexture(1, nullptr); D3D9Graphics::Context(device).BindTexture(2, nullptr); D3D9Graphics::Context(device).BindTexture(3, nullptr); }
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
 }
@@ -409,7 +385,7 @@ void ReleaseFfxiPixelShaders()
     CustomTextureAssets::Release();
     if (g_uiPixelShader)
     {
-        g_uiPixelShader->Release();
+        delete g_uiPixelShader;
         g_uiPixelShader = nullptr;
     }
     g_uiPixelShaderTried = false;

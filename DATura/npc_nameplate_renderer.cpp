@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "npc_nameplate_renderer.h"
 
 #include "npc_render_geometry.h"
@@ -14,7 +15,7 @@ namespace
 {
 struct CachedTexture
 {
-    IDirect3DTexture9* texture = nullptr;
+    RendererBackend::Texture* texture = nullptr;
     int textWidth = 0;
     int textHeight = 0;
     int textureWidth = 0;
@@ -28,11 +29,11 @@ struct Vertex
     float u, v;
 };
 
-constexpr DWORD kVertexFvf = D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1;
+
 constexpr float kFullSizeDistance = 12.0f;
 constexpr float kMinimumDistanceScale = 0.25f;
 
-using CacheKey = std::tuple<std::string, std::string, std::string, DWORD, DWORD, bool, bool>;
+using CacheKey = std::tuple<std::string, std::string, std::string, DWORD, DWORD, bool, bool, std::string, int, DWORD>;
 std::map<CacheKey, CachedTexture> g_cachedTextures;
 
 float DistanceScale(const float distanceSquared)
@@ -63,7 +64,7 @@ CachedTexture* GetCachedTexture(IDirect3DDevice9* device, const NpcNameplateRend
     // Suppress it if the official atlas is unavailable; never substitute Arial.
     const bool questMarker = item.starterQuestAvailable && FFXINameplateFont::Supports(L"!");
     const auto key = std::make_tuple(name, title, icon ? icon->id : "",
-        DWORD(item.nameColor), icon && icon->tintable ? DWORD(item.iconColor) : 0xFFFFFFFF, jobMaster, questMarker);
+        DWORD(item.nameColor), icon && icon->tintable ? DWORD(item.iconColor) : 0xFFFFFFFF, jobMaster, questMarker, item.font, std::clamp(item.fontSize, 10, 32), DWORD(item.titleColor));
     const auto cached = g_cachedTextures.find(key);
     if (cached != g_cachedTextures.end())
         return &cached->second;
@@ -74,17 +75,21 @@ CachedTexture* GetCachedTexture(IDirect3DDevice9* device, const NpcNameplateRend
         return nullptr;
     const auto nameText = Utf8Text(name);
     const auto titleText = Utf8Text(title);
-    const bool bitmapName = FFXINameplateFont::Supports(nameText);
-    const bool bitmapTitle = FFXINameplateFont::Supports(titleText);
-    HFONT font = bitmapName ? nullptr : CreateFontA(-16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    const int nameHeight = std::clamp(item.fontSize, 10, 32);
+    const int titleHeight = std::max(10, nameHeight * 13 / 16);
+    const bool official = item.font.empty() || _stricmp(item.font.c_str(), "FFXI") == 0;
+    const char* face = official ? "Arial" : item.font.c_str();
+    const bool bitmapName = official && FFXINameplateFont::Supports(nameText);
+    const bool bitmapTitle = official && FFXINameplateFont::Supports(titleText);
+    HFONT font = bitmapName ? nullptr : CreateFontA(-nameHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, "Arial");
-    HFONT titleFont = bitmapTitle ? nullptr : CreateFontA(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_PITCH | FF_DONTCARE, face);
+    HFONT titleFont = bitmapTitle ? nullptr : CreateFontA(-titleHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, "Arial");
+        DEFAULT_PITCH | FF_DONTCARE, face);
     HFONT oldFont = (HFONT)GetCurrentObject(dc, OBJ_FONT);
-    SIZE textSize = FFXINameplateFont::Measure(nameText, 16);
-    SIZE titleSize = FFXINameplateFont::Measure(titleText, 13);
+    SIZE textSize = FFXINameplateFont::Measure(nameText, nameHeight);
+    SIZE titleSize = FFXINameplateFont::Measure(titleText, titleHeight);
     const int iconWidth = icon ? FFXIPlayerIcons::Width(*icon) + 2 : 0;
     constexpr int markerHeight = 56;
     const SIZE markerSize = questMarker ? FFXINameplateFont::Measure(L"!", markerHeight) : SIZE{};
@@ -141,7 +146,7 @@ CachedTexture* GetCachedTexture(IDirect3DDevice9* device, const NpcNameplateRend
                 2 + y, markerHeight, RGB(255, 255, 255));
         if (bitmapName)
             FFXINameplateFont::Draw(dc, nameText, (result.textWidth - textSize.cx - iconWidth) / 2 + iconWidth + x,
-                nameY + y, 16, RGB(255, 255, 255));
+                nameY + y, nameHeight, RGB(255, 255, 255));
         else
         {
             SelectObject(dc, font);
@@ -152,7 +157,7 @@ CachedTexture* GetCachedTexture(IDirect3DDevice9* device, const NpcNameplateRend
         {
             if (bitmapTitle)
                 FFXINameplateFont::Draw(dc, titleText, (result.textWidth - titleSize.cx) / 2 + x,
-                    titleY + y, 13, RGB(255, 255, 255));
+                    titleY + y, titleHeight, RGB(255, 255, 255));
             else
             {
                 SelectObject(dc, titleFont);
@@ -184,7 +189,7 @@ CachedTexture* GetCachedTexture(IDirect3DDevice9* device, const NpcNameplateRend
         const float greenWeight = (float)centerAlpha / (float)alpha;
         const bool titlePixel = !titleText.empty() && i / result.textureWidth >= (size_t)(titleY - 1);
         const bool markerPixel = questMarker && i / result.textureWidth < size_t(markerRow);
-        const DWORD color = markerPixel ? 0xFFFFD45A : titlePixel ? 0xFFD2DCE6 : item.nameColor;
+        const DWORD color = markerPixel ? 0xFFFFD45A : titlePixel ? item.titleColor : item.nameColor;
         const BYTE red = (BYTE)(float((color >> 16) & 255) * greenWeight);
         const BYTE green = (BYTE)(float((color >> 8) & 255) * greenWeight);
         const BYTE blue = (BYTE)(float(color & 255) * greenWeight);
@@ -205,23 +210,15 @@ CachedTexture* GetCachedTexture(IDirect3DDevice9* device, const NpcNameplateRend
     DeleteObject(titleFont);
     DeleteDC(dc);
 
-    if (!device || FAILED(device->CreateTexture(result.textureWidth, result.textureHeight, 1, 0,
-                                                  D3DFMT_A8R8G8B8, D3DPOOL_MANAGED,
-                                                  &result.texture, nullptr)))
-    {
-        return nullptr;
-    }
-    D3DLOCKED_RECT locked = {};
-    if (FAILED(result.texture->LockRect(0, &locked, nullptr, 0)))
-    {
-        result.texture->Release();
-        return nullptr;
-    }
-    for (int y = 0; y < result.textureHeight; ++y)
-        memcpy((BYTE*)locked.pBits + y * locked.Pitch,
-               &composed[(size_t)y * result.textureWidth],
-               (size_t)result.textureWidth * sizeof(DWORD));
-    result.texture->UnlockRect(0);
+    D3D9Graphics::Context graphics(device);
+    RendererBackend::TextureUpload upload;
+    upload.width = result.textureWidth;
+    upload.height = result.textureHeight;
+    upload.data = composed.data();
+    upload.dataSize = composed.size() * sizeof(DWORD);
+    upload.generateMips = false;
+    result.texture = graphics.CreateTexture(upload);
+    if (!result.texture) return nullptr;
     const auto inserted = g_cachedTextures.emplace(key, result);
     return &inserted.first->second;
 }
@@ -236,8 +233,8 @@ void Draw(IDirect3DDevice9* device, std::vector<DrawItem>& items)
 
     // Scene materials (including weather and translucent surfaces) leave state
     // behind. A nameplate must not inherit their fog, winding, or texture UVs.
-    IDirect3DStateBlock9* previousState = nullptr;
-    if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &previousState)))
+    RendererBackend::PipelineSnapshot* previousState = nullptr;
+    if (!((previousState = D3D9Graphics::Context(device).CapturePipelineState())))
         return;
 
     std::sort(items.begin(), items.end(),
@@ -246,48 +243,48 @@ void Draw(IDirect3DDevice9* device, std::vector<DrawItem>& items)
             return a.distanceSquared > b.distanceSquared;
         });
 
-    device->SetVertexShader(nullptr);
-    device->SetPixelShader(nullptr);
-    device->SetFVF(kVertexFvf);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_FOGENABLE, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
-    device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-    device->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_CLIPPLANEENABLE, 0);
-    device->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF);
-    device->SetRenderState(D3DRS_SRGBWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_DEPTHBIAS, 0);
-    device->SetRenderState(D3DRS_SLOPESCALEDEPTHBIAS, 0);
-    device->SetRenderState(D3DRS_ZENABLE, TRUE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-    device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-    device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-    device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
-    device->SetRenderState(D3DRS_ALPHAREF, 4);
-    device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-    device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
-    device->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
-    device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
-    device->SetTextureStageState(0, D3DTSS_ALPHAARG2, D3DTA_DIFFUSE);
-    device->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
-    device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
-    device->SetTextureStageState(0, D3DTSS_RESULTARG, D3DTA_CURRENT);
-    device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-    device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-    device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-    device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-    device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
-    device->SetSamplerState(0, D3DSAMP_SRGBTEXTURE, FALSE);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Vertex, nullptr);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::ScreenColorTexture);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fog, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fill, RendererBackend::Fill::Solid);
+    D3D9Graphics::Context(device).SetStencilField(&RendererBackend::StencilState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::scissor, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::clipPlaneMask, uint32_t(0));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::colorWriteMask, uint32_t(0xF));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::srgbWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthBias, RendererBackend::FloatFromBits(0));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::slopeDepthBias, RendererBackend::FloatFromBits(0));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthCompare, RendererBackend::Compare::LessEqual);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blendOperation, RendererBackend::BlendOperation::Add);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::separateAlphaBlend, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaReference, uint32_t(4));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaCompare, RendererBackend::Compare::Greater);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Modulate);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Texture);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg2, RendererBackend::TextureArgument::Diffuse);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Modulate);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Texture);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg2, RendererBackend::TextureArgument::Diffuse);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::coordinateIndex, uint32_t(0));
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Disabled);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::result, RendererBackend::TextureArgument::Current);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Disable);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Disable);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::addressU, RendererBackend::TextureAddress::Clamp);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::addressV, RendererBackend::TextureAddress::Clamp);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::minFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::magFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::mipFilter, RendererBackend::TextureFilter::None);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::srgb, false);
 
     for (const DrawItem& item : items)
     {
@@ -315,11 +312,11 @@ void Draw(IDirect3DDevice9* device, std::vector<DrawItem>& items)
             { right, bottom, item.depth, 1.0f, 0xFFFFFFFF, u,    v },
         };
 
-        device->SetTexture(0, label->texture);
-        device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vertices, sizeof(Vertex));
+        D3D9Graphics::Context(device).BindTexture(0, label->texture);
+        D3D9Graphics::Context(device).DrawImmediate(RendererBackend::Primitive::TriangleStrip, 2, vertices, sizeof(Vertex));
     }
-    previousState->Apply();
-    previousState->Release();
+    previousState->Restore();
+    delete previousState;
 }
 
 void ClearCachedTextures()
@@ -327,7 +324,7 @@ void ClearCachedTextures()
     for (auto& entry : g_cachedTextures)
     {
         if (entry.second.texture)
-            entry.second.texture->Release();
+            delete entry.second.texture;
     }
     g_cachedTextures.clear();
 }

@@ -5,6 +5,7 @@
 #include <fstream>
 
 bool TestNameplateConfig();
+bool TestFontConfig();
 bool TestStarterQuests();
 
 template<class T> struct Com
@@ -32,13 +33,17 @@ std::vector<DWORD> Capture(IDirect3DDevice9* device)
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--font-config-only")
+        return TestFontConfig() ? 0 : 1;
     if (argc == 2 && std::string(argv[1]) == "--config-only")
         return TestNameplateConfig() ? 0 : 1;
-    if (argc != 3) { puts("usage: NameplateRenderingTests <FFXI root> <preview.bmp>"); return 2; }
+    const bool fontStyling = argc == 4 && std::string(argv[3]) == "--font-styling";
+    const bool renderOnly = argc == 4 && std::string(argv[3]) == "--render-only";
+    if (argc != 3 && !fontStyling && !renderOnly) { puts("usage: NameplateRenderingTests <FFXI root> <preview.bmp> [--render-only]"); return 2; }
     FFXIBitmapFont::SetRootPath(argv[1]);
     if (!FFXINameplateFont::Load()) return 1;
-    if (!TestNameplateConfig()) { puts("FAIL: Config nameplate settings"); return 1; }
-    if (!TestStarterQuests()) { puts("FAIL: starter quest catalog"); return 1; }
+    if (!renderOnly && !(fontStyling ? TestFontConfig() : TestNameplateConfig())) { puts("FAIL: Config nameplate settings"); return 1; }
+    if (!renderOnly && !fontStyling && !TestStarterQuests()) { puts("FAIL: starter quest catalog"); return 1; }
     HWND window = CreateWindowExA(0, "STATIC", "Nameplate regression", WS_POPUP,
         0, 0, 512, 128, nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
     Com<IDirect3D9> d3d;
@@ -70,6 +75,26 @@ int main(int argc, char** argv)
         return Capture(device.p);
     };
     const auto baseline = render(1.0f);
+    if (fontStyling)
+    {
+        labels[0].font = "Arial";
+        labels[0].fontSize = 24;
+        labels[0].nameColor = 0xFFFF2020;
+        const auto changed = render(1.0f);
+        if (changed.empty() || changed == baseline) { puts("FAIL: font pixels unchanged"); return 1; }
+        int red = 0;
+        for (DWORD pixel : changed)
+            red += ((pixel >> 16) & 255) > 150 && ((pixel >> 16) & 255) > ((pixel >> 8) & 255) + 50;
+        if (red < 20) { printf("FAIL: custom red pixels %d\n", red); return 1; }
+        labels[0].font = "FFXI";
+        labels[0].fontSize = 16;
+        labels[0].nameColor = 0xFFA4FFA4;
+        if (render(1.0f) != baseline) { puts("FAIL: font cache restore"); return 1; }
+        NpcNameplateRenderer::ClearCachedTextures();
+        DestroyWindow(window);
+        puts("PASS: GPU custom font/size/color rendering and cache restoration.");
+        return 0;
+    }
     int green = 0;
     for (DWORD pixel : baseline)
         green += ((pixel >> 8) & 255) > 150 && ((pixel >> 8) & 255) > ((pixel >> 16) & 255) + 30;

@@ -41,6 +41,7 @@ enum CommandId
     ResourceDatReplacements = 6104,
     AudioPlayer = 6201,
     AudioStop = 6202,
+    DatHexReader = 6252,
     TextureViewer = 6251,
     CompanionBrowser = 6261,
     PrototypeAreaBase = 6300,
@@ -116,6 +117,7 @@ ApplicationMenu::Action DecodeAction(const UINT commandId)
     case ResourceOpenDat: return Action::OpenResourceDat;
     case ResourceZoneDiagnostics: return Action::ShowZoneGeometryDiagnostics;
     case ResourceDatReplacements: return Action::ShowDatReplacements;
+    case DatHexReader: return Action::ShowDatHexReader;
     case TextureViewer: return Action::ShowTextureViewer;
     case CompanionBrowser: return Action::ShowCompanionBrowser;
     case AudioPlayer: return Action::ShowAudioPlayer;
@@ -322,6 +324,7 @@ HMENU Build(State& state, const ApplicationSettings::State& settings, const bool
     AppendMenuA(assetsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(monsterMenu), "Monsters");
     AppendMenuA(assetsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(companionMenu), "Companions");
     AppendMenuA(toolsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(resourceMenu), "Resources");
+    AppendMenuA(toolsMenu, MF_STRING, DatHexReader, "DAT Hex Reader...");
     AppendMenuA(toolsMenu, MF_STRING, ViewZoneObjects, "Zone Objects...");
     AppendMenuA(toolsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(imageMenu), "Images / Textures");
     AppendMenuA(toolsMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(audioMenu), "Audio");

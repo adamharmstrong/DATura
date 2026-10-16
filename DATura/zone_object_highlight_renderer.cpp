@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "zone_object_highlight_renderer.h"
 
 #include "d3d_model_buffers.h"
@@ -14,22 +15,22 @@ void Draw(IDirect3DDevice9 *device, noesisModel_t *model,
         return;
 
     D3DMATRIX baseWorld = {};
-    device->GetTransform(D3DTS_WORLD, &baseWorld);
-    device->SetFVF(FFXI_VERTEX_FVF);
-    device->SetTexture(0, nullptr);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_ZENABLE, TRUE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetRenderState(D3DRS_FILLMODE, D3DFILL_WIREFRAME);
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
-    device->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TFACTOR);
-    device->SetRenderState(D3DRS_TEXTUREFACTOR, D3DCOLOR_XRGB(255, 128, 0));
-    device->SetRenderState(D3DRS_DEPTHBIAS, 0xBA83126F);
+    D3D9Graphics::Context(device).QueryTransform(RendererBackend::Transform::World, &baseWorld._11);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model);
+    D3D9Graphics::Context(device).BindTexture(0, nullptr);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fill, RendererBackend::Fill::Wireframe);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::SelectArg1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorArg1, RendererBackend::TextureArgument::Factor);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::SelectArg1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaArg1, RendererBackend::TextureArgument::Factor);
+    D3D9Graphics::Context(device).SetTextureFactor(D3DCOLOR_XRGB(255, 128, 0));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthBias, RendererBackend::FloatFromBits(0xBA83126F));
 
     for (const noesisModel_t::Submesh& submesh : model->submeshes)
     {
@@ -44,12 +45,12 @@ void Draw(IDirect3DDevice9 *device, noesisModel_t *model,
         D3DModelBuffers::DrawSubmesh(device, model, submesh);
     }
 
-    device->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-    device->SetRenderState(D3DRS_DEPTHBIAS, 0);
-    device->SetTransform(D3DTS_WORLD, &baseWorld);
-    device->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
-    device->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_MODULATE);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fill, RendererBackend::Fill::Solid);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthBias, RendererBackend::FloatFromBits(0));
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &baseWorld._11);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Modulate);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Modulate);
     device->SetStreamSource(0, nullptr, 0, 0);
     device->SetIndices(nullptr);
 }

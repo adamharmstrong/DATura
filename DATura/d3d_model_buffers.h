@@ -11,6 +11,10 @@ namespace D3DModelBuffers
     bool HasDrawBuffers(const noesisModel_t *model, const noesisModel_t::Submesh& submesh);
     void DrawSubmesh(IDirect3DDevice9 *device, const noesisModel_t *model,
                      const noesisModel_t::Submesh& submesh);
+    void DrawSubmesh(RendererBackend::Graphics& graphics, const noesisModel_t *model,
+                     const noesisModel_t::Submesh& submesh);
     void DrawOpaqueBatch(IDirect3DDevice9 *device, const noesisModel_t *model,
+                         const noesisModel_t::OpaqueBatch& batch);
+    void DrawOpaqueBatch(RendererBackend::Graphics& graphics, const noesisModel_t *model,
                          const noesisModel_t::OpaqueBatch& batch);
 }

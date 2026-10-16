@@ -1,28 +1,16 @@
 #pragma once
 
 #include "application_settings.h"
-#include "d3d9_device.h"
+#include "renderer_interface.h"
+#include <memory>
 
 namespace RendererBackend
 {
-    using DisplayConfiguration = D3D9Device::DisplayConfiguration;
-    using DefaultPoolCallback = D3D9Device::DefaultPoolCallback;
-    using FrameStatus = D3D9Device::FrameStatus;
-
-    enum class InitializeResult
-    {
-        Success,
-        UnsupportedBackend,
-        Direct3DUnavailable,
-        NoSupportedDevice,
-    };
-
-    // Owns the selected graphics backend. The current renderer still borrows
-    // the D3D9 device directly while backend-neutral draw interfaces are grown.
+    // Owns the selected graphics backend and delegates presentation/lifecycle.
     class Runtime final
     {
     public:
-        Runtime() = default;
+        Runtime();
         ~Runtime();
 
         Runtime(const Runtime&) = delete;
@@ -37,15 +25,17 @@ namespace RendererBackend
         FrameStatus PrepareFrame();
         HRESULT ResolveFrame();
         HRESULT Present();
+        OverlayContext* AcquireOverlay() { return implementation_->AcquireOverlay(); }
         void Shutdown();
 
         int Backend() const { return backend_; }
-        IDirect3DDevice9* D3D9Device() const { return d3d9_.Device(); }
-        bool IsInitialized() const { return d3d9_.IsInitialized(); }
-        bool IsDeviceLost() const { return d3d9_.IsDeviceLost(); }
+        Graphics& GetGraphics() { return implementation_->GetGraphics(); }
+        IDirect3DDevice9* D3D9Device() const { return implementation_->LegacyD3D9Device(); }
+        bool IsInitialized() const { return implementation_->IsInitialized(); }
+        bool IsDeviceLost() const { return implementation_->IsDeviceLost(); }
 
     private:
         int backend_ = ApplicationSettings::RenderingBackendDirectX9;
-        D3D9Device::Runtime d3d9_;
+        std::unique_ptr<Interface> implementation_;
     };
 }

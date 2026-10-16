@@ -9,6 +9,9 @@ namespace FFXIEventTable
     struct Event
     {
         std::uint16_t id = 0xffff;
+        // Branch operands address the complete actor bytecode block.
+        std::size_t entryOffset = 0;
+        std::size_t endOffset = 0;
         std::vector<std::uint8_t> code;
         std::vector<std::uint32_t> references;
     };

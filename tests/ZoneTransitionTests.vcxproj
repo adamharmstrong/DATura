@@ -39,6 +39,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="zone_transition_tests.cpp" /></ItemGroup>
+  <ItemGroup><ClInclude Include="mainland_exit_cases.h" /></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
 

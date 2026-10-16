@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "zone_weather_particles.h"
 
 #include "noesis_rapi.h"
@@ -86,13 +87,13 @@ bool DrawAuthoredBatchedWeather(
     const float emissionPhase = (float)fmod(currentFrame, (double)emissionFrames);
 
     D3DModelRenderState::ApplyFixedFunctionModelState(device, enableMipMapping);
-    device->SetFVF(FFXI_VERTEX_FVF);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_FOGENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZENABLE, TRUE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fog, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
 
     for (noesisModel_t::Submesh *submesh : batches)
     {
@@ -103,7 +104,7 @@ bool DrawAuthoredBatchedWeather(
             continue;
 
         IDirect3DTexture9 *texture = submesh->pResolvedTexture ?
-            submesh->pResolvedTexture->pD3DTex : nullptr;
+            D3D9Graphics::NativeTexture(submesh->pResolvedTexture->gpuTexture) : nullptr;
         const bool expandDxt3Alpha = submesh->pResolvedTexture &&
             submesh->pResolvedTexture->texType == NOESISTEX_DXT3;
         ZoneEnvironmentRenderState::ApplyBlendMode(device, controller.blendMode);
@@ -138,18 +139,18 @@ bool DrawAuthoredBatchedWeather(
                     (0.5f * wholeFrames * (wholeFrames - 1.0f) + fraction * wholeFrames);
                 (&world._41)[axis] += displacement;
             }
-            device->SetTransform(D3DTS_WORLD, &world);
+            D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &world._11);
             D3DModelBuffers::DrawSubmesh(device, model, *submesh);
         }
     }
 
     D3DModelRenderState::SetTextureScroll(device, false);
-    device->SetPixelShader(nullptr);
-    device->SetTexture(0, nullptr);
-    device->SetTexture(1, nullptr);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).BindTexture(0, nullptr);
+    D3D9Graphics::Context(device).BindTexture(1, nullptr);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((TRUE) != FALSE));
     device->SetStreamSource(0, nullptr, 0, 0);
     device->SetIndices(nullptr);
     return true;
@@ -199,7 +200,7 @@ void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
         if (!texture && sprite->textureName == candidate->name)
             texture = candidate;
     }
-    if (!texture || !texture->pD3DTex) return;
+    if (!texture || !D3D9Graphics::NativeTexture(texture->gpuTexture)) return;
     float origin[3] = {};
     float distanceSquared = 0;
     for (int axis = 0; axis < 3; ++axis)
@@ -225,7 +226,7 @@ void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
     const auto cycle = static_cast<unsigned long long>(floor(frame / interval));
     const double phase = fmod(frame, interval);
     D3DMATRIX view;
-    device->GetTransform(D3DTS_VIEW, &view);
+    D3D9Graphics::Context(device).QueryTransform(RendererBackend::Transform::View, &view._11);
     const float right[3] = {view._11, view._21, view._31};
     const float down[3] = {-view._12, -view._22, -view._32};
     struct Particle { float center[3]; float alpha; float depth; size_t spriteOffset; };
@@ -290,20 +291,20 @@ void DrawSprites(IDirect3DDevice9 *device, noesisModel_t *model,
     if (vertices.empty()) return;
     D3DModelRenderState::ApplyFixedFunctionModelState(device, true);
     const auto identity = D3DMath::BuildIdentity();
-    device->SetTransform(D3DTS_WORLD, &identity);
-    device->SetFVF(FFXI_VERTEX_FVF);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_FOGENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZENABLE, TRUE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &identity._11);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fog, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
     ZoneEnvironmentRenderState::ApplyBlendMode(device, g.hasBlendMode ? g.blendMode : 0x44);
-    device->SetTexture(1, texture->pD3DTex);
+    D3D9Graphics::Context(device).BindTexture(1, texture->gpuTexture);
     const bool shader = D3DModelRenderState::SetFfxiTexturePixelShader(device, true, texture->texType == NOESISTEX_DXT3, 1, colors);
-    D3DModelRenderState::SetTextureStageForOptionalTexture(device, texture->pD3DTex, shader ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE2X);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)vertices.size()/3, vertices.data(), sizeof(FFXIVertex));
-    device->SetTexture(1, nullptr);
+    D3DModelRenderState::SetTextureStageForOptionalTexture(device, D3D9Graphics::NativeTexture(texture->gpuTexture), shader ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE2X);
+    D3D9Graphics::Context(device).DrawImmediate(RendererBackend::Primitive::TriangleList, (UINT)vertices.size()/3, vertices.data(), sizeof(FFXIVertex));
+    D3D9Graphics::Context(device).BindTexture(1, nullptr);
 }
 }
 
@@ -317,8 +318,8 @@ void DrawAtTime(IDirect3DDevice9 *device, noesisModel_t *model, bool environment
     opacity = std::clamp(opacity, 0.0f, 1.0f);
     if (!device || !model || !environmentValid || !std::isfinite(seconds) ||
         seconds < 0 || opacity <= 0.001f) return;
-    IDirect3DStateBlock9 *saved = nullptr;
-    if (FAILED(device->CreateStateBlock(D3DSBT_ALL, &saved))) return;
+    RendererBackend::PipelineSnapshot* saved = nullptr;
+    if (!((saved = D3D9Graphics::Context(device).CapturePipelineState()))) return;
     const float camera[3] = {cameraX,cameraY,cameraZ};
     for (const auto &g : generators)
     {
@@ -330,8 +331,8 @@ void DrawAtTime(IDirect3DDevice9 *device, noesisModel_t *model, bool environment
         if (!hasMeshBatch && g.linkedDataType == 0x0e)
             DrawSprites(device, model, g, keyframes, seconds, minute, camera, opacity);
     }
-    saved->Apply();
-    saved->Release();
+    saved->Restore();
+    delete saved;
 }
 
 void Draw(IDirect3DDevice9 *device, noesisModel_t *model, bool environmentValid,

@@ -7,6 +7,7 @@
 
 #include <windows.h>
 #include <d3d9.h>
+#include "renderer_resources.h"
 #include <cmath>
 #include <cstring>
 #include <cstdio>
@@ -465,11 +466,11 @@ struct noesisTex_t
     int              dataLen;
     bool             shouldFreeData;
 
-    IDirect3DTexture9 *pD3DTex;     // D3D9 texture (NULL until uploaded)
+    RendererBackend::Texture *gpuTexture; // Owned by the texture pool; null until uploaded.
 
     noesisTex_t()
         : name(nullptr), w(0), h(0), texType(NOESISTEX_UNKNOWN)
-        , data(nullptr), dataLen(0), shouldFreeData(false), pD3DTex(nullptr)
+        , data(nullptr), dataLen(0), shouldFreeData(false), gpuTexture(nullptr)
     {}
 };
 
@@ -600,9 +601,9 @@ struct noesisModel_t
 {
     struct StaticBufferGroup
     {
-        IDirect3DVertexBuffer9 *pVB;
-        IDirect3DIndexBuffer9  *pIB;
-        IDirect3DIndexBuffer9  *pOpaqueBatchIB;
+        RendererBackend::MeshBuffer *pVB;
+        RendererBackend::MeshBuffer *pIB;
+        RendererBackend::MeshBuffer *pOpaqueBatchIB;
         int                     vertCount;
         int                     indexCount;
 
@@ -651,8 +652,8 @@ struct noesisModel_t
         std::string             materialName;
         std::string             objectName;
 
-        IDirect3DVertexBuffer9 *pVB;
-        IDirect3DIndexBuffer9  *pIB;
+        RendererBackend::MeshBuffer *pVB;
+        RendererBackend::MeshBuffer *pIB;
         int                     vertCount;
         int                     triCount;
         int                     staticBufferGroupIndex;
@@ -713,6 +714,7 @@ struct noesisModel_t
 
     // Upload all submesh CPU data to D3D9 vertex/index buffers.
     void BuildD3DBuffers(IDirect3DDevice9 *pDevice);
+    void BuildBuffers(RendererBackend::Graphics& graphics);
     void UpdateSubmeshBounds();
     void RestoreBindPose(IDirect3DDevice9 *pDevice);
     void UpdateAnimation(float animTime, IDirect3DDevice9 *pDevice);
@@ -778,6 +780,8 @@ public:
 
     // ---- D3D9 device binding -------------------------------------------------------
     void SetDevice(IDirect3DDevice9 *pDevice) { mpDevice = pDevice; }
+    // Optional shared service, borrowed for this parser's lifetime.
+    void SetGraphics(RendererBackend::Graphics* graphics) { mpGraphics = graphics; }
     IDirect3DDevice9 *GetDevice() const       { return mpDevice; }
     void SetTextureCompressionEnabled(bool enabled);
 
@@ -1020,6 +1024,7 @@ private:
 
     //---- Resource pools ------------------------------------------------------------
     IDirect3DDevice9       *mpDevice;
+    RendererBackend::Graphics* mpGraphics = nullptr;
     bool                    mTextureCompressionEnabled;
     std::vector<void *>     mAllocs;         // tracked for bulk free
     std::vector<char *>     mStringPool;

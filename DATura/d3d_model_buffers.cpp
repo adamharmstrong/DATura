@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "d3d_model_buffers.h"
+#include "d3d9_graphics.h"
 
 #include <algorithm>
 #include <climits>
@@ -42,7 +43,7 @@ bool UploadVegetation(noesisModel_t* model, noesisModel_t::Submesh& submesh, con
         return false;
     const float blend = std::clamp(weight, 0.0f, 1.0f);
     if (submesh.uploadedWindWeight == blend) return true;
-    IDirect3DVertexBuffer9* buffer = submesh.pVB;
+    RendererBackend::MeshBuffer* buffer = submesh.pVB;
     UINT offset = 0;
     if (submesh.staticBufferGroupIndex >= 0)
     {
@@ -53,12 +54,12 @@ bool UploadVegetation(noesisModel_t* model, noesisModel_t::Submesh& submesh, con
     if (!buffer) return false;
     FFXIVertex* output = nullptr;
     const UINT size = (UINT)(submesh.cpuVerts.size() * sizeof(FFXIVertex));
-    if (FAILED(buffer->Lock(offset, size, reinterpret_cast<void**>(&output), 0))) return false;
+    if (!buffer->Map(offset, size, reinterpret_cast<void**>(&output))) return false;
     std::memcpy(output, submesh.cpuVerts.data(), size);
     for (size_t i = 0; i < submesh.cpuVerts.size(); ++i)
         for (int axis = 0; axis < 3; ++axis)
             output[i].pos[axis] += blend * submesh.windDisplacements[i][axis];
-    if (FAILED(buffer->Unlock())) return false;
+    if (!buffer->Unmap()) return false;
     submesh.uploadedWindWeight = blend;
     return true;
 }
@@ -70,10 +71,10 @@ void UploadVertices(noesisModel_t::Submesh& submesh)
 
     void* bufferData = nullptr;
     const UINT bufferSize = (UINT)(submesh.cpuVerts.size() * sizeof(FFXIVertex));
-    if (SUCCEEDED(submesh.pVB->Lock(0, 0, &bufferData, 0)))
+    if (submesh.pVB->Map(0, 0, &bufferData))
     {
         std::memcpy(bufferData, submesh.cpuVerts.data(), bufferSize);
-        submesh.pVB->Unlock();
+        submesh.pVB->Unmap();
         submesh.uploadedWindWeight = 0.0f;
     }
 }
@@ -85,10 +86,10 @@ void UploadIndices(noesisModel_t::Submesh& submesh)
 
     void* bufferData = nullptr;
     const UINT bufferSize = (UINT)(submesh.cpuIndices.size() * sizeof(DWORD));
-    if (SUCCEEDED(submesh.pIB->Lock(0, 0, &bufferData, 0)))
+    if (submesh.pIB->Map(0, 0, &bufferData))
     {
         std::memcpy(bufferData, submesh.cpuIndices.data(), bufferSize);
-        submesh.pIB->Unlock();
+        submesh.pIB->Unmap();
     }
 }
 
@@ -107,11 +108,19 @@ bool HasDrawBuffers(const noesisModel_t *model, const noesisModel_t::Submesh& su
 void DrawSubmesh(IDirect3DDevice9 *device, const noesisModel_t *model,
                  const noesisModel_t::Submesh& submesh)
 {
-    if (!device || !HasDrawBuffers(model, submesh))
+    if (!device) return;
+    D3D9Graphics::Context graphics(device);
+    DrawSubmesh(graphics, model, submesh);
+}
+
+void DrawSubmesh(RendererBackend::Graphics& graphics, const noesisModel_t *model,
+                 const noesisModel_t::Submesh& submesh)
+{
+    if (!HasDrawBuffers(model, submesh))
         return;
 
-    IDirect3DVertexBuffer9 *vertexBuffer = submesh.pVB;
-    IDirect3DIndexBuffer9 *indexBuffer = submesh.pIB;
+    RendererBackend::MeshBuffer *vertexBuffer = submesh.pVB;
+    RendererBackend::MeshBuffer *indexBuffer = submesh.pIB;
     int baseVertex = 0;
     int startIndex = 0;
     if (submesh.staticBufferGroupIndex >= 0)
@@ -123,27 +132,31 @@ void DrawSubmesh(IDirect3DDevice9 *device, const noesisModel_t *model,
         baseVertex = submesh.staticVertexOffset;
         startIndex = submesh.staticStartIndex;
     }
-    device->SetStreamSource(0, vertexBuffer, 0, (UINT)sizeof(FFXIVertex));
-    device->SetIndices(indexBuffer);
-    device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, baseVertex, 0,
-        (UINT)submesh.vertCount, (UINT)startIndex, (UINT)submesh.triCount);
+    graphics.DrawIndexed({vertexBuffer, indexBuffer, sizeof(FFXIVertex), baseVertex,
+        0, (UINT)submesh.vertCount, (UINT)startIndex, (UINT)submesh.triCount});
 }
 
 void DrawOpaqueBatch(IDirect3DDevice9 *device, const noesisModel_t *model,
                      const noesisModel_t::OpaqueBatch& batch)
 {
-    if (!device || !model || batch.bufferGroupIndex < 0 ||
+    if (!device) return;
+    D3D9Graphics::Context graphics(device);
+    DrawOpaqueBatch(graphics, model, batch);
+}
+
+void DrawOpaqueBatch(RendererBackend::Graphics& graphics, const noesisModel_t *model,
+                     const noesisModel_t::OpaqueBatch& batch)
+{
+    if (!model || batch.bufferGroupIndex < 0 ||
         batch.bufferGroupIndex >= (int)model->staticBufferGroups.size() || batch.triCount <= 0)
         return;
     const noesisModel_t::StaticBufferGroup &group =
         model->staticBufferGroups[(size_t)batch.bufferGroupIndex];
     if (!group.pVB || !group.pOpaqueBatchIB)
         return;
-    device->SetStreamSource(0, group.pVB, 0, (UINT)sizeof(FFXIVertex));
-    device->SetIndices(group.pOpaqueBatchIB);
-    device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0,
+    graphics.DrawIndexed({group.pVB, group.pOpaqueBatchIB, sizeof(FFXIVertex), 0,
         (UINT)batch.minVertexIndex, (UINT)batch.vertexCount,
-        (UINT)batch.startIndex, (UINT)batch.triCount);
+        (UINT)batch.startIndex, (UINT)batch.triCount});
 }
 
 void BuildStaticOpaqueBatches(noesisModel_t *model, IDirect3DDevice9 *device)
@@ -155,7 +168,7 @@ void BuildStaticOpaqueBatches(noesisModel_t *model, IDirect3DDevice9 *device)
     {
         if (group.pOpaqueBatchIB)
         {
-            group.pOpaqueBatchIB->Release();
+            delete group.pOpaqueBatchIB;
             group.pOpaqueBatchIB = nullptr;
         }
     }
@@ -244,20 +257,21 @@ void BuildStaticOpaqueBatches(noesisModel_t *model, IDirect3DDevice9 *device)
             continue;
         noesisModel_t::StaticBufferGroup &group = model->staticBufferGroups[groupIndex];
         const UINT byteCount = (UINT)(indices.size() * sizeof(DWORD));
-        if (FAILED(device->CreateIndexBuffer(byteCount, D3DUSAGE_WRITEONLY,
-            D3DFMT_INDEX32, D3DPOOL_MANAGED, &group.pOpaqueBatchIB, nullptr)))
+        D3D9Graphics::Context graphics(device);
+        group.pOpaqueBatchIB = graphics.CreateMeshBuffer(RendererBackend::BufferKind::Index32, byteCount);
+        if (!group.pOpaqueBatchIB)
         {
             buildOk = false;
             break;
         }
         void *data = nullptr;
-        if (FAILED(group.pOpaqueBatchIB->Lock(0, 0, &data, 0)))
+        if (!group.pOpaqueBatchIB->Map(0, 0, &data))
         {
             buildOk = false;
             break;
         }
         std::memcpy(data, indices.data(), byteCount);
-        group.pOpaqueBatchIB->Unlock();
+        group.pOpaqueBatchIB->Unmap();
     }
 
     if (!buildOk)
@@ -266,7 +280,7 @@ void BuildStaticOpaqueBatches(noesisModel_t *model, IDirect3DDevice9 *device)
         {
             if (group.pOpaqueBatchIB)
             {
-                group.pOpaqueBatchIB->Release();
+                delete group.pOpaqueBatchIB;
                 group.pOpaqueBatchIB = nullptr;
             }
         }

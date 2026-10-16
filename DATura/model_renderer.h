@@ -18,8 +18,11 @@ enum class GeometryPass { All, Opaque, Transparent };
 struct Context
 {
     IDirect3DDevice9* device = nullptr;
+    RendererBackend::Graphics* graphics = nullptr;
+    // Borrowed for the draw; null uses the D3D9 compatibility adapter.
+    RendererBackend::Materials* materials = nullptr;
     GeometryPass geometryPass = GeometryPass::All;
-    int minuteOfDay = 0;
+    float minuteOfDay = 0;
     int lightingQuality = 0;
     bool automaticLightDirection = true;
     float lightAzimuthDegrees = 0.0f;
@@ -63,6 +66,9 @@ struct Context
     // Borrowed for the duration of a draw; the application owns these collections.
     ZoneObjectVisibility::RenderContext visibility;
     float cameraPosition[3] = {};
+    // Anchor the light map to the orbit focus, so camera rotation does not move it.
+    bool shadowCenterValid = false;
+    float shadowCenter[3] = {};
     bool (*findZoneShadowReceiverY)(float x, float y, float z, float* outY) = nullptr;
 };
 
@@ -76,6 +82,15 @@ struct TextureScrollState
     void Update(IDirect3DDevice9* device, bool enabled, float speedU, float speedV);
 };
 
+// Begin before the zone's opaque pass; finish after actors, before translucency.
+void BeginDirectionalShadowFrame();
+bool IsDirectionalShadowFrameActive();
+// Shadow-only geometry is independent of camera color/nameplate culling.
+void SubmitDirectionalShadowCaster(const Context& context, noesisModel_t* model,
+                                   const D3DMATRIX& world);
+bool DrawDirectionalShadowFrame();
+void ReleaseDirectionalShadowResources();
+
 void DrawActorPlanarShadow(const Context& context, noesisModel_t* model,
                            const D3DMATRIX& baseWorld);
 void DrawZoneObjectPlanarShadows(const Context& context, noesisModel_t* model,
@@ -86,7 +101,7 @@ void PrepareFixedFunctionPass(const Context& context, const D3DMATRIX& baseWorld
 // Metadata and fixed-function state must be prepared.
 void DrawGeometry(const Context& context, noesisModel_t* model,
                   const D3DMATRIX& baseWorld);
-void DrawOpaqueBatch(const Context& context, D3DModelRenderState::MaterialBindingCache& cache,
+void DrawOpaqueBatch(const Context& context, RendererBackend::MaterialBindingCache& cache,
                      TextureScrollState& textureAnimation, noesisModel_t* model,
                      const noesisModel_t::OpaqueBatch& batch);
 void RestoreModelPassState(IDirect3DDevice9* device, const D3DMATRIX& baseWorld,

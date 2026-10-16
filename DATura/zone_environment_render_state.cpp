@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "d3d9_graphics.h"
 #include "zone_environment_render_state.h"
 
 #include "noesis_rapi.h"
@@ -91,6 +92,48 @@ bool IsCameraShell(const Data &state)
     return (state.generator->standardParticleFlags & 0x04u) != 0;
 }
 
+bool IsCelestial(const Data &state)
+{
+    return state.generator && state.generator->hasStandardParticleSetup &&
+        (state.generator->attachmentMode == 14 || state.generator->attachmentMode == 15);
+}
+
+D3DMATRIX BuildCelestialWorld(const Data &state, const int minuteOfDay,
+                              const float cameraX, const float cameraY, const float cameraZ)
+{
+    // PS2 XiArea::SetSunMoonTime: main at 1000, inverse secondary at 900.
+    // YmAttachments modes 14/15 translate to these positions. CalcRotAhead
+    // mode 3 then points the mesh's local +X axis back toward the camera.
+    const float angle = ((minuteOfDay % 1440 + 1440) % 1440) *
+        (6.28318530718f / 1440.0f);
+    const bool moon = state.generator && state.generator->attachmentMode == 15;
+    // SetSunMoonTime builds secondary first, then adds pi for the main sun.
+    const float sign = moon ? 1.0f : -1.0f;
+    const float towardCameraX = sign * sinf(angle);
+    const float towardCameraY = sign * cosf(angle);
+    const float distance = moon ? 900.0f : 1000.0f;
+    D3DMATRIX facing = D3DMath::BuildIdentity();
+    facing._11 = towardCameraX;
+    facing._12 = towardCameraY;
+    facing._21 = -towardCameraY;
+    facing._22 = towardCameraX;
+
+    D3DMATRIX rotation = D3DMath::Multiply(
+        D3DMath::BuildRotationZ(state.rotation[2]), D3DMath::BuildRotationY(state.rotation[1]));
+    rotation = D3DMath::Multiply(rotation, D3DMath::BuildRotationX(state.rotation[0]));
+    // Scale and spawn position are already baked into the loaded vertices.
+    // Remove that position before facing, then restore it in attachment space.
+    D3DMATRIX pivot = D3DMath::BuildIdentity();
+    pivot._41 = -state.rotationPivot[0];
+    pivot._42 = -state.rotationPivot[1];
+    pivot._43 = -state.rotationPivot[2];
+    D3DMATRIX world = D3DMath::Multiply(D3DMath::Multiply(pivot, rotation), facing);
+    world._41 += cameraX - towardCameraX * distance + state.rotationPivot[0];
+    world._42 += cameraY - towardCameraY * distance + state.rotationPivot[1];
+    world._43 += cameraZ + state.rotationPivot[2];
+    return world;
+}
+
 D3DMATRIX BuildCameraShellWorld(const Data &state, const float cameraX,
                                 const float cameraY, const float cameraZ)
 {
@@ -118,31 +161,31 @@ void ApplyBlendMode(IDirect3DDevice9 *device, const unsigned short blendMode)
     if (!device)
         return;
 
-    device->SetRenderState(D3DRS_BLENDOP, D3DBLENDOP_ADD);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blendOperation, RendererBackend::BlendOperation::Add);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((TRUE) != FALSE));
     switch (blendMode & 0xff)
     {
     case 0x00:
-        device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
-        device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ZERO);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::One);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::Zero);
         break;
     case 0x46:
     case 0x47:
-        device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ZERO);
-        device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::Zero);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
         break;
     case 0x48:
     case 0x49:
     case 0x68:
-        device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-        device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::One);
         break;
     case 0x03:
     case 0x44:
     case 0x64:
     default:
-        device->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-        device->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::sourceBlend, RendererBackend::BlendFactor::SourceAlpha);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::destinationBlend, RendererBackend::BlendFactor::InverseSourceAlpha);
         break;
     }
 }
@@ -152,7 +195,7 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
                       const std::vector<ff11GeneratorRecord_t> &generators,
                       const std::vector<ff11KeyframeRecord_t> &keyframes,
                       const float cameraX, const float cameraY, const float cameraZ,
-                      const float opacity)
+                      const float opacity, const int minuteOfDay)
 {
     if (!model || !device || opacity <= 0.001f)
         return;
@@ -163,20 +206,20 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
     // Large sky texels make the original stipple conspicuous. Cloud textures
     // are uploaded with generated mip levels, and the sky pass always samples
     // them trilinearly regardless of the general model-viewer mip toggle.
-    device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
-    device->SetFVF(FFXI_VERTEX_FVF);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_FOGENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::minFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::magFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::mipFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(RendererBackend::BuiltinVertexLayout::Model);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fog, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
 
     // Mesh motion comes from the generator's authored rotation and UV commands;
     // names and weather-directory membership only select the active resource set.
     D3DModelRenderState::SetTextureScroll(device, false);
-    const int vanadielMinute = ZoneEnvironmentState::CurrentMinuteOfDay();
+    const int vanadielMinute = minuteOfDay >= 0 ? minuteOfDay : ZoneEnvironmentState::CurrentMinuteOfDay();
     for (noesisModel_t::Submesh &submesh : model->submeshes)
     {
         if (!submesh.environmentObject ||
@@ -189,7 +232,7 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
         // Batched weather generators are camera-relative too, but they are not
         // static sky shells. Draw them after terrain so their authored planes
         // depth-test correctly and can receive their falling animation.
-        if (!IsCameraShell(controller) ||
+        if ((!IsCameraShell(controller) && !IsCelestial(controller)) ||
             (controller.generator->moreFlags & 0x20u) != 0 ||
             controller.opacity <= 0.001f)
             continue;
@@ -209,10 +252,12 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
             if (frame >= std::min(8u, intervalFrames))
                 continue;
         }
-        const D3DMATRIX world = BuildCameraShellWorld(controller, cameraX, cameraY, cameraZ);
-        device->SetTransform(D3DTS_WORLD, &world);
+        const D3DMATRIX world = IsCelestial(controller)
+            ? BuildCelestialWorld(controller, vanadielMinute, cameraX, cameraY, cameraZ)
+            : BuildCameraShellWorld(controller, cameraX, cameraY, cameraZ);
+        D3D9Graphics::Context(device).SetTransform(RendererBackend::Transform::World, &world._11);
 
-        IDirect3DTexture9 *texture = submesh.pResolvedTexture ? submesh.pResolvedTexture->pD3DTex : nullptr;
+        IDirect3DTexture9 *texture = submesh.pResolvedTexture ? D3D9Graphics::NativeTexture(submesh.pResolvedTexture->gpuTexture) : nullptr;
         const bool expandDxt3Alpha = submesh.pResolvedTexture &&
             submesh.pResolvedTexture->texType == NOESISTEX_DXT3;
 
@@ -220,14 +265,15 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
         // FFXI's zone overlays. Alpha testing turns their sparse star/cloud texels
         // into the black wedges seen when these meshes are treated as cutouts.
         ApplyBlendMode(device, controller.blendMode);
-        device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+        D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
         D3DModelRenderState::SetTextureScroll(device,
             controller.uvScrollU != 0.0f || controller.uvScrollV != 0.0f,
             controller.uvScrollU, controller.uvScrollV);
 
-        const bool shaderActive = texture && D3DModelRenderState::SetFfxiTexturePixelShader(
+        const bool shaderActive = D3DModelRenderState::SetFfxiTexturePixelShader(
             device, true, expandDxt3Alpha,
-            controller.opacity * std::clamp(opacity, 0.0f, 1.0f), controller.colorScale);
+            controller.opacity * std::clamp(opacity, 0.0f, 1.0f), controller.colorScale,
+            texture != nullptr);
         device->SetTexture(1, shaderActive ? texture : nullptr);
         D3DModelRenderState::SetTextureStageForOptionalTexture(
             device, texture, shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
@@ -235,13 +281,13 @@ void DrawCameraShells(IDirect3DDevice9 *device, noesisModel_t *model,
     }
 
     D3DModelRenderState::SetTextureScroll(device, false);
-    device->SetPixelShader(nullptr);
-    device->SetTexture(0, nullptr);
-    device->SetTexture(1, nullptr);
-    device->SetRenderState(D3DRS_ZENABLE, TRUE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).BindTexture(0, nullptr);
+    D3D9Graphics::Context(device).BindTexture(1, nullptr);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, ((TRUE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, ((FALSE) != FALSE));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, ((FALSE) != FALSE));
     device->SetStreamSource(0, nullptr, 0, 0);
     device->SetIndices(nullptr);
 }

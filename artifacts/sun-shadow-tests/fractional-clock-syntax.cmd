@@ -1,0 +1,2 @@
+@call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
+@cl.exe /nologo /Zs /std:c++20 /EHsc /I DATura DATura\zone_environment_state.cpp DATura\d3d_model_render_state.cpp

@@ -129,6 +129,20 @@ Action HandleKey(State& state, const unsigned int key, const bool showMogHouse)
     return Action::None;
 }
 
+Command SelectedCommand(const State& state, const bool showMogHouse)
+{
+    if (!state.open)
+        return Command::None;
+    if (state.page == 0)
+    {
+        if (state.selected == 1) return Command::Equipment;
+        if (state.selected == 3) return Command::Items;
+    }
+    if (state.page == 1 && state.selected == 2)
+        return Command::KeyItems;
+    return Command::None;
+}
+
 void Draw(HDC dc, const State& state, const int width, const int height, const bool showMogHouse)
 {
     if (!dc || !state.open) return;

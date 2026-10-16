@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <memory>
 
 namespace
 {
@@ -12,46 +13,26 @@ struct ScreenVertex
 };
 
 bool CompileVertexShader(IDirect3DDevice9* device, const char* source,
-                         IDirect3DVertexShader9** outShader)
+                         RendererBackend::Shader** outShader)
 {
-    ID3DBlob* code = nullptr;
-    ID3DBlob* errors = nullptr;
-    const HRESULT compiled = D3DCompile(source, strlen(source), "DATuraAA", nullptr,
-        nullptr, "main", "vs_2_0", 0, 0, &code, &errors);
-    if (errors) errors->Release();
-    if (FAILED(compiled) || !code)
-        return false;
-    const HRESULT created = device->CreateVertexShader(
-        static_cast<const DWORD*>(code->GetBufferPointer()), outShader);
-    code->Release();
-    return SUCCEEDED(created);
+    if (!source || !outShader) return false;
+    *outShader = D3D9Graphics::Context(device).CreateShader({
+        RendererBackend::ShaderStage::Vertex, source, strlen(source), "DATuraAA", "main", "vs_2_0"});
+    return *outShader != nullptr;
 }
 
 bool CompilePixelShader(IDirect3DDevice9* device, const char* source,
-                        IDirect3DPixelShader9** outShader)
+                        RendererBackend::Shader** outShader)
 {
-    if (!device || !source || !outShader)
-        return false;
-    ID3DBlob* code = nullptr;
-    ID3DBlob* errors = nullptr;
-    const HRESULT compileResult = D3DCompile(source, strlen(source), "DATuraAA", nullptr,
-        nullptr, "main", "ps_2_0", 0, 0, &code, &errors);
-    if (FAILED(compileResult))
-    {
-        if (errors) OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
-        if (errors) errors->Release();
-        return false;
-    }
-    const HRESULT createResult = device->CreatePixelShader(
-        static_cast<const DWORD*>(code->GetBufferPointer()), outShader);
-    code->Release();
-    if (errors) errors->Release();
-    return SUCCEEDED(createResult);
+    if (!source || !outShader) return false;
+    *outShader = D3D9Graphics::Context(device).CreateShader({
+        RendererBackend::ShaderStage::Pixel, source, strlen(source), "DATuraAA", "main", "ps_2_0"});
+    return *outShader != nullptr;
 }
 
-HRESULT DrawFullscreen(IDirect3DDevice9* device, IDirect3DVertexShader9* vertexShader,
-                       IDirect3DVertexDeclaration9* declaration, IDirect3DPixelShader9* shader,
-                       IDirect3DTexture9* texture0, IDirect3DTexture9* texture1,
+HRESULT DrawFullscreen(IDirect3DDevice9* device, RendererBackend::Shader* vertexShader,
+                       RendererBackend::VertexLayout* declaration, RendererBackend::Shader* shader,
+                       RendererBackend::Texture* texture0, RendererBackend::Texture* texture1,
                        const int width, const int height)
 {
     const ScreenVertex vertices[] =
@@ -62,53 +43,52 @@ HRESULT DrawFullscreen(IDirect3DDevice9* device, IDirect3DVertexShader9* vertexS
         { 1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 1.0f}
     };
     const float pixelSize[4] = {1.0f / width, 1.0f / height, (float)width, (float)height};
-    const D3DVIEWPORT9 viewport =
+    const RendererBackend::Viewport viewport =
     {
         0, 0, static_cast<DWORD>(width), static_cast<DWORD>(height), 0.0f, 1.0f
     };
-    device->SetViewport(&viewport);
-    device->SetVertexShader(vertexShader);
-    device->SetVertexDeclaration(declaration);
-    device->SetPixelShader(shader);
-    device->SetPixelShaderConstantF(0, pixelSize, 1);
-    device->SetTexture(0, texture0);
-    device->SetTexture(1, texture1);
-    device->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
-    device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
-    device->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 1);
-    device->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
-    device->SetRenderState(D3DRS_ZENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
-    device->SetRenderState(D3DRS_CLIPPLANEENABLE, 0);
-    device->SetRenderState(D3DRS_COLORWRITEENABLE,
-        D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN |
-        D3DCOLORWRITEENABLE_BLUE | D3DCOLORWRITEENABLE_ALPHA);
-    device->SetRenderState(D3DRS_SRGBWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
-    device->SetRenderState(D3DRS_MULTISAMPLEANTIALIAS, FALSE);
-    device->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-    device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-    device->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
-    device->SetSamplerState(0, D3DSAMP_SRGBTEXTURE, FALSE);
-    device->SetSamplerState(1, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(1, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-    device->SetSamplerState(1, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-    device->SetSamplerState(1, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-    device->SetSamplerState(1, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
-    device->SetSamplerState(1, D3DSAMP_SRGBTEXTURE, FALSE);
-    const HRESULT result = device->DrawPrimitiveUP(
-        D3DPT_TRIANGLESTRIP, 2, vertices, sizeof(ScreenVertex));
-    device->SetTexture(0, nullptr);
-    device->SetTexture(1, nullptr);
-    device->SetPixelShader(nullptr);
-    device->SetVertexShader(nullptr);
+    D3D9Graphics::Context(device).SetViewport(viewport);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Vertex, vertexShader);
+    D3D9Graphics::Context(device).BindVertexLayout(declaration);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, shader);
+    D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Pixel, 0, pixelSize, 1);
+    D3D9Graphics::Context(device).BindTexture(0, texture0);
+    D3D9Graphics::Context(device).BindTexture(1, texture1);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::coordinateIndex, uint32_t(0));
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Disabled);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::coordinateIndex, uint32_t(1));
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Disabled);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::blend, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, false);
+    D3D9Graphics::Context(device).SetStencilField(&RendererBackend::StencilState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::scissor, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::clipPlaneMask, uint32_t(0));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::colorWriteMask, uint32_t(1u | 2u |
+        4u | 8u));
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::srgbWrite, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::separateAlphaBlend, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::multisample, false);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::minFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::magFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::addressU, RendererBackend::TextureAddress::Clamp);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::addressV, RendererBackend::TextureAddress::Clamp);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::mipFilter, RendererBackend::TextureFilter::None);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::srgb, false);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::minFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::magFilter, RendererBackend::TextureFilter::Linear);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::addressU, RendererBackend::TextureAddress::Clamp);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::addressV, RendererBackend::TextureAddress::Clamp);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::mipFilter, RendererBackend::TextureFilter::None);
+    D3D9Graphics::Context(device).SetSamplerField(1, &RendererBackend::SamplerState::srgb, false);
+    const HRESULT result = D3D9Graphics::Context(device).DrawImmediate(
+        RendererBackend::Primitive::TriangleStrip, 2, vertices, sizeof(ScreenVertex)) ? D3D_OK : E_FAIL;
+    D3D9Graphics::Context(device).BindTexture(0, nullptr);
+    D3D9Graphics::Context(device).BindTexture(1, nullptr);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Vertex, nullptr);
     return result;
 }
 
@@ -235,6 +215,7 @@ InitializeResult Runtime::Initialize(const HWND window, const DisplayConfigurati
             sprintf_s(message, "D3D9 device created (%s)\n", attempt.description);
             OutputDebugStringA(message);
             deviceLost_ = false;
+            graphics_.SetDevice(device_);
             CreateMultisampleTargets();
             CreatePostProcessResources();
             return InitializeResult::Success;
@@ -306,9 +287,8 @@ FrameStatus Runtime::PrepareFrame()
 
     deviceLost_ = false;
     frameResolved_ = true;
-    device_->SetRenderState(D3DRS_MULTISAMPLEANTIALIAS,
-        multisampleColor_ ? TRUE : FALSE);
-    device_->SetRenderState(D3DRS_MULTISAMPLEMASK, 0xffffffffu);
+    D3D9Graphics::Context(device_).SetPipelineField(&RendererBackend::PipelineState::multisample, ((multisampleColor_ ? TRUE : FALSE) != FALSE));
+    D3D9Graphics::Context(device_).SetPipelineField(&RendererBackend::PipelineState::multisampleMask, uint32_t(0xffffffffu));
     if (multisampleColor_ && multisampleDepth_)
     {
         // The swap-chain's automatic depth surface is non-multisampled.
@@ -316,11 +296,11 @@ FrameStatus Runtime::PrepareFrame()
         // can retain an incompatible color/depth pair. Screen-space title
         // rendering may still work in that state, but every depth-tested zone
         // draw is rejected.
-        const HRESULT detachResult = device_->SetDepthStencilSurface(nullptr);
+        const HRESULT detachResult = graphics_.BindRenderTarget(nullptr,true) ? D3D_OK : E_FAIL;
         const HRESULT colorResult = SUCCEEDED(detachResult) ?
-            device_->SetRenderTarget(0, multisampleColor_) : detachResult;
+            (graphics_.BindRenderTarget(multisampleColor_) ? D3D_OK : E_FAIL) : detachResult;
         const HRESULT depthResult = SUCCEEDED(colorResult) ?
-            device_->SetDepthStencilSurface(multisampleDepth_) : colorResult;
+            (graphics_.BindRenderTarget(multisampleDepth_,true) ? D3D_OK : E_FAIL) : colorResult;
         if (FAILED(depthResult))
         {
             return FrameStatus::ResetFailed;
@@ -329,12 +309,7 @@ FrameStatus Runtime::PrepareFrame()
     }
     else if (sceneTexture_)
     {
-        IDirect3DSurface9* sceneSurface = nullptr;
-        if (FAILED(sceneTexture_->GetSurfaceLevel(0, &sceneSurface)) || !sceneSurface)
-            return FrameStatus::ResetFailed;
-        const HRESULT targetResult = device_->SetRenderTarget(0, sceneSurface);
-        sceneSurface->Release();
-        if (FAILED(targetResult))
+        if (!graphics_.BindRenderTarget(sceneTexture_))
             return FrameStatus::ResetFailed;
         frameResolved_ = false;
     }
@@ -343,95 +318,62 @@ FrameStatus Runtime::PrepareFrame()
 
 HRESULT Runtime::ResolveFrame()
 {
-    if (!device_)
-        return D3DERR_INVALIDCALL;
-    if (frameResolved_ || (!multisampleColor_ && !sceneTexture_))
-        return D3D_OK;
-
-    IDirect3DSurface9* backBuffer = nullptr;
-    const HRESULT backBufferResult = device_->GetBackBuffer(
-        0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer);
-    if (FAILED(backBufferResult) || !backBuffer)
-        return FAILED(backBufferResult) ? backBufferResult : D3DERR_INVALIDCALL;
-
-    HRESULT result = D3D_OK;
-    IDirect3DSurface9* previousDepth = nullptr;
-    if (!multisampleColor_)
-        device_->GetDepthStencilSurface(&previousDepth);
-    device_->SetDepthStencilSurface(nullptr);
-    IDirect3DSurface9* sceneSurface = nullptr;
-    if (sceneTexture_)
-        sceneTexture_->GetSurfaceLevel(0, &sceneSurface);
-    bool bypassPostProcess = false;
+    if (!device_) return D3DERR_INVALIDCALL;
+    if (frameResolved_ || (!multisampleColor_ && !sceneTexture_)) return D3D_OK;
+    std::unique_ptr<RendererBackend::RenderTarget> backBuffer(graphics_.CaptureBackBuffer());
+    if (!backBuffer) return E_FAIL;
+    std::unique_ptr<RendererBackend::RenderTarget> previousDepth;
+    if (!multisampleColor_) previousDepth.reset(graphics_.CaptureRenderTarget(true));
+    graphics_.BindRenderTarget(nullptr,true);
+    HRESULT result=D3D_OK;
+    bool bypassPostProcess=false;
     if (multisampleColor_)
     {
-        // Resolve to the swap-chain surface first. Some D3D9 drivers return
-        // success for an MSAA-to-texture resolve but transfer only the clear
-        // color. The backbuffer resolve is the interoperable path; the
-        // resolved image can then be copied into the post-process texture.
-        result = device_->StretchRect(
-            multisampleColor_, nullptr, backBuffer, nullptr, D3DTEXF_NONE);
-        if (SUCCEEDED(result) && sceneSurface)
-        {
-            const HRESULT copyResult = device_->StretchRect(
-                backBuffer, nullptr, sceneSurface, nullptr, D3DTEXF_NONE);
-            if (FAILED(copyResult))
-                bypassPostProcess = true; // The resolved backbuffer remains valid.
-        }
+        // Preserve the driver-compatible MSAA -> swap chain -> scene texture path.
+        result=graphics_.CopyRenderTarget(multisampleColor_,backBuffer.get()) ? D3D_OK : E_FAIL;
+        if (SUCCEEDED(result) && sceneTexture_)
+            bypassPostProcess=!graphics_.CopyRenderTarget(backBuffer.get(),sceneTexture_);
     }
     if (SUCCEEDED(result) && sceneTexture_ && !bypassPostProcess)
     {
-        result = ApplyPostProcess(backBuffer);
-        if (SUCCEEDED(result) && sceneSurface)
+        result=ApplyPostProcess(backBuffer.get());
+        if (SUCCEEDED(result))
         {
-            D3DLOCKED_RECT locked = {};
-            if (SUCCEEDED(backBuffer->LockRect(&locked, nullptr, D3DLOCK_READONLY)))
+            RendererBackend::TargetReadMapping locked;
+            if (backBuffer->MapRead(locked))
             {
-                D3DSURFACE_DESC outputDesc = {};
-                backBuffer->GetDesc(&outputDesc);
-                const DWORD first = *static_cast<const DWORD*>(locked.pBits);
-                bool uniform = true;
-                for (UINT y = 0; uniform && y < outputDesc.Height; y += 32)
+                const auto desc=backBuffer->Description();
+                const uint32_t first=*static_cast<const uint32_t*>(locked.pixels);
+                bool uniform=true;
+                for(uint32_t y=0;uniform && y<desc.height;y+=32)
                 {
-                    const DWORD* row = reinterpret_cast<const DWORD*>(
-                        static_cast<const BYTE*>(locked.pBits) + y * locked.Pitch);
-                    for (UINT x = 0; x < outputDesc.Width; x += 32)
-                        if (row[x] != first) { uniform = false; break; }
+                    const auto* row=reinterpret_cast<const uint32_t*>(
+                        static_cast<const unsigned char*>(locked.pixels)+y*locked.rowPitch);
+                    for(uint32_t x=0;x<desc.width;x+=32)
+                        if(row[x]!=first) { uniform=false; break; }
                 }
-                backBuffer->UnlockRect();
-                if (uniform)
-                    result = device_->StretchRect(
-                        sceneSurface, nullptr, backBuffer, nullptr, D3DTEXF_NONE);
+                backBuffer->UnmapRead();
+                if(uniform)
+                    result=graphics_.CopyRenderTarget(sceneTexture_,backBuffer.get()) ? D3D_OK : E_FAIL;
             }
         }
-        // A shader/resource failure must not turn the entire frame black.
-        // The unprocessed scene is still a valid image, so copy it directly
-        // to the swap-chain back buffer as a safe fallback.
-        if (FAILED(result) && sceneSurface)
+        // Keep the unprocessed scene available when a postprocessing pass fails.
+        if(FAILED(result))
         {
-            device_->SetPixelShader(nullptr);
-            device_->SetTexture(0, nullptr);
-            device_->SetTexture(1, nullptr);
-            device_->SetRenderTarget(0, backBuffer);
-            result = device_->StretchRect(
-                sceneSurface, nullptr, backBuffer, nullptr, D3DTEXF_NONE);
+            graphics_.BindShader(RendererBackend::ShaderStage::Pixel,nullptr);
+            graphics_.BindTexture(0,nullptr); graphics_.BindTexture(1,nullptr);
+            graphics_.BindRenderTarget(backBuffer.get());
+            result=graphics_.CopyRenderTarget(sceneTexture_,backBuffer.get()) ? D3D_OK : E_FAIL;
         }
     }
-    else if (SUCCEEDED(result))
-        result = device_->SetRenderTarget(0, backBuffer);
-    // With post-process AA and no MSAA, this is the automatic depth surface
-    // used by the next scene. Leaving it detached makes later 3D draws fail.
-    if (previousDepth)
+    else if(SUCCEEDED(result))
+        result=graphics_.BindRenderTarget(backBuffer.get()) ? D3D_OK : E_FAIL;
+    if(previousDepth)
     {
-        const HRESULT depthResult = device_->SetDepthStencilSurface(previousDepth);
-        previousDepth->Release();
-        if (SUCCEEDED(result) && FAILED(depthResult))
-            result = depthResult;
+        const bool restored=graphics_.BindRenderTarget(previousDepth.get(),true);
+        if(SUCCEEDED(result) && !restored) result=E_FAIL;
     }
-    if (sceneSurface) sceneSurface->Release();
-    backBuffer->Release();
-    if (SUCCEEDED(result))
-        frameResolved_ = true;
+    if(SUCCEEDED(result)) frameResolved_=true;
     return result;
 }
 
@@ -451,6 +393,7 @@ HRESULT Runtime::Present()
 
 void Runtime::Shutdown()
 {
+    graphics_.SetDevice(nullptr);
     ReleaseMultisampleTargets();
     ReleasePostProcessResources();
     if (device_)
@@ -502,29 +445,18 @@ bool Runtime::ResetCurrentParameters()
 bool Runtime::CreateMultisampleTargets()
 {
     ReleaseMultisampleTargets();
-    if (!device_ || display_.antiAliasingSamples < 2)
-        return true;
-
-    IDirect3DSurface9* backBuffer = nullptr;
-    if (FAILED(device_->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)) || !backBuffer)
-        return false;
-    D3DSURFACE_DESC desc = {};
-    const HRESULT descResult = backBuffer->GetDesc(&desc);
-    backBuffer->Release();
-    if (FAILED(descResult))
-        return false;
-
-    for (int samples = display_.antiAliasingSamples; samples >= 2; samples /= 2)
+    if(!device_ || display_.antiAliasingSamples<2) return true;
+    std::unique_ptr<RendererBackend::RenderTarget> backBuffer(graphics_.CaptureBackBuffer());
+    if(!backBuffer) return false;
+    const auto desc=backBuffer->Description();
+    for(int samples=display_.antiAliasingSamples;samples>=2;samples/=2)
     {
-        const D3DMULTISAMPLE_TYPE type = static_cast<D3DMULTISAMPLE_TYPE>(samples);
-        if (SUCCEEDED(device_->CreateRenderTarget(desc.Width, desc.Height, desc.Format,
-                type, 0, FALSE, &multisampleColor_, nullptr)) &&
-            SUCCEEDED(device_->CreateDepthStencilSurface(desc.Width, desc.Height,
-                parameters_.AutoDepthStencilFormat, type, 0, TRUE,
-                &multisampleDepth_, nullptr)))
-        {
-            return true;
-        }
+        multisampleColor_=graphics_.CreateRenderTarget(
+            {desc.width,desc.height,desc.format,uint32_t(samples)});
+        if(multisampleColor_)
+            multisampleDepth_=graphics_.CreateRenderTarget(
+                {desc.width,desc.height,RendererBackend::TargetFormat::Depth24Stencil8,uint32_t(samples)});
+        if(multisampleColor_ && multisampleDepth_) return true;
         ReleaseMultisampleTargets();
     }
     return false;
@@ -534,12 +466,12 @@ void Runtime::ReleaseMultisampleTargets()
 {
     if (multisampleDepth_)
     {
-        multisampleDepth_->Release();
+        delete multisampleDepth_;
         multisampleDepth_ = nullptr;
     }
     if (multisampleColor_)
     {
-        multisampleColor_->Release();
+        delete multisampleColor_;
         multisampleColor_ = nullptr;
     }
     frameResolved_ = true;
@@ -551,28 +483,23 @@ bool Runtime::CreatePostProcessResources()
     if (!device_ || display_.postProcessAntiAliasingMode == 0)
         return true;
 
-    IDirect3DSurface9* backBuffer = nullptr;
-    if (FAILED(device_->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer)) || !backBuffer)
-        return false;
-    D3DSURFACE_DESC desc = {};
-    const HRESULT descResult = backBuffer->GetDesc(&desc);
-    backBuffer->Release();
-    if (FAILED(descResult) || FAILED(device_->CreateTexture(desc.Width, desc.Height, 1,
-            D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT,
-            &sceneTexture_, nullptr)))
+    std::unique_ptr<RendererBackend::RenderTarget> backBuffer(graphics_.CaptureBackBuffer());
+    if (!backBuffer) return false;
+    const auto desc=backBuffer->Description();
+    if (!(sceneTexture_ = graphics_.CreateRenderTarget(
+            {desc.width, desc.height, RendererBackend::TargetFormat::Bgra8, 0, 0, true})))
         return false;
 
     static const char vertexSource[] =
         "struct O{float4 p:POSITION;float2 uv:TEXCOORD0;};"
         "O main(float4 p:POSITION,float2 uv:TEXCOORD0){O o;o.p=p;o.uv=uv;return o;}";
-    const D3DVERTEXELEMENT9 declaration[] =
+    const RendererBackend::VertexElement declaration[] =
     {
-        {0, 0, D3DDECLTYPE_FLOAT4, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION, 0},
-        {0, 16, D3DDECLTYPE_FLOAT2, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0},
-        D3DDECL_END()
+        {0, RendererBackend::VertexFormat::Float4, RendererBackend::VertexSemantic::Position},
+        {16, RendererBackend::VertexFormat::Float2, RendererBackend::VertexSemantic::TexCoord}
     };
     if (!CompileVertexShader(device_, vertexSource, &fullscreenVertexShader_) ||
-        FAILED(device_->CreateVertexDeclaration(declaration, &fullscreenVertexDeclaration_)))
+        !(fullscreenVertexDeclaration_ = graphics_.CreateVertexLayout(declaration, 2)))
     {
         ReleasePostProcessResources();
         return false;
@@ -611,10 +538,10 @@ bool Runtime::CreatePostProcessResources()
         "float3 v=(tex2D(image,uv-float2(0,px.y)).rgb+tex2D(image,uv+float2(0,px.y)).rgb)*.5;"
         "c=lerp(c,h,w.x);c=lerp(c,v,w.y);return float4(c,1);}";
 
-    if (FAILED(device_->CreateTexture(desc.Width, desc.Height, 1, D3DUSAGE_RENDERTARGET,
-            D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &edgeTexture_, nullptr)) ||
-        FAILED(device_->CreateTexture(desc.Width, desc.Height, 1, D3DUSAGE_RENDERTARGET,
-            D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &blendTexture_, nullptr)) ||
+    if (!(edgeTexture_ = graphics_.CreateRenderTarget(
+            {desc.width, desc.height, RendererBackend::TargetFormat::Bgra8, 0, 0, true})) ||
+        !(blendTexture_ = graphics_.CreateRenderTarget(
+            {desc.width, desc.height, RendererBackend::TargetFormat::Bgra8, 0, 0, true})) ||
         !CompilePixelShader(device_, edgeSource, &smaaEdgeShader_) ||
         !CompilePixelShader(device_, blendSource, &smaaBlendShader_) ||
         !CompilePixelShader(device_, neighborhoodSource, &smaaNeighborhoodShader_))
@@ -625,7 +552,7 @@ bool Runtime::CreatePostProcessResources()
     return true;
 }
 
-HRESULT Runtime::ApplyPostProcess(IDirect3DSurface9* backBuffer)
+HRESULT Runtime::ApplyPostProcess(RendererBackend::RenderTarget* backBuffer)
 {
     if (!device_ || !sceneTexture_ || !backBuffer)
         return D3DERR_INVALIDCALL;
@@ -635,78 +562,64 @@ HRESULT Runtime::ApplyPostProcess(IDirect3DSurface9* backBuffer)
     // complete device state so the AA pass cannot poison the following
     // frame. The title screen happens to rebuild nearly all of its state;
     // normal zone rendering intentionally relies on more persistent state.
-    IDirect3DStateBlock9* savedState = nullptr;
-    HRESULT result = device_->CreateStateBlock(D3DSBT_ALL, &savedState);
-    if (FAILED(result) || !savedState)
-        return FAILED(result) ? result : D3DERR_INVALIDCALL;
-    result = savedState->Capture();
-    if (FAILED(result))
-    {
-        savedState->Release();
-        return result;
-    }
+    auto* savedState = graphics_.CapturePipelineState();
+    if (!savedState) return E_FAIL;
+    HRESULT result = D3D_OK;
 
-    D3DSURFACE_DESC desc = {};
-    backBuffer->GetDesc(&desc);
+    const auto desc=backBuffer->Description();
     // The scene texture was the previous render target. Detach it before
     // BeginScene so D3D9 can legally bind that same resource as sampler 0.
     // Switching away only after BeginScene leaves some drivers treating the
     // texture as render-target-bound and every lookup returns one texel.
-    result = device_->SetRenderTarget(0, backBuffer);
+    result = (graphics_.BindRenderTarget(backBuffer) ? D3D_OK : E_FAIL);
     if (FAILED(result))
     {
-        savedState->Apply();
-        savedState->Release();
+        (savedState->Restore() ? D3D_OK : E_FAIL);
+        delete savedState;
         return result;
     }
-    result = device_->BeginScene();
+    result = (graphics_.BeginScene() ? D3D_OK : E_FAIL);
     if (FAILED(result))
     {
-        savedState->Apply();
-        savedState->Release();
+        (savedState->Restore() ? D3D_OK : E_FAIL);
+        delete savedState;
         return result;
     }
 
     if (display_.postProcessAntiAliasingMode == 1 && fxaaShader_)
     {
-        device_->SetRenderTarget(0, backBuffer);
+        (graphics_.BindRenderTarget(backBuffer) ? D3D_OK : E_FAIL);
         result = DrawFullscreen(device_, fullscreenVertexShader_, fullscreenVertexDeclaration_,
                                 fxaaShader_, sceneTexture_, nullptr,
-                                (int)desc.Width, (int)desc.Height);
+                                (int)desc.width, (int)desc.height);
     }
     else if (smaaEdgeShader_ && smaaBlendShader_ && smaaNeighborhoodShader_)
     {
-        IDirect3DSurface9* edgeSurface = nullptr;
-        IDirect3DSurface9* blendSurface = nullptr;
-        edgeTexture_->GetSurfaceLevel(0, &edgeSurface);
-        blendTexture_->GetSurfaceLevel(0, &blendSurface);
-        device_->SetRenderTarget(0, edgeSurface);
+        graphics_.BindRenderTarget(edgeTexture_);
         result = DrawFullscreen(device_, fullscreenVertexShader_, fullscreenVertexDeclaration_,
                                 smaaEdgeShader_, sceneTexture_, nullptr,
-                                (int)desc.Width, (int)desc.Height);
+                                (int)desc.width, (int)desc.height);
         if (SUCCEEDED(result))
         {
-            device_->SetRenderTarget(0, blendSurface);
+            graphics_.BindRenderTarget(blendTexture_);
             result = DrawFullscreen(device_, fullscreenVertexShader_, fullscreenVertexDeclaration_,
                                     smaaBlendShader_, edgeTexture_, nullptr,
-                                    (int)desc.Width, (int)desc.Height);
+                                    (int)desc.width, (int)desc.height);
         }
         if (SUCCEEDED(result))
         {
-            device_->SetRenderTarget(0, backBuffer);
+            (graphics_.BindRenderTarget(backBuffer) ? D3D_OK : E_FAIL);
             result = DrawFullscreen(device_, fullscreenVertexShader_, fullscreenVertexDeclaration_,
                                     smaaNeighborhoodShader_, sceneTexture_, blendTexture_,
-                                    (int)desc.Width, (int)desc.Height);
+                                    (int)desc.width, (int)desc.height);
         }
-        if (edgeSurface) edgeSurface->Release();
-        if (blendSurface) blendSurface->Release();
     }
-    const HRESULT endResult = device_->EndScene();
-    const HRESULT restoreResult = savedState->Apply();
-    savedState->Release();
+    const HRESULT endResult = (graphics_.EndScene() ? D3D_OK : E_FAIL);
+    const HRESULT restoreResult = (savedState->Restore() ? D3D_OK : E_FAIL);
+    delete savedState;
     // Render targets are not guaranteed to be part of a D3D9 state block.
     // ResolveFrame promises that its caller receives the swap-chain target.
-    const HRESULT targetResult = device_->SetRenderTarget(0, backBuffer);
+    const HRESULT targetResult = (graphics_.BindRenderTarget(backBuffer) ? D3D_OK : E_FAIL);
     if (SUCCEEDED(result) && FAILED(endResult)) result = endResult;
     if (SUCCEEDED(result) && FAILED(restoreResult)) result = restoreResult;
     if (SUCCEEDED(result) && FAILED(targetResult)) result = targetResult;
@@ -715,15 +628,15 @@ HRESULT Runtime::ApplyPostProcess(IDirect3DSurface9* backBuffer)
 
 void Runtime::ReleasePostProcessResources()
 {
-    if (smaaNeighborhoodShader_) { smaaNeighborhoodShader_->Release(); smaaNeighborhoodShader_ = nullptr; }
-    if (smaaBlendShader_) { smaaBlendShader_->Release(); smaaBlendShader_ = nullptr; }
-    if (smaaEdgeShader_) { smaaEdgeShader_->Release(); smaaEdgeShader_ = nullptr; }
-    if (fxaaShader_) { fxaaShader_->Release(); fxaaShader_ = nullptr; }
-    if (fullscreenVertexDeclaration_) { fullscreenVertexDeclaration_->Release(); fullscreenVertexDeclaration_ = nullptr; }
-    if (fullscreenVertexShader_) { fullscreenVertexShader_->Release(); fullscreenVertexShader_ = nullptr; }
-    if (blendTexture_) { blendTexture_->Release(); blendTexture_ = nullptr; }
-    if (edgeTexture_) { edgeTexture_->Release(); edgeTexture_ = nullptr; }
-    if (sceneTexture_) { sceneTexture_->Release(); sceneTexture_ = nullptr; }
+    if (smaaNeighborhoodShader_) { delete smaaNeighborhoodShader_; smaaNeighborhoodShader_ = nullptr; }
+    if (smaaBlendShader_) { delete smaaBlendShader_; smaaBlendShader_ = nullptr; }
+    if (smaaEdgeShader_) { delete smaaEdgeShader_; smaaEdgeShader_ = nullptr; }
+    if (fxaaShader_) { delete fxaaShader_; fxaaShader_ = nullptr; }
+    if (fullscreenVertexDeclaration_) { delete fullscreenVertexDeclaration_; fullscreenVertexDeclaration_ = nullptr; }
+    if (fullscreenVertexShader_) { delete fullscreenVertexShader_; fullscreenVertexShader_ = nullptr; }
+    if (blendTexture_) { delete blendTexture_; blendTexture_ = nullptr; }
+    if (edgeTexture_) { delete edgeTexture_; edgeTexture_ = nullptr; }
+    if (sceneTexture_) { delete sceneTexture_; sceneTexture_ = nullptr; }
 }
 
 void Runtime::ReleaseDefaultPoolResources()
@@ -745,11 +658,11 @@ void GetViewportOrClientSize(IDirect3DDevice9* device, const HWND window,
     int height = 0;
     if (device)
     {
-        D3DVIEWPORT9 viewport = {};
-        if (SUCCEEDED(device->GetViewport(&viewport)))
+        RendererBackend::Viewport viewport = {};
+        if (D3D9Graphics::Context(device).QueryViewport(viewport))
         {
-            width = (int)viewport.Width;
-            height = (int)viewport.Height;
+            width = (int)viewport.width;
+            height = (int)viewport.height;
         }
     }
     if ((width <= 0 || height <= 0) && window)
@@ -803,26 +716,26 @@ int BeginGdiViewportMapping(const HDC hdc, const HWND window,
     return savedDc;
 }
 
-void PrepareScreenSpaceUiRenderState(IDirect3DDevice9* device, const DWORD vertexFvf)
+void PrepareScreenSpaceUiRenderState(IDirect3DDevice9* device, const RendererBackend::BuiltinVertexLayout layout)
 {
     // Screen-space overlays must not inherit world shader, depth/cull, or
     // texture-stage state from the preceding model render pass.
-    device->SetVertexShader(nullptr);
-    device->SetPixelShader(nullptr);
-    device->SetFVF(vertexFvf);
-    device->SetTexture(1, nullptr);
-    device->SetRenderState(D3DRS_LIGHTING, FALSE);
-    device->SetRenderState(D3DRS_FOGENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZENABLE, FALSE);
-    device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-    device->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-    device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-    device->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, 0);
-    device->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
-    device->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
-    device->SetTextureStageState(1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-    device->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-    device->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Vertex, nullptr);
+    D3D9Graphics::Context(device).BindShader(RendererBackend::ShaderStage::Pixel, nullptr);
+    D3D9Graphics::Context(device).BindBuiltinVertexLayout(layout);
+    D3D9Graphics::Context(device).BindTexture(1, nullptr);
+    D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::enabled, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::fog, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthTest, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::depthWrite, false);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, RendererBackend::Cull::None);
+    D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::alphaTest, false);
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::coordinateIndex, uint32_t(0));
+    D3D9Graphics::Context(device).SetTextureStageField(0, &RendererBackend::TextureStageState::transform, RendererBackend::TextureTransform::Disabled);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::colorOperation, RendererBackend::TextureOperation::Disable);
+    D3D9Graphics::Context(device).SetTextureStageField(1, &RendererBackend::TextureStageState::alphaOperation, RendererBackend::TextureOperation::Disable);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::addressU, RendererBackend::TextureAddress::Clamp);
+    D3D9Graphics::Context(device).SetSamplerField(0, &RendererBackend::SamplerState::addressV, RendererBackend::TextureAddress::Clamp);
 }
 
 }

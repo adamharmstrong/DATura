@@ -126,6 +126,9 @@ enum class PlayerSubtitleMode { None, Linkshell, Jobs };
 struct GameUiPlayerNameplateConfig
 {
     bool enabled;
+    char font[64];
+    int fontSize;
+    COLORREF fontColor;
     char name[64];
     char icon[32];
     COLORREF linkshellColor;
@@ -147,6 +150,7 @@ struct GameUiConfig
     int chatLogHeightPercent;
     char chatLogFont[64];
     int chatLogFontSize;
+    COLORREF chatLogFontColor;
 };
 
 struct GameUiTitleMenuMetrics

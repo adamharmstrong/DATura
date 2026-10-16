@@ -77,9 +77,9 @@ DATura decodes the installed SPW files to PCM/WAV data and plays them through in
 
 DATura recognizes appearance `0x33`, loads the Home Point effect through the retail resource resolver, advances its animation clock, and draws Home Points with the effect renderer. Visible Home Points contribute ambient sound candidates. Interaction within six world units starts the activation effect with a one-second cooldown.
 
-For an active character, interaction also registers the crystal as that character's saved Home Point. DATura persists every activated Home Point and presents the other registered crystals as teleport destinations. Loading a character starts it at its saved Home Point when the zone and entity can be resolved, with the character's home nation as the fallback.
+For an active character, first interaction registers the crystal in that character's travel list and reports the registration in the chat log. It then presents Save, Teleport, and Cancel. Save records the current crystal as the character's saved Home Point and refreshes the character files. Teleport presents every other crystal registered by that character and loads the selected destination zone and entity. Loading a character starts it at the explicitly saved Home Point when the zone and entity can be resolved, with the character's home nation as the fallback.
 
-Home Point registration also completes a partially missing character save. DATura creates a missing `.ff11datset` from the active player's current race, face, equipment, weapons, and animation bank; creates a missing `.noesis` scene that references that DAT set; and creates a missing `.ini` using the active character's retained home nation before writing the Home Point state. Existing files are preserved.
+Home Point registration also completes a partially missing character save. DATura creates a missing `.ff11datset` from the active player's current race, face, equipment, weapons, and animation bank; creates a missing `.noesis` scene that references that DAT set; and creates a missing `.ini` using the active character's retained home nation before writing the registered-crystal list. Existing files are preserved during this repair. Choosing Save explicitly rewrites the model files with the character's current state and updates the `.ini` with the selected saved location.
 
 ## Validation
 

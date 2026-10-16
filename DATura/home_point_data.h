@@ -32,6 +32,7 @@ struct Curve
 };
 struct Generator
 {
+    float fadeStart = -1, fadeEnd = -1;
     std::string name, resource, alphaCurve, redCurve, greenCurve;
     std::array<std::string, 3> scaleCurves;
     Vec position = {}, rotation = {}, rotationSpeed = {}, scale = {1, 1, 1};
@@ -45,6 +46,7 @@ struct Generator
     int period = 1, life = 120, spriteFrame = 0;
     unsigned int flags = 0, blend = 0x48, type = 0;
     bool alphaAnimated = false, billboard = false, spriteAnimated = false;
+    bool localSpin = false;
 };
 struct Event
 {
@@ -54,6 +56,8 @@ struct Event
 };
 struct Data
 {
+    std::string idleSchedule = "aper", activationSchedule = "bind";
+    bool repeatIdleMeshes = false;
     std::map<std::string, Generator> generators;
     std::map<std::string, Curve> curves;
     std::map<std::string, std::vector<Event>> schedules;
@@ -76,7 +80,7 @@ inline Vec ReadVec(const uint8_t *p)
 {
     return {Read<float>(p), Read<float>(p + 4), Read<float>(p + 8)};
 }
-inline bool Parse(const std::vector<uint8_t> &bytes, Data &out)
+inline bool Parse(const std::vector<uint8_t> &bytes, Data &out, bool requireHomePoint = true)
 {
     Data result;
     for (size_t pos = 0; pos < bytes.size();)
@@ -123,6 +127,12 @@ inline bool Parse(const std::vector<uint8_t> &bytes, Data &out)
                     if (size > offsets[stream + 1] - c)
                         return false;
                     const auto *q = p + c;
+                    if (!requireHomePoint && stream == 0 && op == 0x0a && size >= 8)
+                    {
+                        const float interval = Read<float>(q + 4);
+                        if (std::isfinite(interval) && interval >= 1 && interval <= 10000)
+                            g.period = (int)interval;
+                    }
                     if (stream == 1)
                     {
                         if (op == 1 && size >= 36)
@@ -184,6 +194,11 @@ inline bool Parse(const std::vector<uint8_t> &bytes, Data &out)
                             g.uv[1] = Read<float>(q + 4);
                         if (op == 0x1b)
                             g.alphaAnimated = true;
+                        if (op == 0x2e && size >= 12)
+                        {
+                            g.fadeStart = Read<float>(q + 4);
+                            g.fadeEnd = Read<float>(q + 8);
+                        }
                         if (op == 0x0d)
                             g.spriteAnimated = true;
                     }
@@ -241,8 +256,8 @@ inline bool Parse(const std::vector<uint8_t> &bytes, Data &out)
             result.sounds[name] = Read<uint32_t>(p + 8);
         pos += length;
     }
-    if (!result.generators.count("bnd0") || !result.schedules.count("aper") ||
-        !result.schedules.count("bind"))
+    if (requireHomePoint && (!result.generators.count("bnd0") || !result.schedules.count("aper") ||
+        !result.schedules.count("bind")))
         return false;
     out = std::move(result);
     return true;
@@ -259,9 +274,10 @@ inline std::vector<Particle> Evaluate(const Data &data, double seconds, double a
     std::vector<Particle> result;
     if (!std::isfinite(seconds) || !std::isfinite(activatedAt))
         return result;
-    for (const char *schedule : {"aper", "bind"})
+    for (int scheduleIndex = 0; scheduleIndex < 2; ++scheduleIndex)
     {
-        const bool activation = schedule[0] == 'b';
+        const auto& schedule = scheduleIndex == 0 ? data.idleSchedule : data.activationSchedule;
+        const bool activation = scheduleIndex == 1;
         const double frame = (activation ? seconds - activatedAt : seconds) * 60;
         if (frame < 0)
             continue;
@@ -277,7 +293,7 @@ inline std::vector<Particle> Evaluate(const Data &data, double seconds, double a
             const double elapsed = frame - e.frame;
             if (elapsed < 0)
                 continue;
-            if (!activation && !g.billboard)
+            if (!activation && !g.billboard && !data.repeatIdleMeshes)
             {
                 result.push_back({&g, (float)elapsed, 0, false});
                 continue;
