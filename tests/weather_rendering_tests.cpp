@@ -10,6 +10,7 @@
 #include "zone_environment_render_state.h"
 #include "zone_sky_dome.h"
 #include "zone_weather_particles.h"
+#include "zone_weather_audio.h"
 #include "d3d_math.h"
 #include "d3d_model_render_state.h"
 
@@ -184,6 +185,16 @@ void Fixture(IDirect3DDevice9 *device,const std::filesystem::path &root,const ch
     auto *model=Model_FF11_LoadDAT(raw,(int)size,count,&rapi);
     Check(model!=nullptr,"load weather DAT");if(!model)return;
     auto generators=gFF11LastGeneratorRecords;auto curves=gFF11LastKeyframeRecords;
+    const auto sounds=ZoneWeatherAudio::CollectSounds(gFF11LastDatChunks);
+    if(std::string(weather).find("rain")!=std::string::npos)
+        Check(ZoneWeatherAudio::SelectSound(sounds,weather,12*60,false)!=0,"rain branch has an authored outdoor loop");
+    if(!strcmp(weather,"f_la/weat/rain"))
+    {
+        Check(ZoneWeatherAudio::SelectSound(sounds,weather,12*60,false)==1042,"La Theine rain plays SeWave 1042");
+        Check(ZoneWeatherAudio::SelectSound(sounds,weather,12*60,true)==1045,"La Theine indoor rain plays SeWave 1045");
+        Check(ZoneWeatherAudio::SelectSound(sounds,"f_la/weat/suny",7*60,false)==1001,"La Theine morning sunshine plays SeWave 1001");
+        Check(ZoneWeatherAudio::SelectSound(sounds,"f_la/weat/suny",19*60,false)==1003,"La Theine evening sunshine plays SeWave 1003");
+    }
     const bool rain = std::string(weather).find("rain") != std::string::npos;
     int spriteGenerators=0;
     for(const auto &g:generators) if(!strcmp(g.directoryPath,weather)&&(g.moreFlags&32)&&g.linkedDataType==14) {
@@ -234,11 +245,36 @@ void Fixture(IDirect3DDevice9 *device,const std::filesystem::path &root,const ch
     Check(ChangedPixels(blank,DrawWeather(device,model,weather,generators,curves,eye,2,false),0)==0,"inactive emitters produce no particles");
 }
 }
+// Mount Zhayolm's only dust emitter stores a zero count byte. PS2
+// YmGenerater::GetGenerateNum emits count + 1, so it must still draw. Its
+// spread/velocity opcodes (0x02, 0x1F) are not decoded yet, so the full
+// Fixture motion checks do not apply.
+void ZeroCountFixture(IDirect3DDevice9 *device,const std::filesystem::path &root,const char *relative,const char *weather,const float eye[3])
+{
+    BYTE *raw=nullptr;DWORD size=0;
+    const auto file=root/relative;
+    if (!FFXIFileIO::ReadWholeFile(file.string().c_str(),&raw,&size)) {Check(false,"read zero-count weather DAT");return;}
+    std::unique_ptr<BYTE[]> bytes(raw);
+    noeRAPI_t rapi(device);rapi.SetCurrentFilePath(file.string().c_str());LoadOptions opts(false);int count=0;
+    auto *model=Model_FF11_LoadDAT(raw,(int)size,count,&rapi);
+    Check(model!=nullptr,"load zero-count weather DAT");if(!model)return;
+    const auto generators=gFF11LastGeneratorRecords;const auto curves=gFF11LastKeyframeRecords;
+    int zeroCount=0;
+    for(const auto &g:generators)
+        if(!strcmp(g.directoryPath,weather)&&(g.moreFlags&32)&&(g.generatorFlags&16)&&g.particlesPerEmission==0) ++zeroCount;
+    Check(zeroCount>0,"fixture has a zero-count weather emitter");
+    const auto blank=DrawWeather(device,model,"none",generators,curves,eye,2,false);
+    const auto enabled=DrawWeather(device,model,weather,generators,curves,eye,2,false);
+    const size_t changed=ChangedPixels(blank,enabled);
+    std::cout<<weather<<" zero-count emitters="<<zeroCount<<" changed="<<changed<<'\n';
+    Check(changed>1000,"zero-count weather emitter renders");
+}
 int main(int argc,char **argv)
 {
     if(argc!=2)return 2;TestDevice device;if(!device.Create())return 2;
     const float dustEye[3]={0,0,0},snowEye[3]={23,-3,257},blizEye[3]={0,-60,-4};
     Fixture(device.device.ptr,argv[1],"ROM/0/90.DAT","f_ko/weat/dust",dustEye);
+    ZeroCountFixture(device.device.ptr,argv[1],"ROM4/0/14.DAT","f_ma/weat/dust",dustEye);
     Fixture(device.device.ptr,argv[1],"ROM/0/122.DAT","f_no/weat/snow",snowEye);
     Fixture(device.device.ptr,argv[1],"ROM/1/19.DAT","h_ga/weat/bliz",blizEye);
     Fixture(device.device.ptr,argv[1],"ROM/0/115.DAT","f_la/weat/rain",dustEye,8);

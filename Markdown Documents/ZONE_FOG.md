@@ -1,5 +1,8 @@
 # Authored zone fog
 
+For the detailed remaining-work backlog, priorities, acceptance criteria, and
+reproduction steps, see [Zone fog remaining work](ZONE_FOG_REMAINING_WORK_2026-10-16.md).
+
 The 2026-10-16 local installation audit scanned all 295 model paths in
 `DATura/Zone_DATs_Table.csv`, with no missing DATs. It found 9,519 environment
 records and enabled terrain distance fog in 292 zone files. The three files
@@ -28,7 +31,8 @@ across time records, in DAT coordinates):
 
 DATura already parses terrain fog from 0x2F records, interpolates its color
 and distances by time and weather, and applies it to terrain. A zero far
-distance is an authored off sentinel and stays discrete during interpolation.
+distance is an authored off sentinel and stays discrete during interpolation,
+including 3-second weather blends, where it switches once at the midpoint.
 
 World NPCs and players now opt into that same active zone fog. Previously,
 their calls used the standalone model path, which disabled fog. Character
@@ -57,9 +61,10 @@ The full DATura Release/x64 application built successfully to
 `artifacts/zone-fog/app/DATura.exe`.
 
 The local Visual Studio installation also reported LNK1101 (MSPDB140.DLL version
-mismatch). Verification builds disabled debug symbols using an imported targets
-file; shader and application code compiled normally. This workaround does not
-repair the installed Visual Studio debug-symbol tools.
+mismatch), so those verification builds disabled debug symbols using an imported
+targets file. Resolved 2026-10-16: the error no longer reproduces, and Release and
+Debug x64 builds with symbols link and produce `DATura.pdb`
+(`artifacts/lnk1101-check/`). The no-PDB import is no longer needed.
 
 Follow-up results on 2026-10-16:
 
@@ -78,6 +83,23 @@ Follow-up results on 2026-10-16:
 - The broader suite initially passed 2,504 assertions. Concurrent shadow work
   added new tests; its subsequent 2,657-assertion run had five failures in the
   full-resolution grazing-ground shadow case. The focused fog checks still pass.
+
+Later verification run on 2026-10-16, built from a recorded source snapshot
+(`artifacts/zone-fog/verify-2026-10-16/README.md`):
+
+- The five grazing-ground failures are fixed by the shadow workstream's slope
+  correction: `--shadow-temporal` 854 assertions, 0 failures. Full suite 2,661,
+  0 failures. `--materials-only` 230, 0 failures. `--zone-fog` 277, 0 failures.
+- Weather blends swapped red and blue: `BlendWeatherData` decoded D3D XRGB
+  state colors as packed 0x2F colors. Fog, light, clear and sky-ring colors were
+  wrong for the 3-second transition and until the next game-minute tick after
+  it. Fixed with a dedicated `LerpD3DColor`. An empty-records update now also
+  cancels any in-flight weather blend.
+- `tests/ZoneFogTransitionTests.vcxproj` checks fair/mist transitions, off-sentinel
+  transitions in both directions, mid-blend weather changes, sunrise/sunset/midnight
+  interpolation, and zone changes: 60 assertions, 0 failures.
+- Debug PDB source breakpoints in the fog state code bind and hit.
+- Live NPC/player captures in the running application are still pending.
 
 Run the installed-zone mode with:
 

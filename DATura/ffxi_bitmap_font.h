@@ -93,6 +93,7 @@ inline bool Supports(const std::wstring& text)
 
 inline int Advance(wchar_t c, int height)
 {
+    if (c < 32 || c > 126) return 0; // fallback for out-of-range chars
     return (advance[c - 32] * height + 8) / 16;
 }
 
@@ -104,8 +105,9 @@ inline SIZE Measure(const std::wstring& text, int height)
     {
         if (c == '\r') continue;
         if (c == '\n') { size.cx = std::max<LONG>(size.cx, x); x = 0; size.cy += height; }
-        else x += Advance(c, height);
-    }
+        else if (c >= 32 && c <= 126) x += Advance(c, height);
+        else x += 0; // skip out-of-range chars
+}
     size.cx = std::max<LONG>(size.cx, x);
     return size;
 }

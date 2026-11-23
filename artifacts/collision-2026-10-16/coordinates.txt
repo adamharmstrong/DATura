@@ -1,0 +1,2 @@
+﻿Bastok Markets: 4353 mesh samples, 4345 room collision checks, 111/112 grounded NPCs
+PASS: coordinate frame checks

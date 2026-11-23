@@ -46,6 +46,9 @@
 #include "zone_environment_render_state.h"
 #include "zone_render_frustum.h"
 #include "zone_weather_particles.h"
+#include "zone_weather_audio.h"
+#include "zone_weather_schedule.h"
+#include <ctime>
 #include "zone_sky_dome.h"
 #include "zone_environment_state.h"
 #include "zone_object_transform.h"
@@ -119,6 +122,7 @@
 #include "ffxi_event_table.h"
 #include "npc_event_runtime.h"
 #include "npc_conversation_controller.h"
+#include "npc_trigger_dialogue.h"
 #include "character_creation_flow.h"
 #include "character_roster_controller.h"
 #include "ffxi_event_messages.h"
@@ -140,6 +144,16 @@
 #include <algorithm>
 #include <random>
 #include <cctype>
+#include "gpu_selection.h"
+
+// Ask hybrid-graphics drivers (NVIDIA Optimus, AMD switchable graphics) to
+// run DATura on the high-performance GPU unless the player chose otherwise in
+// Config > Graphics Device, which writes the Windows per-application preference.
+extern "C"
+{
+__declspec(dllexport) DWORD NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
 
 // Keep the newly introduced developer-clock API visible even when Visual
 // Studio is holding an older precompiled-header/index snapshot.
@@ -281,6 +295,18 @@ static std::set<std::string> g_highlightedZoneObjects;
 static ZoneEnvironmentState::Data g_zoneEnvironment = {};
 static int g_zoneWeatherIndex = 0;
 static ZoneEnvironmentState::Cache g_zoneEnvironmentCache;
+// Natural weather follows the zone's 2,160-day schedule; the Cycle Zone
+// Weather command switches to a manual override and eventually back.
+static ZoneWeatherSchedule::Table g_zoneWeatherSchedule;
+static bool g_zoneWeatherScheduleLoadAttempted = false;
+static bool g_zoneWeatherManualOverride = false;
+static int g_zoneWeatherOverrideSteps = 0;
+static long long g_zoneWeatherNextCheckUnix = 0;
+static bool g_zoneWeatherSnapOnApply = true;
+static int g_zoneNaturalWeatherId = -1;
+static bool g_zoneNaturalWeatherExact = false;
+static ZoneWeatherAudio::Controller g_zoneWeatherAudio;
+static std::vector<ZoneWeatherAudio::SoundRecord> g_zoneWeatherSounds;
 
 static ZoneRenderFrustum::Data g_zoneRenderFrustum = {};
 static float g_zoneVisibilityViewerPoint[3] = {};
@@ -938,9 +964,12 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
     case ConfigDialog::Command::SceneClockChanged:
-        ZoneEnvironmentState::ClearTimeOverride();
         ZoneEnvironmentState::SetUseLocalSystemTime(
             g_applicationSettings.sceneClockMode == ApplicationSettings::SceneClockLocalSystem);
+        if (g_applicationSettings.sceneClockMode == ApplicationSettings::SceneClockManual)
+            ZoneEnvironmentState::SetTimeOverride(g_applicationSettings.sceneClockManualMinute);
+        else
+            ZoneEnvironmentState::ClearTimeOverride();
         ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
         InvalidateRect(g_hWnd, NULL, FALSE);
         break;
@@ -1029,6 +1058,10 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
             g_applicationSettings.doorInteractionMode == ApplicationSettings::DoorPhysics);
         ZoneEnvironmentState::SetUseLocalSystemTime(
             g_applicationSettings.sceneClockMode == ApplicationSettings::SceneClockLocalSystem);
+        if (g_applicationSettings.sceneClockMode == ApplicationSettings::SceneClockManual)
+            ZoneEnvironmentState::SetTimeOverride(g_applicationSettings.sceneClockManualMinute);
+        else
+            ZoneEnvironmentState::ClearTimeOverride();
         InputController::SetHardwareCursorEnabled(
             g_input, g_applicationSettings.enableHardwareMouseCursor);
         InputController::SetCursorStyle(
@@ -1047,7 +1080,6 @@ static void HandleConfigDialogEvent(void*, const ConfigDialog::Event& event)
         NpcNameplateRenderer::ClearCachedTextures();
         ZoneObjectPanel::SetCollisionVisible(
             g_zoneObjectPanel, g_applicationSettings.showCollisionGeometry);
-        ZoneEnvironmentState::ClearTimeOverride();
         ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
         if (g_titleScreenActive)
             LoadTitleScreen();
@@ -1088,6 +1120,7 @@ static RendererBackend::DisplayConfiguration CurrentDisplayConfiguration()
         std::max(1, resolution.width * renderPercent / 100);
     display.renderHeight = display.fullscreen ? resolution.height :
         std::max(1, resolution.height * renderPercent / 100);
+    display.vSync = g_applicationSettings.vSync;
     display.antiAliasingSamples = ApplicationSettings::AntiAliasingSamples(
         g_applicationSettings.antiAliasingIndex);
     display.postProcessAntiAliasingMode =
@@ -2224,11 +2257,111 @@ static int SelectZoneMusicId(const FFXIZoneMusicEntry* pMusic)
 // Model rendering
 //========================================================================================
 
+static bool ApplyNaturalZoneWeather()
+{
+    if (!g_zoneWeatherScheduleLoadAttempted)
+    {
+        g_zoneWeatherScheduleLoadAttempted = true;
+        char modulePath[MAX_PATH] = {};
+        if (GetModuleFileNameA(nullptr, modulePath, MAX_PATH))
+        {
+            char *slash = strrchr(modulePath, '\\');
+            if (slash)
+                strcpy_s(slash + 1, MAX_PATH - (slash + 1 - modulePath), "zone_weather_schedule.bin");
+            g_zoneWeatherSchedule.LoadFile(modulePath);
+        }
+    }
+    if (g_titleScreenActive)
+    {
+        g_zoneWeatherNextCheckUnix = 0;
+        return false;
+    }
+    const auto &groups = g_zoneEnvironmentCache.weatherGroups;
+    if (g_zoneWeatherManualOverride || groups.empty() ||
+        !g_zoneWeatherSchedule.HasZone(g_loadedZoneId))
+    {
+        g_zoneNaturalWeatherId = -1;
+        return false;
+    }
+    const long long now = static_cast<long long>(std::time(nullptr));
+    if (g_zoneWeatherNextCheckUnix != 0 && now < g_zoneWeatherNextCheckUnix)
+        return false;
+
+    const ZoneWeatherSchedule::Selection selection =
+        g_zoneWeatherSchedule.Select(g_loadedZoneId, now);
+    g_zoneWeatherNextCheckUnix = selection.segmentEndUnix;
+    std::vector<std::string> directories;
+    directories.reserve(groups.size());
+    for (const ff11EnvironmentRecord_t *group : groups)
+        directories.emplace_back(group->directoryPath);
+    const int branch = ZoneWeatherSchedule::ResolveBranch(
+        selection.weatherId, directories, &g_zoneNaturalWeatherExact);
+    g_zoneNaturalWeatherId = selection.weatherId;
+    if (branch < 0 || branch == g_zoneWeatherIndex)
+        return false;
+    g_zoneWeatherIndex = branch;
+    // Entering a zone shows its current weather at once; later schedule
+    // changes cross-fade like any other weather transition.
+    if (g_zoneWeatherSnapOnApply)
+        ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
+    return true;
+}
+
 static void UpdateZoneEnvironmentState()
 {
     ZoneEnvironmentState::Update(g_zoneEnvironment, g_zoneEnvironmentCache, g_zoneWeatherIndex,
                                  gFF11LastEnvironmentRecords,
                                  ZoneEnvironmentState::CurrentMinuteOfDay());
+    const bool changed = ApplyNaturalZoneWeather();
+    if (!g_zoneEnvironmentCache.weatherGroups.empty())
+        g_zoneWeatherSnapOnApply = false;
+    if (changed)
+        ZoneEnvironmentState::Update(g_zoneEnvironment, g_zoneEnvironmentCache, g_zoneWeatherIndex,
+                                     gFF11LastEnvironmentRecords,
+                                     ZoneEnvironmentState::CurrentMinuteOfDay());
+}
+
+static void CycleZoneWeather()
+{
+    const int count = static_cast<int>(g_zoneEnvironmentCache.weatherGroups.size());
+    if (count <= 0 || !g_zoneWeatherSchedule.HasZone(g_loadedZoneId))
+    {
+        ++g_zoneWeatherIndex;
+    }
+    else if (!g_zoneWeatherManualOverride)
+    {
+        g_zoneWeatherManualOverride = true;
+        g_zoneWeatherOverrideSteps = 1;
+        g_zoneWeatherIndex = (g_zoneWeatherIndex + 1) % count;
+    }
+    else if (g_zoneWeatherOverrideSteps >= count - 1)
+    {
+        // Every authored branch has been shown; resume the natural schedule.
+        g_zoneWeatherManualOverride = false;
+        g_zoneWeatherNextCheckUnix = 0;
+    }
+    else
+    {
+        ++g_zoneWeatherOverrideSteps;
+        g_zoneWeatherIndex = (g_zoneWeatherIndex + 1) % count;
+    }
+    UpdateZoneEnvironmentState();
+}
+
+static std::string ZoneWeatherStatusText()
+{
+    std::string text = g_zoneEnvironment.weatherPath[0] ? g_zoneEnvironment.weatherPath : "(none)";
+    if (g_zoneWeatherManualOverride)
+        text += "  [manual override]";
+    else if (g_zoneNaturalWeatherId >= 0)
+    {
+        text += "  [natural: ";
+        text += ZoneWeatherSchedule::WeatherName(g_zoneNaturalWeatherId);
+        if (!g_zoneNaturalWeatherExact)
+            text += ", nearest branch";
+        text += "]";
+    }
+    return text;
 }
 
 static void GetRenderCameraPosition(float &x, float &y, float &z)
@@ -2456,6 +2589,8 @@ static void UnloadZoneModel()
     g_towerReturnPrompt.clear();
     g_towerReturnOptions.clear();
     g_metalworksElevatorAudio.Reset();
+    g_zoneWeatherAudio.Reset();
+    g_zoneWeatherSounds.clear();
     g_loadedZoneId = -1;
     g_transitionZoneId = -1;
     g_failedZoneTransition = nullptr;
@@ -2523,6 +2658,12 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     RememberLoadedZoneContext(path, nullptr, userContentLoad, renderEnvironment,
                               renderUnreferenced, preserveGameScreen);
     g_zoneWeatherIndex = 0;
+    g_zoneWeatherManualOverride = false;
+    g_zoneWeatherNextCheckUnix = 0;
+    g_zoneWeatherSnapOnApply = true;
+    g_zoneNaturalWeatherId = -1;
+    g_zoneWeatherSounds.clear();
+    g_zoneWeatherAudio.Reset();
     ZoneEnvironmentState::Invalidate(g_zoneEnvironmentCache, false);
 
     if (userContentLoad && !preserveGameScreen)
@@ -2558,6 +2699,8 @@ static void LoadDatFile(const char *path, bool userContentLoad, bool renderEnvir
     }
 
     g_zoneAsset = std::move(loadResult.asset);
+    // Later effect/NPC loads replace the parser's chunk list.
+    g_zoneWeatherSounds = ZoneWeatherAudio::CollectSounds(gFF11LastDatChunks);
     if (loadResult.kind == SceneModelLoader::ContentKind::CreationDat)
     {
         g_camDist = 25.0f;
@@ -4053,37 +4196,79 @@ static bool LoadRetailNpcConversation(const FFXINpcPlacement::Placement& placeme
         !FFXIEventMessages::Load(messagePath, dialogue.messages))
         return false;
 
-    for (const auto& scripts : dialogue.scripts)
+    // LandSandBoat decides what a click does: a line from the dialog DAT, or
+    // a specific event script (npc_trigger_dialogue.csv).
+    NpcTriggerDialogue::Entry trigger;
+    const bool hasTrigger = NpcTriggerDialogue::Find(FFXINpcPlacement::ZoneId(),
+        placement.name, trigger);
+    if (hasTrigger && trigger.kind == NpcTriggerDialogue::Kind::Text &&
+        trigger.id < dialogue.messages.size() && !dialogue.messages[trigger.id].text.empty())
     {
-        if (scripts.entityId != placement.entityId) continue;
-        for (const auto& event : scripts.events)
-        {
-            NpcEventRuntime::State runtime;
-            NpcEventRuntime::Begin(runtime, event);
-            dialogue.runtime = runtime;
-            const NpcEventRuntime::Outcome firstStep =
-                NpcEventRuntime::Advance(dialogue.runtime);
-            if (firstStep.unsupportedOpcode)
-            {
-                char diagnostic[160]{};
-                sprintf_s(diagnostic,
-                    "[DATura NPC dialogue] blocked event=%u pc=%zu opcode=0x%02x\n",
-                    firstStep.eventId, firstStep.programCounter, firstStep.opcode);
-                OutputDebugStringA(diagnostic);
-            }
-            if (firstStep.step == NpcEventRuntime::Step::Message ||
-                firstStep.step == NpcEventRuntime::Step::Choice)
-            {
-                trace("selected entity=" + std::to_string(placement.entityId) +
-                    " event=" + std::to_string(event.id) +
-                    " entry=" + std::to_string(event.entryOffset));
-                return true;
-            }
-        }
-        dialogue.runtime = {};
-        trace("matched entity had no runnable retail dialogue");
+        trace("entity=" + std::to_string(placement.entityId) +
+            " server text=" + std::to_string(trigger.id));
+        NpcConversationController::BeginFallback(dialogue,
+            dialogue.messages[trigger.id].text, false);
         return false;
     }
+
+    const FFXIEventTable::EntityScripts* own = nullptr;
+    const FFXIEventTable::EntityScripts* zoneScripts = nullptr;
+    for (const auto& scripts : dialogue.scripts)
+    {
+        if (scripts.entityId == placement.entityId)
+            own = &scripts;
+        else if (scripts.entityId == 0x7ffffff0u)
+            zoneScripts = &scripts;
+    }
+    std::vector<const FFXIEventTable::Event*> candidates;
+    if (hasTrigger && trigger.kind == NpcTriggerDialogue::Kind::Event)
+    {
+        // Shared zone events live in the 0x7ffffff0 block.
+        for (const auto* scripts : { own, zoneScripts })
+        {
+            if (!scripts || !candidates.empty()) continue;
+            for (const auto& event : scripts->events)
+                if (event.id == trigger.id)
+                {
+                    candidates.push_back(&event);
+                    break;
+                }
+        }
+    }
+    if (own)
+        for (const auto& event : own->events)
+            candidates.push_back(&event);
+    if (candidates.empty())
+    {
+        trace("entity=" + std::to_string(placement.entityId) + " has no event script");
+        return false;
+    }
+
+    for (const FFXIEventTable::Event* event : candidates)
+    {
+        NpcEventRuntime::Begin(dialogue.runtime, *event);
+        NpcEventRuntime::State probe = dialogue.runtime;
+        const NpcEventRuntime::Outcome firstStep = NpcEventRuntime::Advance(probe);
+        if (firstStep.unsupportedOpcode)
+        {
+            char diagnostic[160]{};
+            sprintf_s(diagnostic,
+                "[DATura NPC dialogue] blocked event=%u pc=%zu opcode=0x%02x\n",
+                firstStep.eventId, firstStep.programCounter, firstStep.opcode);
+            OutputDebugStringA(diagnostic);
+        }
+        if (NpcConversationController::WillPresent(dialogue))
+        {
+            trace("selected entity=" + std::to_string(placement.entityId) +
+                " event=" + std::to_string(event->id) +
+                " entry=" + std::to_string(event->entryOffset) +
+                (hasTrigger && trigger.kind == NpcTriggerDialogue::Kind::Event &&
+                    event->id == trigger.id ? " (LandSandBoat default)" : ""));
+            return true;
+        }
+    }
+    dialogue.runtime = {};
+    trace("matched entity had no runnable retail dialogue");
     return false;
 }
 
@@ -4128,11 +4313,14 @@ static void StartNpcConversation(HWND owner, const FFXINpcPlacement::Placement& 
     g_npcConversation.name = placement.name;
     if (LoadRetailNpcConversation(placement))
     {
-        PresentNpcEventStep(owner);
-        return;
+        if (PresentNpcEventStep(owner))
+            return;
+        g_npcConversation.dialogue.runtime = {};
     }
-    NpcConversationController::BeginFallback(g_npcConversation.dialogue,
-        NpcDialogueText(placement));
+    // A server text line may already be loaded as the fallback frame.
+    if (!NpcConversationController::HasFallbackFrame(g_npcConversation.dialogue))
+        NpcConversationController::BeginFallback(g_npcConversation.dialogue,
+            NpcDialogueText(placement));
     ShowNpcConversationFrame(owner);
 }
 
@@ -5745,6 +5933,7 @@ static void DrawCameraDebugOverlay(HDC overlayDc = nullptr)
     constexpr float kRadiansToDegrees = 57.29577951308232f;
     const FFXIZoneEntry* debugZone = FFXIZone::FindByID(g_transitionZoneId);
     const char* debugZoneName = debugZone ? debugZone->name : (g_loadedZoneLabel.empty() ? "(unknown)" : g_loadedZoneLabel.c_str());
+    const std::string weatherStatus = ZoneWeatherStatusText();
     char text[768] = {};
     sprintf_s(text,
         "CAMERA DEBUG  [T to hide]\r\n"
@@ -5763,7 +5952,7 @@ static void DrawCameraDebugOverlay(HDC overlayDc = nullptr)
         g_camYaw, g_camYaw * kRadiansToDegrees,
         g_camPitch, g_camPitch * kRadiansToDegrees,
         g_camDist,
-        g_zoneEnvironment.weatherPath[0] ? g_zoneEnvironment.weatherPath : "(none)");
+        weatherStatus.c_str());
 
     const bool ownsDc = overlayDc == nullptr;
     HDC dc = ownsDc ? GetDC(g_hWnd) : overlayDc;
@@ -6549,8 +6738,10 @@ static void Render()
     g_graphicsRuntime.ResolveFrame();
 
     if (g_uiVisible)
+    {
         NpcChatWindow::Draw(GraphicsDevice());
         NpcChatWindow::DrawChoices(GraphicsDevice());
+    }
 
     // The title/nation labels are GDI-rendered.  Paint them into the
     // lockable backbuffer before Present so they cannot flicker independently
@@ -6869,8 +7060,7 @@ static bool HandleApplicationMenuCommand(
         ShowZoneObjectPanel();
         return true;
     case ApplicationMenu::Action::CycleWeather:
-        ++g_zoneWeatherIndex;
-        UpdateZoneEnvironmentState();
+        CycleZoneWeather();
         InvalidateRect(window, NULL, FALSE);
         return true;
     case ApplicationMenu::Action::ShowCurrentZoneResources:
@@ -7970,6 +8160,7 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     case WM_DESTROY:
         EndMouseLook();
+        g_zoneWeatherAudio.Shutdown();
         PostQuitMessage(0);
         return 0;
     }
@@ -7992,6 +8183,10 @@ static void InitializeMainWindowState()
         SetCompanionViewerOwner(g_companionOwnerPid);
     InitFFXIPath();
     ApplicationSettingsStore::Load(g_applicationSettings);
+    ZoneEnvironmentState::SetUseLocalSystemTime(
+        g_applicationSettings.sceneClockMode == ApplicationSettings::SceneClockLocalSystem);
+    if (g_applicationSettings.sceneClockMode == ApplicationSettings::SceneClockManual)
+        ZoneEnvironmentState::SetTimeOverride(g_applicationSettings.sceneClockManualMinute);
     InputController::SetKeyBindings(g_input, g_applicationSettings);
     InputController::SetCursorStyle(
         g_input, g_applicationSettings.mouseCursorStyle, g_ffxiPath);
@@ -8125,6 +8320,16 @@ static void RunApplicationFrame(void*, const float deltaSeconds)
              soundForeground == ConfigDialog::Window(g_configDialog) || AudioPlayer_OwnsWindow(soundForeground));
         g_metalworksElevatorAudio.Update(g_metalworksElevator, g_player.position,
             !g_applicationSettings.mirrorWorldZones, elevatorAudioAllowed);
+        // Weather loops follow the same transition as the visual weather.
+        const bool weatherAudioAllowed = IsGameMode() && !g_titleScreenActive &&
+            g_applicationSettings.enableSounds && g_applicationSettings.enableWeatherEffects &&
+            (g_applicationSettings.playSoundsInBackground || soundForeground == g_hWnd ||
+             soundForeground == ConfigDialog::Window(g_configDialog) || AudioPlayer_OwnsWindow(soundForeground));
+        g_zoneWeatherAudio.SetRootPath(g_ffxiPath);
+        g_zoneWeatherAudio.Update(
+            ZoneWeatherAudio::SelectSound(g_zoneWeatherSounds, g_zoneEnvironment.weatherPath,
+                ZoneEnvironmentState::CurrentMinuteOfDay(), g_zoneEnvironment.indoor),
+            weatherAudioAllowed, deltaSeconds, 3.0f);
         UpdateCameraMovement(deltaSeconds);
         if (!IsGameMode() && (g_towerPortalInteraction.query || g_towerPortalInteraction.activating))
             CancelTowerPortal();
@@ -8311,5 +8516,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*
         : 1;
 
     ShutdownApplication(hInstance);
+    GpuSelection::LaunchPendingRestart();
     return exitCode;
 }

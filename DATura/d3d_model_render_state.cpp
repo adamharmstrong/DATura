@@ -180,8 +180,15 @@ void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const flo
     {
         CalculateDirectionalLight(minuteOfDay, automaticDirection, azimuthDegrees,
                                   elevationDegrees, direction);
+        // Below the horizon the sun would light undersides through the ground.
+        // Use the source above the scene, as the directional and planar shadows do.
+        if (automaticDirection && direction[1] > 0.0f)
+            for (float& axis : direction) axis = -axis;
     }
-    sun.direction = { direction[0], direction[1], direction[2] };
+    // Scene directions point toward the light (the convention the directional
+    // and planar shadows use), while D3D wants the direction light travels.
+    // Passing it unnegated lit the sides of actors facing away from the sun.
+    sun.direction = { -direction[0], -direction[1], -direction[2] };
     sun.attenuation0 = 1.0f;
     D3D9Graphics::Context(device).SetLight(0, sun);
     D3D9Graphics::Context(device).EnableLight(0, true);
@@ -197,7 +204,7 @@ void ApplyDynamicLighting(IDirect3DDevice9 *device, const int quality, const flo
             (static_cast<float>(authoredSecondaryColor & 0xff) / 255.0f) * power,
             1.0f
         };
-        fill.direction = { -direction[0], -direction[1], -direction[2] };
+        fill.direction = { direction[0], direction[1], direction[2] };
         fill.attenuation0 = 1.0f;
         D3D9Graphics::Context(device).SetLight(1, fill);
         D3D9Graphics::Context(device).EnableLight(1, true);
@@ -299,6 +306,42 @@ bool SetFfxiUiPixelShader(IDirect3DDevice9 *device, const bool expandDxt3Alpha,
     return true;
 }
 
+namespace
+{
+bool g_actorPixelLightClamp = false;
+
+// Actor vertices are white, so bright authored light (Bastok's ambient plus
+// sun reaches ~1.9) saturates D3D's per-vertex colour at 1.0. Interpolating
+// between clipped and unclipped corners bends the shading exactly along
+// triangle edges. Light actors at half intensity through the material instead
+// and let the FFXI shader double it and apply the same cap per pixel.
+void ApplyActorLightClamp(IDirect3DDevice9* device, const bool ffxiShader)
+{
+    const bool split = g_actorPixelLightClamp && ffxiShader;
+    D3D9Graphics::Context graphics(device);
+    graphics.SetLightingField(&RendererBackend::LightingState::diffuseSource,
+        split ? RendererBackend::MaterialSource::Material : RendererBackend::MaterialSource::DiffuseVertex);
+    graphics.SetLightingField(&RendererBackend::LightingState::ambientSource,
+        split ? RendererBackend::MaterialSource::Material : RendererBackend::MaterialSource::DiffuseVertex);
+    if (split)
+    {
+        D3DMATERIAL9 half = {};
+        half.Diffuse = half.Ambient = { 0.5f, 0.5f, 0.5f, 0.5f };
+        device->SetMaterial(&half);
+    }
+    if (ffxiShader)
+    {
+        const float lightParams[4] = { split ? 2.0f : 1.0f, 0.0f, 0.0f, 0.0f };
+        graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 3, lightParams, 1);
+    }
+}
+}
+
+void SetActorPixelLightClamp(const bool enabled)
+{
+    g_actorPixelLightClamp = enabled;
+}
+
 void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
                          const noesisMaterial_t *material, const noesisTex_t *texture,
                          const bool enableBumpMapping, const float bumpMappingIntensity)
@@ -341,6 +384,7 @@ void ApplyOpaqueMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 :
         (alphaRef > 0.0f ? D3DTOP_MODULATE4X : D3DTOP_MODULATE2X));
+    ApplyActorLightClamp(device, shaderActive && !pbrActive);
 }
 
 void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& cache,
@@ -377,6 +421,7 @@ void ApplyTransparentMaterial(IDirect3DDevice9 *device, MaterialBindingCache& ca
     if (!pbrActive) { D3D9Graphics::Context(device).BindTexture(1, nullptr); D3D9Graphics::Context(device).BindTexture(2, nullptr); D3D9Graphics::Context(device).BindTexture(3, nullptr); }
     SetTextureStageForOptionalTexture(device, d3dTexture,
         shaderActive ? D3DTOP_SELECTARG1 : D3DTOP_MODULATE4X);
+    ApplyActorLightClamp(device, shaderActive && !pbrActive);
 }
 
 void ReleaseFfxiPixelShaders()

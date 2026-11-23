@@ -11,10 +11,15 @@ void Reset(State& state)
     state = {};
 }
 
-void BeginFallback(State& state, const std::string& dialogue)
+void BeginFallback(State& state, const std::string& dialogue, const bool splitLines)
 {
     state.fallbackFrames.clear();
     state.fallbackIndex = 0;
+    if (!splitLines)
+    {
+        state.fallbackFrames.push_back(dialogue);
+        return;
+    }
     std::size_t start = 0;
     while (start <= dialogue.size())
     {
@@ -99,6 +104,24 @@ Presentation PresentNext(State& state)
         }
         return result;
     }
+}
+
+bool WillPresent(const State& state)
+{
+    NpcEventRuntime::State probe = state.runtime;
+    for (int steps = 0; steps < 256; ++steps)
+    {
+        const NpcEventRuntime::Outcome outcome = NpcEventRuntime::Advance(probe);
+        if (outcome.step == NpcEventRuntime::Step::Choice)
+            return true;
+        if (outcome.step != NpcEventRuntime::Step::Message)
+            return false;
+        const std::uint32_t id = probe.pendingMessage;
+        if (id < state.messages.size() && !state.messages[id].text.empty())
+            return true;
+        NpcEventRuntime::DismissMessage(probe);
+    }
+    return false;
 }
 
 void DismissMessage(State& state)

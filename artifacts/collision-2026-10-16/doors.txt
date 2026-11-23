@@ -1,0 +1,4 @@
+﻿Physics crossing z=5.86994 swing=1.74522
+Clear retail passages=15
+Retail leaves=30 paired=30 moving collision=2184
+101 checks, 0 failures

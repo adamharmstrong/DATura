@@ -13,6 +13,10 @@ RendererBackend::Shader* receiverShader = nullptr;
 bool active = false;
 bool recording = false;
 bool attempted = false;
+// World point the light rotates about. It moves only along the current texel
+// lattice (and light depth), so following the focus never shifts texel phase.
+double anchor[3] = {};
+bool anchorValid = false;
 struct Submission
 {
     Context context; noesisModel_t* model; D3DMATRIX world;
@@ -27,11 +31,13 @@ row_major float4x4 Camera : register(c0);
 row_major float4x4 Light : register(c4);
 row_major float4x4 World : register(c8);
 row_major float4x4 View : register(c12);
-float4 PassParams : register(c16); // x: shadow depth pass
+float4 PassParams : register(c16); // x: shadow depth pass, y: receiver normal offset
 struct Input { float4 position:POSITION; float3 normal:NORMAL; float4 color:COLOR0; float2 uv:TEXCOORD0; };
 struct Output { float4 position:POSITION; float4 light:TEXCOORD0; float2 uv:TEXCOORD1; float3 normal:TEXCOORD2; float alpha:TEXCOORD3; float distance:TEXCOORD4; };
 Output vs(Input v) {
- Output o; o.light=mul(v.position,Light);
+ // Only the shadow lookup moves along the normal; camera position and receiver
+ // depth stay exact so the EQUAL receiver test still matches.
+ Output o; o.light=mul(float4(v.position.xyz+v.normal*PassParams.y,1),Light);
  // Match the scene's view/projection sequence instead of precombining WVP.
  o.position=PassParams.x>0 ? o.light : mul(mul(v.position,View),Camera);
  o.uv=v.uv; o.normal=mul(float4(v.normal,0),World).xyz;
@@ -42,7 +48,7 @@ sampler2D Shadow:register(s1);
 float4 Params:register(c0); // has texture, cutout threshold, opacity, inverse map size
 float4 Direction:register(c1);
 float4 Fog:register(c2); // near, inverse span, enabled
-float4 ReceiverDepthParams:register(c3); // inverse camera far distance
+float4 ReceiverDepthParams:register(c3); // x: inverse camera far distance, y: actor receiver
 void Cutout(Output i) { if(Params.x>0) clip(saturate(tex2D(Base,i.uv).a*Params.x)*i.alpha>Params.y ? 1 : -1); }
 float4 depthPS(Output i):COLOR0 { Cutout(i); return i.light.z/i.light.w; }
 float4 receiverDepthPS(Output i, out float depth:DEPTH):COLOR0 {
@@ -84,6 +90,10 @@ float4 receiverPS(Output i, out float depth:DEPTH):COLOR0 {
   occlusion += CompareBilinear(uv+(float2(x,y)-.5)*1.5*Params.w,uv,p.z-bias,gradient);
  float valid=(p.z>0 && p.z<1)?1:0;
  float fog=Fog.z*saturate((i.distance-Fog.x)*Fog.y);
+ // Actors are Gouraud lit. Sides turned away from the sun already lack its
+ // light, so fade the shadow out with the smooth vertex normal; a binary map
+ // test there cuts the terminator along triangle edges.
+ if(ReceiverDepthParams.y>0) occlusion*=saturate(dot(normalize(i.normal),Direction.xyz)*4);
  float shade=1-Params.z*edge*valid*occlusion/4*(1-fog);
  return float4(shade,shade,shade,1);
 }
@@ -193,7 +203,13 @@ void DrawMeshes(const Submission& item, const D3DMATRIX& camera, const D3DMATRIX
         D3DMATRIX view = {}; D3D9Graphics::Context(device).QueryTransform(RendererBackend::Transform::View, &view._11);
         const auto viewMatrix=D3DMath::Multiply(world,view);
         D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Vertex, 12,&viewMatrix._11,4);
-        const float pass[4]={cast ? 1.0f:0.0f,0,0,0};
+        // A 2048 map spends ~0.08 units per texel, coarser than a face or a
+        // finger; shifting actor lookups two texels along the normal keeps them
+        // from shadowing themselves while roofs and walls still shade them.
+        const bool actorReceiver = !cast && !item.context.rendersZoneObjects;
+        const float normalOffset = actorReceiver ?
+            2*2*std::clamp(item.context.shadowMaxDistance,16.0f,160.0f)/Resolution : 0.0f;
+        const float pass[4]={cast ? 1.0f:0.0f,normalOffset,0,0};
         D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Vertex, 16,pass,1);
         const auto* material = mesh.pResolvedMaterial;
         const bool cutout = material && material->alphaTest > 0;
@@ -215,7 +231,7 @@ void DrawMeshes(const Submission& item, const D3DMATRIX& camera, const D3DMATRIX
         // the camera. Both receiver passes use exactly the same expression.
         const float farDistance=camera._34 != 0 && camera._33 != 1 ?
             camera._43/(1-camera._33) : 1000.0f;
-        const float receiverDepthParams[4]={1/std::max(farDistance,1.0f),0,0,0};
+        const float receiverDepthParams[4]={1/std::max(farDistance,1.0f),actorReceiver ? 1.0f : 0.0f,0,0};
         D3D9Graphics::Context(device).SetShaderConstants(RendererBackend::ShaderStage::Pixel, 3,receiverDepthParams,1);
         D3D9Graphics::Context(device).BindTexture(0,mesh.pResolvedTexture ? mesh.pResolvedTexture->gpuTexture : nullptr);
         D3D9Graphics::Context(device).SetPipelineField(&RendererBackend::PipelineState::cull, material && (material->flags & NMATFLAG_TWOSIDED) ? RendererBackend::Cull::None : RendererBackend::Cull::Clockwise);
@@ -258,7 +274,7 @@ void ReleaseDirectionalShadowResources()
     if (depthShader) { delete depthShader; depthShader = nullptr; }
     if (receiverDepthShader) { delete receiverDepthShader; receiverDepthShader = nullptr; }
     if (receiverShader) { delete receiverShader; receiverShader = nullptr; }
-    submissions.clear(); active = recording = attempted = false;
+    submissions.clear(); active = recording = attempted = anchorValid = false;
 }
 
 bool DrawDirectionalShadowFrame()
@@ -282,15 +298,33 @@ bool DrawDirectionalShadowFrame()
     const float* center = context.shadowCenterValid ? context.shadowCenter : context.cameraPosition;
     // Build the axes at the origin; subtracting two large world positions loses
     // precision and subtly changes the light's orientation when the camera moves.
-    auto view = D3DMath::BuildLookAtLH(-direction[0]*200,-direction[1]*200,
-        -direction[2]*200,0,0,0);
-    view._41-=center[0]*view._11+center[1]*view._21+center[2]*view._31;
-    view._42-=center[0]*view._12+center[1]*view._22+center[2]*view._32;
-    view._43-=center[0]*view._13+center[1]*view._23+center[2]*view._33;
-    // Snap the light-space translation to texels to reduce camera-motion shimmer.
-    const float texel = 2*extent/Resolution;
-    view._41 = floorf(view._41/texel)*texel;
-    view._42 = floorf(view._42/texel)*texel;
+    // The direction points toward the light (Y-down scene: the sun above has
+    // negative Y), as for the planar fallback, so the light eye sits along it.
+    // An eye at -direction placed the light under the world: the ground then
+    // shadowed every actor standing on it and actors cast nothing.
+    auto view = D3DMath::BuildLookAtLH(direction[0]*200,direction[1]*200,
+        direction[2]*200,0,0,0);
+    // The automatic sun turns every frame. Texel phase at a point drifts by its
+    // distance from the rotation pivot times that angle; pivoting at the world
+    // origin made Bastok (~280 units out) crawl several texels per second while
+    // the camera was still. Pivot at an anchor near the focus instead, and move
+    // the anchor by whole texels so camera motion stays texel-snapped.
+    const double texel = 2.0*extent/Resolution;
+    const double axes[3][3] = {{view._11,view._21,view._31},{view._12,view._22,view._32},
+        {view._13,view._23,view._33}};
+    if (!anchorValid || !std::isfinite(anchor[0]+anchor[1]+anchor[2]))
+    { for (int i=0;i<3;++i) anchor[i]=center[i]; anchorValid=true; }
+    double offset[3] = {};
+    for (int axis=0;axis<3;++axis)
+        offset[axis] = (center[0]-anchor[0])*axes[axis][0]+(center[1]-anchor[1])*axes[axis][1]+
+            (center[2]-anchor[2])*axes[axis][2];
+    offset[0] = std::round(offset[0]/texel)*texel;
+    offset[1] = std::round(offset[1]/texel)*texel;
+    for (int i=0;i<3;++i)
+        anchor[i] += axes[0][i]*offset[0]+axes[1][i]*offset[1]+axes[2][i]*offset[2];
+    view._41 = float(-(anchor[0]*axes[0][0]+anchor[1]*axes[0][1]+anchor[2]*axes[0][2]));
+    view._42 = float(-(anchor[0]*axes[1][0]+anchor[1]*axes[1][1]+anchor[2]*axes[1][2]));
+    view._43 = float(200-(anchor[0]*axes[2][0]+anchor[1]*axes[2][1]+anchor[2]*axes[2][2]));
     auto projection = D3DMath::BuildIdentity();
     projection._11 = projection._22 = 1/extent; projection._33 = 1/400.0f;
     const auto light = D3DMath::Multiply(view,projection);

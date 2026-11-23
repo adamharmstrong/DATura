@@ -1,0 +1,115 @@
+﻿Konschtat SOFT_BLOCK _kusa_02d        at -265.995,-6.49488,-70.5015 dir 0,1
+Konschtat SOFT_BLOCK _kusa_01d        at 114.943,-72.8331,-673.387 dir -1,0
+Konschtat SOFT_BLOCK _kusa_03d        at 97.336,-73.9656,-622.656 dir -1,0
+Konschtat SOFT_BLOCK _kusa_03d        at 97.336,-73.9656,-622.656 dir 0,-1
+Konschtat SOFT_BLOCK _kusa_01d        at -442,0.3,-150 dir 0,1
+Konschtat SOFT_BLOCK _kusa_02d        at -87.0558,16.1943,130.227 dir 0,1
+Konschtat SOFT_BLOCK _con_hana_01_m   at -651.062,6.6199,146.593 dir 1,0
+Konschtat SOFT_BLOCK _con_hana_01_m   at -648.909,6.98142,151.393 dir 0,1
+Konschtat SOFT_BLOCK _con_hana_05_m   at -208.672,-9.09377,-117.262 dir 0,-1
+Konschtat SOFT_BLOCK _con_hana_02_m   at -204.833,64.1966,590.89 dir 0,1
+Konschtat SOFT_BLOCK _con_hana_02_m   at -211.896,62.0937,564.639 dir 1,0
+Konschtat SOFT_BLOCK _con_hana_05_m   at 562.484,40.1881,432.238 dir -1,0
+Konschtat LONG_DROP>30 from 406.898,1.89902,-7.09012 yaw 1.68733
+Konschtat LONG_DROP>30 from 406.898,1.89902,-7.09012 yaw 1.68733
+Konschtat LONG_DROP>30 from 406.898,1.89902,-7.09012 yaw 1.68733
+Konschtat LONG_DROP>30 from 406.898,1.89902,-7.09012 yaw 1.68733
+Konschtat LONG_DROP>30 from 406.898,1.89902,-7.09012 yaw 1.68733
+Konschtat LEFT_WORLD last ground 406.898,1.89902,-7.09012 yaw 0 (native x 406.898)
+Konschtat     trail (392.517,0.00800267,6.38947) (390.571,-0.382563,5.93095) (388.624,-0.809585,5.47242) (386.678,-0.883245,5.0139) (384.861,-0.610776,4.58667) (386.803,-0.906984,5.06678) (388.745,-0.787848,5.54689) (390.686,-0.364647,6.02699) (392.628,0.0171076,6.5071) (394.57,0.33319,6.98721) (396.398,0.425802,7.40636) (394.921,0.297658,6.05761) (393.445,0.184442,4.70887) (391.968,0.159604,3.36013) (390.491,0.2503,2.01139) (389.014,0.340997,0.662654) (387.602,0.37804,-0.706086) (388.051,0.160645,-2.65487) (388.501,-0.24773,-4.60366) (388.95,-1.11185,-6.55245) (389.41,-1.34342,-7.00825) (389.872,-1.39382,-7.03644) (390.379,-1.44804,-7.06493) (392.177,-1.68026,-7.18905) (393.971,-2.3405,-7.8762) (395.764,-3.14132,-8.76357) (397.361,-3.23373,-8.61219) (398.932,-3.23373,-8.31762) (400.584,-3.23373,-8.22689) (402.462,-3.77921,-8.63554) (403.56,-5.12963,-8.6157) (404.274,-5.87217,-8.08217) (404.988,-7.29213,-7.54864) (405.702,-5.76987,-7.01511) (406.831,2.28014,-7.08237) (404.845,17.3301,-6.84983) (402.858,39.3802,-6.61728) (400.871,68.4302,-6.38474) (398.885,104.48,-6.1522) (396.898,144.466,-5.91965)
+Konschtat LONG_DROP>30 from 384.525,-6.03522,-9.85411 yaw 2.93231
+Konschtat LEFT_WORLD last ground 381.953,85.5949,-2.44639 yaw 0 (native x 381.953)
+Konschtat     trail (394.998,0.0300885,-0.0666465) (394.949,-0.567258,-2.06604) (394.899,-1.03099,-4.06544) (394.85,-1.78323,-6.06483) (394.801,-2.6061,-8.06423) (394.737,-3.11652,-9.06532) (394.606,-3.09122,-9.05964) (392.924,-2.73048,-8.92104) (391.408,-2.64763,-8.7481) (389.993,-3.11225,-8.82298) (388.502,-4.60117,-9.21293) (386.954,-6.10605,-9.84063) (385.347,-7.95105,-10.431) (385.645,-7.8575,-10.6404) (385.645,-7.8575,-10.6404) (385.645,-7.8575,-10.6404) (385.645,-7.8575,-10.6404) (385.645,-7.8575,-10.6404) (385.603,-7.80882,-10.6108) (384.326,-5.95745,-10.3284) (383.602,-1.40745,-10.2066) (383.186,10.1426,-8.25024) (382.77,28.6926,-6.29389) (382.355,54.2426,-4.33753) (381.889,86.7926,-2.4289) (379.959,125.678,-1.90418)
+Konschtat zone=108 dat=ROM/0/90.DAT mirror=0 triangles=479136 placements=12203
+Konschtat   cross flower: crossed=3804 blocked=61 fell=0 nofloor=3
+Konschtat   cross grass: crossed=877 blocked=26 fell=0 nofloor=9
+Konschtat   cross other: crossed=550 blocked=425 fell=0 nofloor=349
+Konschtat   blocked-by face |ny| <0.1=429 0.1-0.35=64 0.35-0.45=9 none=10
+Konschtat   seeds=34 (arrivals=5) agents=32 ungrounded_seeds=2 legs=1280 left_world=2 long_drops=9 zoned=8 blocked_legs=42
+LaTheine SOFT_BLOCK _kusa_001_m      at 263.815,24.8104,-77.9157 dir -1,0
+LaTheine SOFT_BLOCK _kusa_003_m      at 268.572,24.3757,-78.0239 dir -1,0
+LaTheine SOFT_BLOCK _kusa_003_m      at 279.577,24.7999,56.142 dir 1,0
+LaTheine SOFT_BLOCK _kusa_001_m      at -507.843,-8.99722,242.735 dir 1,0
+LaTheine SOFT_BLOCK _kusa_002_m      at -508.937,-8.43769,245.608 dir 0,1
+LaTheine SOFT_BLOCK _kusa_002_m      at -308.299,-15.6072,-122.033 dir 1,0
+LaTheine LONG_DROP>30 from 16.5906,67.0193,-354.793 yaw 1.11265
+LaTheine LONG_DROP>30 from 16.5906,67.0193,-354.793 yaw 1.11265
+LaTheine LONG_DROP>30 from 16.5906,67.0193,-354.793 yaw 1.11265
+LaTheine LEFT_WORLD last ground 16.5906,67.0193,-354.793 yaw 0 (native x 16.5906)
+LaTheine     earlier drop -4.09599,52.0301,-352.637 -> -2.34262,54.6848,-353.975
+LaTheine     trail (16.6451,50.1694,-350.665) (18.2025,49.7922,-349.594) (20.0168,47.7778,-348.772) (21.8461,46.7617,-347.963) (23.5285,46.1334,-346.953) (25.333,45.7291,-346.11) (27.0434,45.0561,-345.296) (25.3056,45.863,-344.306) (23.5678,46.4292,-343.316) (21.8301,47.0888,-342.327) (20.0923,47.8411,-341.337) (18.3545,48.6239,-340.347) (16.6317,48.9441,-339.34) (15.5189,47.5642,-338.524) (15.3813,47.5537,-338.621) (15.2437,47.5433,-338.718) (15.1061,47.5329,-338.815) (14.9685,47.5225,-338.912) (14.8878,47.5164,-338.969) (16.104,48.137,-338.607) (17.0571,48.0205,-338.77) (18.0103,47.904,-338.933) (18.9634,47.6091,-339.096) (19.7492,47.3605,-339.302) (20.1454,47.316,-339.547) (20.903,47.4651,-341.398) (21.6606,47.2259,-343.25) (22.4182,47.0288,-345.101) (23.1758,46.3981,-346.952) (22.9138,46.2843,-347.399) (22.4953,46.3922,-347.703) (21.0778,47.0432,-348.732) (19.8866,47.5903,-349.596) (19.1346,48.2675,-350.142) (18.3798,49.1226,-351.421) (17.4123,54.8393,-353.043) (16.5308,67.556,-354.822) (14.737,87.2727,-355.707) (12.9433,113.989,-356.591) (11.1495,147.706,-357.475)
+LaTheine zone=102 dat=ROM/0/115.DAT mirror=0 triangles=556974 placements=11881
+LaTheine   cross grass: crossed=1765 blocked=69 fell=0 nofloor=6
+LaTheine   cross other: crossed=2984 blocked=1023 fell=24 nofloor=921
+LaTheine   blocked-by face |ny| <0.1=664 0.1-0.35=305 0.35-0.45=109 none=14
+LaTheine   seeds=40 (arrivals=6) agents=39 ungrounded_seeds=1 legs=1560 left_world=1 long_drops=3 zoned=33 blocked_legs=42
+WRonfaure zone=100 dat=ROM/0/120.DAT mirror=0 triangles=428993 placements=8177
+WRonfaure   cross other: crossed=875 blocked=760 fell=5 nofloor=380
+WRonfaure   cross shrub: crossed=3734 blocked=671 fell=0 nofloor=119
+WRonfaure   blocked-by face |ny| <0.1=1291 0.1-0.35=102 0.35-0.45=3 none=35
+WRonfaure   seeds=40 (arrivals=8) agents=39 ungrounded_seeds=1 legs=1560 left_world=0 long_drops=0 zoned=29 blocked_legs=91
+Lufaise SOFT_BLOCK _kusa_6p         at 182.45,-21.6454,348.268 dir -1,0
+Lufaise SOFT_BLOCK _kusa_6p         at 182.45,-21.6454,348.268 dir 0,1
+Lufaise SOFT_BLOCK _tab_hana_05     at 189.636,-22.3544,346.673 dir 0,1
+Lufaise SOFT_BLOCK _tab_hana_03     at 204.499,-23.3379,330.372 dir 0,1
+Lufaise SOFT_BLOCK _tab_hana_03     at 204.499,-23.3379,330.372 dir 0,-1
+Lufaise SOFT_BLOCK _tab_hana_02     at 191.451,-22.2169,346.788 dir 0,1
+Lufaise SOFT_BLOCK _tab_hana_05     at 129.163,-7.84491,16.3273 dir 1,0
+Lufaise SOFT_BLOCK _tab_hana_02     at 76.2801,-7.19895,16.4167 dir 0,1
+Lufaise SOFT_BLOCK _tab_hana_01     at 88.2737,-6.46819,16.8349 dir 0,1
+Lufaise SOFT_BLOCK _tab_hana_k02    at 472.057,0,194.73 dir 0,-1
+Lufaise SOFT_BLOCK _tab_hana_k02b   at 475.515,0,198.668 dir -1,0
+Lufaise SOFT_BLOCK _tab_hana_k02b   at 470.676,0,196.933 dir 1,0
+Lufaise SOFT_BLOCK _tab_hana_k02    at 444.168,-8.06976,196.023 dir 0,1
+Lufaise zone=24 dat=ROM3/0/23.DAT mirror=0 triangles=190130 placements=3644
+Lufaise   cross flower: crossed=257 blocked=25 fell=0 nofloor=34
+Lufaise   cross grass: crossed=814 blocked=50 fell=0 nofloor=48
+Lufaise   cross other: crossed=1968 blocked=697 fell=54 nofloor=3341
+Lufaise   blocked-by face |ny| <0.1=541 0.1-0.35=169 0.35-0.45=49 none=13
+Lufaise   seeds=30 (arrivals=3) agents=27 ungrounded_seeds=3 legs=1080 left_world=0 long_drops=0 zoned=0 blocked_legs=39
+Selbina LONG_DROP>30 from 40.3502,1.04142,-2.60417 yaw 5.8049
+Selbina LONG_DROP>30 from 40.3502,1.04142,-2.60417 yaw 5.8049
+Selbina LEFT_WORLD last ground 44.5234,73.4993,-10.6534 yaw 0 (native x 44.5234)
+Selbina     trail (39.0307,1.04142,-0.0591862) (39.9512,1.04142,-1.83476) (40.8718,2.23142,-3.61033) (41.7924,9.81476,-5.38589) (42.7129,24.3981,-7.16146) (43.6335,45.9815,-8.93703) (44.5808,74.5648,-10.6196)
+Selbina LONG_DROP>30 from 40.3333,1.04142,-0.00243368 yaw 4.71421
+Selbina LONG_DROP>30 from 40.3333,1.04142,-0.00243368 yaw 4.71421
+Selbina LEFT_WORLD last ground 40.3333,1.04142,-0.00243368 yaw 0 (native x 40.3333)
+Selbina     trail (39.0667,1.04142,-0.000122182) (41.0666,1.55475,-0.00377191) (43.0666,7.73809,-0.00742165) (45.0666,20.9214,-0.0110714) (47.0665,41.1048,-0.0147211) (49.0665,68.2881,-0.0183709)
+Selbina LONG_DROP>30 from 39.4956,1.04142,0.338201 yaw 4.11357
+Selbina LONG_DROP>30 from 39.4956,1.04142,0.338201 yaw 4.11357
+Selbina LEFT_WORLD last ground 39.4956,1.04142,0.338201 yaw 0 (native x 39.4956)
+Selbina LEFT_WORLD last ground 39.1969,1.04142,0.348171 yaw 0 (native x 39.1969)
+Selbina LEFT_WORLD last ground 39.0686,1.04142,0.326188 yaw 0 (native x 39.0686)
+Selbina LEFT_WORLD last ground 40.8814,41.1048,-23.9262 yaw 0 (native x 40.8814)
+Selbina zone=248 dat=ROM/1/43.DAT mirror=0 triangles=79364 placements=1180
+Selbina   cross other: crossed=622 blocked=1071 fell=28 nofloor=1171
+Selbina   blocked-by face |ny| <0.1=1035 0.1-0.35=27 0.35-0.45=5 none=4
+Selbina   seeds=40 (arrivals=2) agents=40 ungrounded_seeds=0 legs=1600 left_world=23 long_drops=45 zoned=0 blocked_legs=310
+PortBastok zone=236 dat=ROM/1/36.DAT mirror=0 triangles=90945 placements=1000
+PortBastok   cross other: crossed=783 blocked=950 fell=46 nofloor=925
+PortBastok   blocked-by face |ny| <0.1=900 0.1-0.35=40 0.35-0.45=0 none=10
+PortBastok   seeds=40 (arrivals=2) agents=40 ungrounded_seeds=0 legs=1600 left_world=0 long_drops=0 zoned=7 blocked_legs=294
+PortJeuno zone=246 dat=ROM/1/42.DAT mirror=0 triangles=161873 placements=1109
+PortJeuno   cross other: crossed=532 blocked=858 fell=64 nofloor=1150
+PortJeuno   blocked-by face |ny| <0.1=838 0.1-0.35=10 0.35-0.45=3 none=7
+PortJeuno   seeds=40 (arrivals=3) agents=40 ungrounded_seeds=0 legs=1600 left_world=0 long_drops=0 zoned=6 blocked_legs=307
+BastokMkts SOFT_BLOCK _bas_kusa01_m    at -202.876,-5.99066,-59.2626 dir 1,0
+BastokMkts SOFT_BLOCK _bas_kusa01_m    at -202.876,-5.99066,-59.2626 dir 0,1
+BastokMkts SOFT_BLOCK _bas_kusa03_h    at -202.924,-5.99066,-59.2744 dir 1,0
+BastokMkts SOFT_BLOCK _bas_kusa03_h    at -202.924,-5.99066,-59.2744 dir 0,1
+BastokMkts SOFT_BLOCK _bas_kusa02_m    at -202.876,-5.99066,-59.2626 dir 1,0
+BastokMkts SOFT_BLOCK _bas_kusa02_m    at -202.876,-5.99066,-59.2626 dir 0,1
+BastokMkts zone=235 dat=ROM/1/35.DAT mirror=0 triangles=144636 placements=2256
+BastokMkts   cross grass: crossed=18 blocked=94 fell=0 nofloor=4
+BastokMkts   cross other: crossed=1274 blocked=1395 fell=137 nofloor=1166
+BastokMkts   blocked-by face |ny| <0.1=1391 0.1-0.35=67 0.35-0.45=0 none=31
+BastokMkts   seeds=40 (arrivals=6) agents=39 ungrounded_seeds=1 legs=1560 left_world=0 long_drops=0 zoned=19 blocked_legs=231
+Metalworks zone=237 dat=ROM/1/37.DAT mirror=0 triangles=147520 placements=1287
+Metalworks   cross other: crossed=376 blocked=988 fell=92 nofloor=1052
+Metalworks   blocked-by face |ny| <0.1=963 0.1-0.35=11 0.35-0.45=12 none=2
+Metalworks   seeds=40 (arrivals=1) agents=40 ungrounded_seeds=0 legs=1600 left_world=0 long_drops=0 zoned=16 blocked_legs=276
+Chateau zone=233 dat=ROM/1/33.DAT mirror=0 triangles=36262 placements=1438
+Chateau   cross other: crossed=860 blocked=2069 fell=94 nofloor=1777
+Chateau   blocked-by face |ny| <0.1=2044 0.1-0.35=22 0.35-0.45=0 none=3
+Chateau   seeds=35 (arrivals=1) agents=35 ungrounded_seeds=0 legs=1400 left_world=0 long_drops=0 zoned=16 blocked_legs=304
+FAIL: collision walkthrough zones-with-world-exits=3

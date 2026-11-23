@@ -89,6 +89,15 @@
     <ClCompile Include="zone_weather_particles.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="zone_weather_schedule.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_weather_audio.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="gpu_selection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="zone_sky_dome.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -507,6 +516,15 @@
     <ClInclude Include="zone_weather_particles.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="zone_weather_schedule.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zone_weather_audio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gpu_selection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="zone_sky_dome.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -749,6 +767,9 @@
     <ClInclude Include="npc_conversation_controller.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="npc_trigger_dialogue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="character_creation_flow.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -794,6 +815,7 @@
     <ClCompile Include="application_settings_store.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="npc_event_runtime.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="npc_conversation_controller.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="npc_trigger_dialogue.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="menu.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="menu_cursor.cpp"><Filter>Source Files</Filter></ClCompile>
     <ClCompile Include="query.cpp"><Filter>Source Files</Filter></ClCompile>
@@ -814,6 +836,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="npc_starter_quests.csv" />
+    <None Include="npc_trigger_dialogue.csv" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="home_point_effect.cpp"><Filter>Source Files</Filter></ClCompile>

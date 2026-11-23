@@ -27,6 +27,7 @@
     <ClCompile Include="renderer_backend_tests.cpp" />
     <ClCompile Include="..\DATura\renderer_backend.cpp" />
     <ClCompile Include="..\DATura\d3d9_device.cpp" />
+    <ClCompile Include="..\DATura\gpu_selection.cpp" />
     <ClCompile Include="..\DATura\application_settings.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

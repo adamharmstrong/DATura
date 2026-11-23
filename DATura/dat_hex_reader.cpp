@@ -29,8 +29,11 @@ constexpr uint64_t NoByte=UINT64_MAX;
 enum {Open=101,Previous,Next,Encoding,Export,Info,Dump,SaveCopy,Undo,Redo,EditMode,Rows,OffsetBase,
     GoText,Go,SearchText,FindMode,Find,FindNext,Cancel,StartText,LengthText,SelectBlock,CopyHex,CopyText,
     PatchText,Overwrite,Fill,Endian,Inspector,Status,PasteOverwrite,BookmarkList,AddBookmark,
-    GoBookmark,RemoveBookmark,CompareFile,NextDifference,Checksums,ExportBlock,AnalysisOutput,ReplacementText,ReplaceMatch,FindPrevious,FindAll,MatchList,GoMatch,ByteStatistics,ChecksumType,AnalysisScope,CopyFormat,CopyFormatted,CopyCArray,CopyEscaped,CopyBase64,ByteOperation,ApplyOperation,ReplaceAll,Navigation,NextModified,PreviousModified,SelectToEnd,SelectToStart,CopyOffset,FileStart,FileEnd,ExpectedChecksum,VerifyChecksum,CopyChecksum,ExportReport,ExportIntelHex,ExportSelectionMenu,ExportCArray,ExportEscaped,ExportBase64,SearchScope,ViewMenu,Group1,Group2,Group4,Group8,Group16,ViewBoth,ViewHex,ViewText,DistributionChart,ExportPascal,ExportJava,ExportCSharp,ExportVB,CopyPascal,CopyJava,CopyCSharp,CopyVB,ExportSRecord,ExportHtml,ExportRtf,ExportTex,ExportPlainTable,CopyPlainTable,JoinBefore,JoinAfter,Split64K,Split1M,Split16M,PasteDecoded,PasteUtf8,PasteBase64,PasteEscaped,PasteBinary,CopyBinary,CopyInspector,ExportInspector,Pointer16,Pointer24,Pointer32,Pointer64,Relative16,Relative24,Relative32,Relative64,NextValue1,NextValue2,NextValue3,NextValue4,NextValue8,NextValue16,PreviousValue1,PreviousValue2,PreviousValue3,PreviousValue4,PreviousValue8,PreviousValue16,InspectorHex,ToolTabs,StartLabel,LengthLabel,ExpectedLabel,SetNumberedBookmark=2000,GoNumberedBookmark=2010};
+    GoBookmark,RemoveBookmark,CompareFile,NextDifference,Checksums,ExportBlock,AnalysisOutput,ReplacementText,ReplaceMatch,FindPrevious,FindAll,MatchList,GoMatch,ByteStatistics,ChecksumType,AnalysisScope,CopyFormat,CopyFormatted,CopyCArray,CopyEscaped,CopyBase64,ByteOperation,ApplyOperation,ReplaceAll,Navigation,NextModified,PreviousModified,SelectToEnd,SelectToStart,CopyOffset,FileStart,FileEnd,ExpectedChecksum,VerifyChecksum,CopyChecksum,ExportReport,ExportIntelHex,ExportSelectionMenu,ExportCArray,ExportEscaped,ExportBase64,SearchScope,ViewMenu,Group1,Group2,Group4,Group8,Group16,ViewBoth,ViewHex,ViewText,DistributionChart,ExportPascal,ExportJava,ExportCSharp,ExportVB,CopyPascal,CopyJava,CopyCSharp,CopyVB,ExportSRecord,ExportHtml,ExportRtf,ExportTex,ExportPlainTable,CopyPlainTable,JoinBefore,JoinAfter,Split64K,Split1M,Split16M,PasteDecoded,PasteUtf8,PasteBase64,PasteEscaped,PasteBinary,CopyBinary,CopyInspector,ExportInspector,Pointer16,Pointer24,Pointer32,Pointer64,Relative16,Relative24,Relative32,Relative64,NextValue1,NextValue2,NextValue3,NextValue4,NextValue8,NextValue16,PreviousValue1,PreviousValue2,PreviousValue3,PreviousValue4,PreviousValue8,PreviousValue16,InspectorHex,ToolTabs,StartLabel,LengthLabel,ExpectedLabel,InsertBytes,DeleteBytes,ScrollRows,SaveWorking,InsertMode,PasteInsert,CutBytes,InsertPattern,PatternLength,SetNumberedBookmark=2000,GoNumberedBookmark=2010};
 HWND window=nullptr;
+enum {DocumentTabs=3000,NewDocument,CloseDocument};
+constexpr UINT DocumentChanged=WM_APP+71;
+constexpr UINT SwitchDocument=WM_APP+72;
 HRESULT ConfigureDatPicker(IFileOpenDialog* picker,const std::wstring& root,const wchar_t* title) {
     const COMDLG_FILTERSPEC filters[]={{L"FFXI DAT files",L"*.dat"},{L"All files",L"*.*"}};
     FILEOPENDIALOGOPTIONS options={};
@@ -115,12 +118,14 @@ bool PickDatFile(HWND owner,const std::wstring& root,const wchar_t* title,std::w
     return PickDatFileWithShow(owner,root,title,path,ShowDatPicker);
 }
 struct SearchJob {
-    enum class Kind { Search,Compare,Hashes,AllMatches,PreviousMatch,Statistics,ReplaceAll,Join,Split } kind=Kind::Search;
+    enum class Kind { Search,Compare,Hashes,AllMatches,PreviousMatch,Statistics,ReplaceAll,Join,Split,Save } kind=Kind::Search;
     std::shared_ptr<DatHex::Document> document;
     std::shared_ptr<DatHex::Document> comparison;
     DatHex::Bytes pattern,replacement;
     std::optional<DatHex::Document::ReplacementPlan> replacementPlan;
     bool replacementLimit=false;
+    DatHex::Document::SaveMode saveMode=DatHex::Document::SaveMode::Copy;
+    std::unique_ptr<DatHex::Document::PendingSave> pendingSave;
     std::chrono::steady_clock::time_point started=std::chrono::steady_clock::now();
     uint64_t partCount=0;
     uint64_t start=0;
@@ -150,7 +155,7 @@ ScanProgress MeasureScan(uint64_t processed,uint64_t total,double elapsed) {
 }
 std::wstring ScanStatus(const SearchJob& job,double elapsed) {
     if(job.cancel.load())return L"Cancelling operation...";
-    const wchar_t* name=job.kind==SearchJob::Kind::Split?L"Split file":job.kind==SearchJob::Kind::Join?L"Join files":job.kind==SearchJob::Kind::Hashes?L"Checksum":job.kind==SearchJob::Kind::Statistics?L"Statistics":job.kind==SearchJob::Kind::Compare?L"Compare":job.kind==SearchJob::Kind::ReplaceAll?L"Replace all":L"Search";
+    const wchar_t* name=job.kind==SearchJob::Kind::Save?L"Save":job.kind==SearchJob::Kind::Split?L"Split file":job.kind==SearchJob::Kind::Join?L"Join files":job.kind==SearchJob::Kind::Hashes?L"Checksum":job.kind==SearchJob::Kind::Statistics?L"Statistics":job.kind==SearchJob::Kind::Compare?L"Compare":job.kind==SearchJob::Kind::ReplaceAll?L"Replace all":L"Search";
     bool measured=job.kind!=SearchJob::Kind::Search;
     uint64_t total=job.rangeLength,processed=job.processed.load();
     if(job.kind==SearchJob::Kind::Compare){uint64_t end=job.comparison?(std::min)(job.document->size,job.comparison->size):0;total=end>job.start?end-job.start:0;processed=processed>job.start?processed-job.start:0;}
@@ -164,6 +169,10 @@ std::wstring ScanStatus(const SearchJob& job,double elapsed) {
 struct State {
     decltype(&PickDatFile) pickDatFile=PickDatFile;
     std::wstring root,text,lastChecksum;
+    std::vector<std::wstring> installRoots;
+    bool canSave=false;
+    HWND host=nullptr;
+    std::wstring untitledLabel;
     bool reportReady=false;
     std::optional<DatHex::StatisticsResult> chartStatistics;
     uint64_t chartStart=0;
@@ -171,16 +180,21 @@ struct State {
     std::shared_ptr<SearchJob> job;
     uint64_t offset=0,selection=0,length=0;
     unsigned rowBytes=32,groupBytes=1;
-    int displayMode=0,encodingIndex=0;
+    int displayMode=0,encodingIndex=0,wheelDelta=0;
+    unsigned visibleRows=1;
     bool decimal=false,ownedByWindow=false,settingText=false,edit=false,changesSaved=false,picking=false;
+    bool insertMode=false,textColumn=false;
+    wchar_t pendingSurrogate=0;
     HFONT font=nullptr;
     WNDPROC originalEdit=nullptr,originalInput=nullptr;
     // Character positions in either the hex or decoded-text columns map to bytes.
     std::vector<uint64_t> positions;
     std::vector<uint64_t> positionEnds;
+    std::vector<bool> textPositions;
     DWORD lastStart=0,lastEnd=0;
     DatHex::Bytes lastPattern;
     uint64_t lastSearchStart=0,lastSearchLength=0;
+    bool lastSearchWholeFile=true;
     std::vector<uint64_t> matches;
     size_t matchLength=0;
     struct Bookmark {uint64_t offset,length;int slot=-1;};
@@ -193,6 +207,19 @@ struct State {
     int highNibble=-1;
     uint64_t nibbleOffset=0;
 };
+struct Workspace {
+    struct Tab { HWND view; std::wstring label; };
+    std::vector<Tab> tabs;
+    std::vector<std::wstring> roots;
+    std::wstring root;
+    bool ownedByWindow=false;
+    int active=-1;
+    unsigned nextUntitled=1;
+};
+bool AddDocument(HWND host,std::shared_ptr<DatHex::Document> document);
+std::wstring DocumentName(const State& s) {
+    return s.document->Untitled()?s.untitledLabel:s.document->path;
+}
 std::wstring BrowseRoot(const char* root) {
     if(!root||!*root) return L"C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI\\";
     int n=MultiByteToWideChar(CP_ACP,0,root,-1,nullptr,0); if(!n) return {};
@@ -205,7 +232,7 @@ std::wstring Text(HWND h,int id) {
 std::wstring Number(uint64_t value,bool decimal=false) {
     std::wostringstream out; if(!decimal) out<<std::uppercase<<std::hex; out<<value; return out.str();
 }
-void Error(HWND h,const wchar_t* text) {MessageBoxW(h,text,L"DAT Hex Reader",MB_OK|MB_ICONINFORMATION);}
+void Error(HWND h,const wchar_t* text) {MessageBoxW(GetAncestor(h,GA_ROOT),text,L"DAT Hex Reader",MB_OK|MB_ICONINFORMATION);}
 HWND Control(HWND h,const wchar_t* type,const wchar_t* text,int id,int x,int y,int width,DWORD style=0,int height=26) {
     HWND c=CreateWindowExW(type==std::wstring(L"EDIT")?WS_EX_CLIENTEDGE:0,type,text,WS_CHILD|WS_VISIBLE|WS_TABSTOP|style,
         x,y,width,height,h,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);
@@ -221,7 +248,7 @@ const TabControlLayout ToolControls[]={
     {Encoding,0,20,84,190},{Rows,0,220,84,130},{OffsetBase,0,360,84,150},{ViewMenu,0,520,84,100},{Export,0,630,84,130},
     {CopyHex,0,20,120,110},{CopyText,0,140,120,110},{CopyFormat,0,260,120,220},{CopyFormatted,0,490,120,150},
     {StartLabel,1,20,84,40},{StartText,1,65,84,148},{LengthLabel,1,225,84,46},{LengthText,1,275,84,100},{SelectBlock,1,385,84,120},
-    {ByteOperation,1,520,84,240},{ApplyOperation,1,770,84,90},{PatchText,1,20,120,400},{Overwrite,1,430,120,155},{Fill,1,595,120,130},{PasteOverwrite,1,735,120,155},
+    {ByteOperation,1,520,84,150},{ApplyOperation,1,680,84,80},{InsertMode,1,770,84,112},{PasteOverwrite,1,892,84,138},{PatchText,1,20,120,180},{Overwrite,1,210,120,138},{Fill,1,358,120,96},{InsertBytes,1,464,120,104},{PatternLength,1,578,120,88},{InsertPattern,1,676,120,114},{PasteInsert,1,800,120,110},{DeleteBytes,1,920,120,110},
     {SearchText,2,20,84,260},{FindMode,2,290,84,200},{SearchScope,2,500,84,185},{Find,2,695,84,65},{FindNext,2,770,84,100},{FindPrevious,2,880,84,120},
     {ReplacementText,2,20,120,260},{ReplaceMatch,2,290,120,125},{ReplaceAll,2,425,120,110},{FindAll,2,545,120,100},{MatchList,2,655,120,230},{GoMatch,2,895,120,110},
     {Previous,3,20,84,120},{Next,3,150,84,110},{GoText,3,270,84,170},{Go,3,450,84,125},{Navigation,3,585,84,180},
@@ -235,7 +262,7 @@ void LayoutToolTabs(HWND h,State& state) {
         SetWindowPos(control,nullptr,item.x,item.y,item.width,height,SWP_NOZORDER|SWP_NOACTIVATE);
         ShowWindow(control,item.tab==state.toolTab?SW_SHOW:SW_HIDE);
     }
-    const TabControlLayout common[]={{Open,0,10,10,100},{SaveCopy,0,120,10,110},{Undo,0,240,10,62},{Redo,0,312,10,62},{EditMode,0,384,10,126},{Endian,0,520,10,150},{Cancel,0,680,10,90},{ExportSelectionMenu,0,780,10,240}};
+    const TabControlLayout common[]={{Open,0,10,10,100},{SaveWorking,0,120,10,64},{SaveCopy,0,194,10,110},{Undo,0,314,10,62},{Redo,0,386,10,62},{EditMode,0,458,10,126},{Endian,0,594,10,150},{Cancel,0,754,10,90},{ExportSelectionMenu,0,854,10,202}};
     for(const auto& item:common)SetWindowPos(GetDlgItem(h,item.id),nullptr,item.x,item.y,item.width,item.id==Endian?200:26,SWP_NOZORDER|SWP_NOACTIVATE);
 }
 void ActivateToolTab(HWND h,State& state,int index) {state.toolTab=index;TabCtrl_SetCurSel(GetDlgItem(h,ToolTabs),index);LayoutToolTabs(h,state);}
@@ -270,6 +297,35 @@ std::wstring DecodeEncoding(const unsigned char* bytes,size_t count,int index) {
     }
     return text;
 }
+uint64_t LastTopRow(const State& s) {
+    const auto rows=(s.document->size+s.rowBytes-1)/s.rowBytes;
+    return rows>s.visibleRows?rows-s.visibleRows:0;
+}
+uint64_t VisibleBytes(const State& s) {return uint64_t(s.rowBytes)*s.visibleRows;}
+int ScrollMaximum(const State& s) {return static_cast<int>((std::min)(LastTopRow(s),uint64_t(INT_MAX/2)));}
+uint64_t ScaleScroll(uint64_t value,uint64_t from,uint64_t to) {
+    if(value==from)return to;
+    if(from==to||!value)return value;
+    return static_cast<uint64_t>(static_cast<long double>(value)/from*to+0.5L);
+}
+void UpdateScroll(HWND h,State& s) {
+    const int maximum=ScrollMaximum(s);
+    const auto page=static_cast<UINT>((std::min)(uint64_t(s.visibleRows),uint64_t(INT_MAX/2)));
+    SCROLLINFO info{sizeof(info),SIF_RANGE|SIF_PAGE|SIF_POS|SIF_DISABLENOSCROLL};
+    info.nMax=maximum+page-1;info.nPage=page;
+    info.nPos=static_cast<int>(ScaleScroll(s.offset/s.rowBytes,LastTopRow(s),maximum));
+    SetScrollInfo(GetDlgItem(h,ScrollRows),SB_CTL,&info,TRUE);
+}
+void MeasureRows(HWND h,State& s) {
+    HWND dump=GetDlgItem(h,Dump);
+    RECT bounds={};GetClientRect(dump,&bounds);
+    HDC dc=GetDC(dump);
+    auto previous=SelectObject(dc,s.font);
+    TEXTMETRICW metrics={};GetTextMetricsW(dc,&metrics);
+    SelectObject(dc,previous);ReleaseDC(dump,dc);
+    const int lineHeight=(std::max)(1L,metrics.tmHeight+metrics.tmExternalLeading);
+    s.visibleRows=static_cast<unsigned>((std::max)(1L,(bounds.bottom-bounds.top-4)/lineHeight-1));
+}
 void Buttons(HWND h,State& s) {
     bool loaded=s.document->Loaded(),busy=bool(s.job);
     for(int id:{Open,Encoding,Rows,OffsetBase,EditMode,Endian,ChecksumType,AnalysisScope,ViewMenu}) EnableWindow(GetDlgItem(h,id),!busy);
@@ -280,16 +336,18 @@ void Buttons(HWND h,State& s) {
     for(int id:{MatchList,GoMatch})EnableWindow(GetDlgItem(h,id),loaded&&!busy&&!s.matches.empty());
     EnableWindow(GetDlgItem(h,FindNext),loaded&&!busy&&!s.lastPattern.empty());
     EnableWindow(GetDlgItem(h,Previous),loaded&&!busy&&s.offset>0);
-    EnableWindow(GetDlgItem(h,Next),loaded&&!busy&&s.document->size-s.offset>PageSize);
+    EnableWindow(GetDlgItem(h,Next),loaded&&!busy&&s.offset/s.rowBytes<LastTopRow(s));
+    EnableWindow(GetDlgItem(h,SaveWorking),loaded&&!busy&&(s.document->Untitled()||(s.canSave&&s.document->Dirty())));
     EnableWindow(GetDlgItem(h,Undo),s.edit&&!busy&&s.document->CanUndo());
     EnableWindow(GetDlgItem(h,Redo),s.edit&&!busy&&s.document->CanRedo());
-    for(int id:{PatchText,Overwrite,Fill,PasteOverwrite,ReplacementText,ReplaceMatch,ByteOperation,ApplyOperation,ReplaceAll}) EnableWindow(GetDlgItem(h,id),loaded&&s.edit&&!busy);
+    for(int id:{PatchText,Overwrite,Fill,PasteOverwrite,ReplacementText,ReplaceMatch,ByteOperation,ApplyOperation,ReplaceAll,InsertBytes,DeleteBytes,InsertMode,PasteInsert,InsertPattern,PatternLength}) EnableWindow(GetDlgItem(h,id),loaded&&s.edit&&!busy);
     for(int id:{BookmarkList,GoBookmark,RemoveBookmark})EnableWindow(GetDlgItem(h,id),loaded&&!busy&&!s.bookmarks.empty());
     EnableWindow(GetDlgItem(h,NextDifference),loaded&&!busy&&bool(s.comparison));
     EnableWindow(GetDlgItem(h,DistributionChart),loaded&&!busy&&bool(s.chartStatistics));
     EnableWindow(GetDlgItem(h,CopyChecksum),loaded&&!busy&&!s.lastChecksum.empty());
     EnableWindow(GetDlgItem(h,ExportReport),loaded&&!busy&&s.reportReady);
     EnableWindow(GetDlgItem(h,Cancel),busy);
+    if(s.host)SendMessageW(s.host,DocumentChanged,0,reinterpret_cast<LPARAM>(h));
 }
 bool ParseBinary(const std::wstring& input,DatHex::Bytes& bytes) {
     bytes.clear();auto first=input.find_first_not_of(L" \t\r\n");if(first==std::wstring::npos)return false;
@@ -357,8 +415,8 @@ void Inspect(HWND h,State& s) {
     SetDlgItemTextW(h,StartText,Number(s.selection,s.decimal).c_str());
     SetDlgItemTextW(h,LengthText,Number(s.length,s.decimal).c_str());
     std::wstring status=L"Offset("+std::wstring(s.decimal?L"d":L"h")+L"): "+Number(s.selection,s.decimal)+
-        L"   Length: "+Number(s.length,s.decimal)+L" bytes   "+(s.edit?L"Edit buffer (overwrite)":L"Read only")+
-        (s.document->Dirty()?L"   Modified":L"")+L"   Saves always create a new copy";
+        L"   Length: "+Number(s.length,s.decimal)+L" bytes   "+(s.edit?(s.insertMode?L"Insert":L"Overwrite"):L"Read only")+
+        (s.document->Dirty()?L"   Modified":L"")+(s.document->Loaded()&&!s.canSave&&!s.document->Untitled()?L"   Save Copy available":L"");
     SetDlgItemTextW(h,Status,status.c_str());
     DatHex::Bytes bytes; size_t count=static_cast<size_t>((std::min)(uint64_t(16),s.document->size-s.selection));
     if(!s.document->Loaded()||!count||!s.document->Read(s.selection,count,bytes)) {SetDlgItemTextW(h,Inspector,L"Select bytes to inspect their values.");return;}
@@ -383,19 +441,20 @@ void Inspect(HWND h,State& s) {
     SetDlgItemTextW(h,Inspector,out.str().c_str());
 }
 void Highlight(HWND h,State& s) {
+    const bool decoded=s.displayMode==2||(s.displayMode==0&&s.textColumn);
     size_t first=s.positions.size();
-    for(size_t i=0;i<s.positions.size();++i) if(s.positions[i]!=NoByte && s.positionEnds[i]>=s.selection && s.positions[i]<s.selection+s.length) {
+    for(size_t i=0;i<s.positions.size();++i) if(s.textPositions[i]==decoded&&s.positions[i]!=NoByte && s.positionEnds[i]>=s.selection && s.positions[i]<s.selection+s.length) {
         first=i;break;
     }
     // Native edit selections are continuous. Highlight from the first to the last
     // selected hex byte, including intervening row separators for multi-row blocks.
-    if(first<s.positions.size()) {
+    if(first<s.positions.size()&&s.length) {
         size_t end=first;
         uint64_t target=(std::min)(s.selection+s.length-1,
-            s.offset+(std::min)(PageSize,s.document->size-s.offset)-1);
-        for(size_t i=first;i<s.positions.size();++i) if(s.positions[i]!=NoByte&&s.positions[i]<=target&&s.positionEnds[i]>=target) {end=i+1; if(i+1==s.positions.size()||s.positions[i+1]!=target) break;}
+            s.offset+(std::min)(VisibleBytes(s),s.document->size-s.offset)-1);
+        for(size_t i=first;i<s.positions.size();++i) if(s.textPositions[i]==decoded&&s.positions[i]!=NoByte&&s.positions[i]<=target&&s.positionEnds[i]>=target) {end=i+1; if(i+1==s.positions.size()||s.positions[i+1]!=target) break;}
         s.lastStart=static_cast<DWORD>(first);s.lastEnd=static_cast<DWORD>(end);
-        SendDlgItemMessageW(h,Dump,EM_SETSEL,s.lastStart,s.lastEnd);SendDlgItemMessageW(h,Dump,EM_SCROLLCARET,0,0);
+        SendDlgItemMessageW(h,Dump,EM_SETSEL,s.lastStart,s.lastEnd);
     } else {s.lastStart=s.lastEnd=0;SendDlgItemMessageW(h,Dump,EM_SETSEL,0,0);}
 }
 std::wstring RtfEscape(const std::wstring& input);
@@ -406,17 +465,22 @@ DWORD CALLBACK StreamDumpRtf(DWORD_PTR cookie,LPBYTE buffer,LONG count,LONG* rea
 }
 void Refresh(HWND h,State& s) {
     if(s.job) return;
-    Buttons(h,s);
+    MeasureRows(h,s);
+    s.offset=(std::min)(s.offset/s.rowBytes,LastTopRow(s))*s.rowBytes;
+    s.selection=(std::min)(s.selection,s.document->size);
+    s.length=(std::min)(s.length,s.document->size-s.selection);
+    UpdateScroll(h,s);Buttons(h,s);
     if(!s.document->Loaded()) {Inspect(h,s);return;}
     DatHex::Bytes bytes;
-    size_t count=static_cast<size_t>((std::min)(PageSize,s.document->size-s.offset));
+    size_t count=static_cast<size_t>((std::min)(VisibleBytes(s),s.document->size-s.offset));
     if(!s.document->Read(s.offset,count,bytes)) {Error(h,L"Could not read the DAT.");return;}
-    s.text.clear();s.positions.clear();s.positionEnds.clear();
+    s.text.clear();s.positions.clear();s.positionEnds.clear();s.textPositions.clear();
     std::wstring colored;bool header=true;
-    auto append=[&](const std::wstring& t,uint64_t at=NoByte,size_t span=1,int color=0) {
+    auto append=[&](const std::wstring& t,uint64_t at=NoByte,size_t span=1,int color=0,bool decoded=false) {
         bool modified=false;if(at!=NoByte)for(size_t i=0;i<span;++i)if(s.document->Modified(at+i)){modified=true;break;}
         colored+=L"{\\cf"+std::to_wstring(modified?3:header?1:color)+(modified?L"\\b ":L"\\b0 ")+RtfEscape(t)+L"}";
         s.text+=t;s.positions.insert(s.positions.end(),t.size(),at);
+        s.textPositions.insert(s.textPositions.end(),t.size(),decoded);
         s.positionEnds.insert(s.positionEnds.end(),t.size(),at==NoByte?NoByte:at+span-1);
     };
     append(s.decimal?L"Offset(d)             ":L"Offset(h)         ");
@@ -440,23 +504,34 @@ void Refresh(HWND h,State& s) {
                 wchar_t decoded[2];
                 if(MultiByteToWideChar(932,MB_ERR_INVALID_CHARS,reinterpret_cast<const char*>(bytes.data()+i+j),2,decoded,2)>0) take=2;
             }
-            append(DecodeEncoding(bytes.data()+i+j,take,encoding),s.offset+i+j,take);j+=take;
+            append(DecodeEncoding(bytes.data()+i+j,take,encoding),s.offset+i+j,take,0,true);j+=take;
         }
         append(L"\r");
     }
     std::wstring rtf=LR"({\rtf1\ansi\uc1\deff0{\fonttbl{\f0\fmodern MS Gothic;}}{\colortbl\red0\green0\blue0;\red45\green45\blue210;\red145\green75\blue55;\red190\green45\blue25;}\f0\fs22 )"+colored+L"}";
     DumpRtfStream input;input.text.reserve(rtf.size());for(wchar_t c:rtf)input.text.push_back(static_cast<char>(c));
     EDITSTREAM stream={};stream.dwCookie=reinterpret_cast<DWORD_PTR>(&input);stream.pfnCallback=StreamDumpRtf;
+    POINT scroll={};SendDlgItemMessageW(h,Dump,EM_GETSCROLLPOS,0,reinterpret_cast<LPARAM>(&scroll));scroll.y=0;
     s.settingText=true;SendDlgItemMessageW(h,Dump,WM_SETREDRAW,FALSE,0);SendDlgItemMessageW(h,Dump,EM_STREAMIN,SF_RTF,reinterpret_cast<LPARAM>(&stream));SendDlgItemMessageW(h,Dump,WM_SETREDRAW,TRUE,0);s.settingText=false;
     InvalidateRect(GetDlgItem(h,Dump),nullptr,TRUE);
-    std::wstring info=s.document->path+L" | "+std::to_wstring(s.document->size)+L" bytes | Page "+std::to_wstring(s.offset/PageSize+1)+L" / "+std::to_wstring((std::max)(uint64_t(1),(s.document->size+PageSize-1)/PageSize));
+    std::wstring info=DocumentName(s)+L" | "+std::to_wstring(s.document->size)+L" bytes | View offset "+Number(s.offset,s.decimal);
     SetDlgItemTextW(h,Info,info.c_str());Inspect(h,s);Highlight(h,s);
+    SendDlgItemMessageW(h,Dump,EM_SETSCROLLPOS,0,reinterpret_cast<LPARAM>(&scroll));
 }
 void Select(HWND h,State& s,uint64_t offset,uint64_t length) {
     if(offset>s.document->size || length>s.document->size-offset) {Error(h,L"The selection is outside this file.");return;}
-    s.highNibble=-1;s.activeNibble=-1;s.selection=offset;s.length=length;uint64_t page=offset/PageSize*PageSize;
-    if(page==s.document->size&&page) page-=PageSize;
-    if(s.offset!=page) {s.offset=page;Refresh(h,s);} else {Inspect(h,s);Highlight(h,s);}
+    s.highNibble=-1;s.activeNibble=-1;s.pendingSurrogate=0;s.selection=offset;s.length=length;
+    const auto row=offset/s.rowBytes,top=s.offset/s.rowBytes;
+    if(row<top||row-top>=s.visibleRows) {
+        s.offset=(std::min)(row,LastTopRow(s))*s.rowBytes;Refresh(h,s);
+    } else {Inspect(h,s);Highlight(h,s);}
+}
+void ScrollBy(HWND h,State& s,int64_t rows) {
+    if(s.job||!s.document->Loaded()||!rows)return;
+    const int64_t top=s.offset/s.rowBytes;
+    const auto next=static_cast<uint64_t>((std::max)(int64_t(0),top+rows));
+    const auto offset=(std::min)(next,LastTopRow(s))*s.rowBytes;
+    if(offset!=s.offset){s.offset=offset;Refresh(h,s);}
 }
 void MouseSelection(HWND h,State& s) {
     if(s.job||s.settingText||s.positions.empty()) return;
@@ -467,43 +542,100 @@ void MouseSelection(HWND h,State& s) {
     if(start==end) {if(start<s.positions.size()&&s.positions[start]!=NoByte) {low=s.positions[start];high=s.positionEnds[start];}}
     else for(size_t i=start;i<end&&i<s.positions.size();++i) if(s.positions[i]!=NoByte) {low=(std::min)(low,s.positions[i]);high=(std::max)(high,s.positionEnds[i]);}
     if(low==NoByte) return;
-    s.highNibble=-1;s.activeNibble=-1;s.selection=low;s.length=high-low+1;Inspect(h,s);
+    for(size_t i=start;i<s.positions.size()&&i<(std::max)(end,start+1);++i) {
+        if(s.positions[i]!=NoByte){s.textColumn=s.textPositions[i];break;}
+    }
+    s.highNibble=-1;s.activeNibble=-1;s.pendingSurrogate=0;s.selection=low;s.length=high-low+1;Inspect(h,s);
 }
 bool Discard(HWND h,State& s) {
-    return !s.document->Dirty()||s.changesSaved||MessageBoxW(h,L"Discard unsaved buffer changes? Use Save Copy to keep a separate DAT.",L"Unsaved changes",MB_OKCANCEL|MB_ICONQUESTION)==IDOK;
+    if(!s.document->Dirty()||s.changesSaved)return true;
+    const auto name=std::filesystem::path(DocumentName(s)).filename().wstring();
+    const auto message=L"Discard unsaved changes to "+name+L"?";
+    return MessageBoxW(GetAncestor(h,GA_ROOT),message.c_str(),L"Unsaved changes",MB_OKCANCEL|MB_ICONQUESTION)==IDOK;
 }
 void Browse(HWND h,State& s) {
     std::wstring path;
-    s.picking=true;bool picked=s.pickDatFile(h,s.root,L"Open DAT",path);s.picking=false;
+    s.picking=true;bool picked=s.pickDatFile(GetAncestor(h,GA_ROOT),s.root,L"Open DAT",path);s.picking=false;
     if(!picked)return;
-    auto document=std::make_shared<DatHex::Document>();if(!document->Open(path)){Error(h,L"Cannot open the selected file.");return;}
+    auto roots=s.installRoots;
+    roots.push_back(s.root);
+    auto document=std::make_shared<DatHex::Document>();
+    if(!document->Open(path,roots)){Error(h,L"Cannot open the selected file.");return;}
+    if(s.host&&s.document->Loaded()){
+        if(!AddDocument(s.host,std::move(document)))Error(h,L"Could not open a document tab.");
+        return;
+    }
     if(!Discard(h,s)) return;
     s.lastChecksum.clear();s.reportReady=false;s.chartStatistics.reset();
-    s.document=std::move(document);s.offset=s.selection=0;s.length=s.document->size?1:0;s.lastPattern.clear();s.changesSaved=false;
+    s.document=std::move(document);s.canSave=s.document->CanSave(roots);s.offset=s.selection=0;s.length=s.document->size?1:0;s.lastPattern.clear();s.changesSaved=false;
     s.matches.clear();s.matchLength=0;SendDlgItemMessageW(h,MatchList,CB_RESETCONTENT,0,0);
-    s.highNibble=-1;s.activeNibble=-1;s.bookmarks.clear();s.comparison.reset();s.compareStart=0;
+    s.highNibble=-1;s.activeNibble=-1;s.pendingSurrogate=0;s.textColumn=false;s.bookmarks.clear();s.comparison.reset();s.compareStart=0;
     SendDlgItemMessageW(h,BookmarkList,CB_RESETCONTENT,0,0);SetDlgItemTextW(h,AnalysisOutput,L"");Refresh(h,s);
 }
-void Save(HWND h,State& s,bool binary) {
-    std::wstring name=binary?std::filesystem::path(s.document->path).stem().wstring()+L"-copy.DAT":L"dat-hex-page.txt";
+void StartSave(HWND h,State& s,DatHex::Document::SaveMode mode,std::wstring path={}) {
+    auto job=std::make_shared<SearchJob>();
+    job->kind=SearchJob::Kind::Save;job->saveMode=mode;
+    job->document=s.document;job->outputPath=std::move(path);job->rangeLength=s.document->size;
+    try {
+        std::thread([job,roots=s.installRoots] {
+            try {
+                job->pendingSave=job->document->PrepareSave(job->saveMode,job->outputPath,roots,
+                    [&]{return job->cancel.load();},[&](uint64_t bytes){job->processed=bytes;});
+            } catch(...) {}
+            job->done=true;
+        }).detach();
+    } catch(...) {
+        Error(h,L"Could not start the save.");return;
+    }
+    s.job=std::move(job);Buttons(h,s);
+    SetDlgItemTextW(h,Status,L"Saving...");
+}
+void FinishSave(HWND h,State& s,SearchJob& job) {
+    if(job.cancel) {
+        job.pendingSave.reset();
+        SetDlgItemTextW(h,Status,L"Save cancelled.");return;
+    }
+    bool saved=false;
+    try {saved=s.document->CommitSave(std::move(job.pendingSave),s.installRoots);}
+    catch(...) {}
+    if(!saved) {
+        s.canSave=s.document->CanSave(s.installRoots);Buttons(h,s);
+        Error(h,job.saveMode==DatHex::Document::SaveMode::Working?
+            L"Could not save the working copy. Save Copy can keep your edits in a new file.":
+            L"Could not create the output file. Choose a new filename in a writable folder.");
+        return;
+    }
+    s.changesSaved=true;
+    if(job.saveMode==DatHex::Document::SaveMode::Untitled) {
+        s.canSave=s.document->CanSave(s.installRoots);
+        Refresh(h,s);
+    } else {Buttons(h,s);Inspect(h,s);}
+    SetDlgItemTextW(h,Status,job.saveMode==DatHex::Document::SaveMode::Copy?
+        L"Copy saved.":L"Document saved.");
+}
+void Save(HWND h,State& s,bool binary,bool bind=false) {
+    std::wstring name=binary?(bind?DocumentName(s)+L".DAT":std::filesystem::path(DocumentName(s)).stem().wstring()+L"-copy.DAT"):L"dat-hex-page.txt";
     wchar_t path[32768]={};if(name.size()<32768)std::copy(name.begin(),name.end(),path);
-    OPENFILENAMEW d={};d.lStructSize=sizeof(d);d.hwndOwner=h;d.lpstrFile=path;d.nMaxFile=32768;
+    OPENFILENAMEW d={};d.lStructSize=sizeof(d);d.hwndOwner=GetAncestor(h,GA_ROOT);d.lpstrFile=path;d.nMaxFile=32768;
     d.lpstrFilter=binary?L"DAT copy\0*.dat\0\0":L"UTF-8 text\0*.txt\0\0";d.lpstrDefExt=binary?L"dat":L"txt";
-    d.lpstrTitle=binary?L"Save a new DAT copy (existing files cannot be replaced)":L"Export page to a new text file";
+    d.lpstrTitle=binary?(bind?L"Save untitled DAT":L"Save a new DAT copy (existing files cannot be replaced)"):L"Export page to a new text file";
     d.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
-    if(!GetSaveFileNameW(&d))return;
+    s.picking=true;const bool selected=GetSaveFileNameW(&d)!=FALSE;s.picking=false;
+    if(!selected)return;
+    if(binary){
+        StartSave(h,s,bind?DatHex::Document::SaveMode::Untitled:DatHex::Document::SaveMode::Copy,path);
+        return;
+    }
     bool success=false;
-    if(binary) success=s.document->SaveCopy(path);
-    else {
+    {
         std::wstring report=s.document->path+L"\r\nPage offset: "+Number(s.offset)+L"\r\n"+s.text;
         int n=WideCharToMultiByte(CP_UTF8,0,report.data(),static_cast<int>(report.size()),nullptr,0,nullptr,nullptr);
         std::string utf8(n,'\0');WideCharToMultiByte(CP_UTF8,0,report.data(),static_cast<int>(report.size()),utf8.data(),n,nullptr,nullptr);
         DatHex::NewCopy output(path);success=output.Valid()&&output.Write(utf8.data(),utf8.size())&&output.Commit();
     }
-    if(!success) Error(h,L"Could not create the copy. Choose a new filename in a writable folder. Existing files, including original DATs, can never be overwritten.");
+    if(!success) Error(h,L"Could not create the output file. Choose a new filename in a writable folder. Existing files, including original DATs, can never be overwritten.");
     else {
-        if(binary)s.changesSaved=true;
-        SetDlgItemTextW(h,Status,(L"Created copy: "+std::wstring(path)+L". The source DAT remains unchanged.").c_str());
+        SetDlgItemTextW(h,Status,(L"Exported page: "+std::wstring(path)).c_str());
     }
 }
 bool Clipboard(HWND h,const std::wstring& text) {
@@ -569,7 +701,9 @@ DatHex::Bytes RepeatedPattern(const DatHex::Bytes& pattern,size_t length) {
 void Changed(HWND h,State& s) {
     s.lastChecksum.clear();s.reportReady=false;s.chartStatistics.reset();
     s.matches.clear();s.matchLength=0;SendDlgItemMessageW(h,MatchList,CB_RESETCONTENT,0,0);
-    s.changesSaved=false;s.highNibble=-1;s.compareStart=0;
+    s.changesSaved=false;s.highNibble=-1;s.pendingSurrogate=0;s.compareStart=0;
+    s.lastSearchStart=(std::min)(s.lastSearchStart,s.document->size);
+    s.lastSearchLength=s.lastSearchWholeFile?s.document->size:(std::min)(s.lastSearchLength,s.document->size-s.lastSearchStart);
     SetDlgItemTextW(h,AnalysisOutput,L"Buffer changed. Recalculate checksums or compare again for current results.");
 }
 enum class PasteFormat { Hex,Decoded,Utf8,Base64,Escaped,Binary };
@@ -606,10 +740,10 @@ bool DecodePaste(const std::wstring& text,PasteFormat format,int encoding,DatHex
     }
     if(bytes.empty()||bytes.size()>PageSize)return false;output=std::move(bytes);return true;
 }
-bool PasteBytes(HWND h,State& s,const DatHex::Bytes& bytes) {
+bool PasteBytes(HWND h,State& s,const DatHex::Bytes& bytes,bool insert=false) {
     if(!s.edit||s.job||!s.document->Loaded()||bytes.empty()||bytes.size()>PageSize)return false;
-    if(s.selection>s.document->size||bytes.size()>s.document->size-s.selection) {Error(h,L"Pasted bytes would extend past the end of this DAT. File size must stay unchanged.");return false;}
-    if(!s.document->Overwrite(s.selection,bytes)){Error(h,L"Could not paste these bytes.");return false;}
+    if(s.selection>s.document->size||(!insert&&bytes.size()>s.document->size-s.selection)) {Error(h,L"Pasted bytes would extend past the end of this DAT. File size must stay unchanged.");return false;}
+    if(!s.document->Splice(s.selection,insert?0:bytes.size(),bytes)){Error(h,L"Could not paste these bytes.");return false;}
     s.activeNibble=-1;Changed(h,s);s.length=bytes.size();Refresh(h,s);return true;
 }
 bool PasteHex(HWND h,State& s,const std::wstring& text) {
@@ -617,37 +751,63 @@ bool PasteHex(HWND h,State& s,const std::wstring& text) {
     DatHex::Bytes bytes;if(!DecodePaste(text,PasteFormat::Hex,0,bytes)){Error(h,L"Paste Overwrite needs complete hex byte pairs (up to 64 KB), for example: 01 FF 82 A0.");return false;}
     return PasteBytes(h,s,bytes);
 }
-void Paste(HWND h,State& s,PasteFormat format=PasteFormat::Hex) {
+void Paste(HWND h,State& s,PasteFormat format=PasteFormat::Hex,bool insert=false) {
     if(!OpenClipboard(h))return;std::wstring text;HANDLE data=GetClipboardData(CF_UNICODETEXT);
     if(data){size_t length=GlobalSize(data)/sizeof(wchar_t);auto p=static_cast<const wchar_t*>(GlobalLock(data));
         if(p&&length&&length<=PageSize*9+1){const auto end=std::find(p,p+length,L'\0');if(end!=p+length)text.assign(p,end);}if(p)GlobalUnlock(data);
     }
     CloseClipboard();DatHex::Bytes bytes;
     if(!DecodePaste(text,format,static_cast<int>(SendDlgItemMessageW(h,Encoding,CB_GETCURSEL,0,0)),bytes)){Error(h,L"Clipboard data is invalid for this paste format, cannot be represented in the chosen encoding, or exceeds 64 KB. No bytes were changed.");return;}
-    PasteBytes(h,s,bytes);
+    PasteBytes(h,s,bytes,insert);
 }
 void SelectNibble(HWND h,State& s,uint64_t offset,int digit) {
-    Select(h,s,offset,1);s.activeNibble=digit;
+    s.textColumn=false;Select(h,s,offset,1);s.activeNibble=digit;
     // The first occurrence is the hex column; decoded text also maps to bytes.
     for(size_t i=0;i+1<s.positions.size();++i)if(s.positions[i]==offset&&s.positions[i+1]==offset){
         s.lastStart=static_cast<DWORD>(i+digit);s.lastEnd=s.lastStart+1;
-        SendDlgItemMessageW(h,Dump,EM_SETSEL,s.lastStart,s.lastEnd);SendDlgItemMessageW(h,Dump,EM_SCROLLCARET,0,0);break;
+        SendDlgItemMessageW(h,Dump,EM_SETSEL,s.lastStart,s.lastEnd);break;
     }
     SetDlgItemTextW(h,Status,(L"Offset 0x"+Number(offset)+L" - "+(digit?L"low":L"high")+L" hex digit. Ctrl+Left/Right moves by digit; Esc returns to byte mode.").c_str());
 }
 void MoveNibble(HWND h,State& s,bool right) {
     if(s.job||!s.document->Loaded()||!s.document->size)return;
+    if(s.insertMode)return;
     if(s.displayMode==2){SetDlgItemTextW(h,Status,L"Choose a view with hex bytes to navigate individual digits.");return;}
     uint64_t offset=(std::min)(s.selection,s.document->size-1);int digit=s.activeNibble<0?0:s.activeNibble;
     if(right){if(!digit)digit=1;else if(offset<s.document->size-1){++offset;digit=0;}}
     else {if(digit)digit=0;else if(offset){--offset;digit=1;}}
     SelectNibble(h,s,offset,digit);
 }
+void TypeBytes(HWND h,State& s,const DatHex::Bytes& bytes) {
+    const auto at=s.selection;
+    if(!s.insertMode&&bytes.size()>s.document->size-at) {
+        SetDlgItemTextW(h,Status,L"Switch to Insert mode to type past the end of the buffer.");return;
+    }
+    if(!s.document->Splice(at,s.insertMode?0:bytes.size(),bytes)){
+        Error(h,L"Could not type these bytes.");return;
+    }
+    Changed(h,s);
+    const auto next=at+bytes.size();
+    const auto cursor=s.insertMode?next:(std::min)(next,s.document->size-1);
+    Refresh(h,s);Select(h,s,cursor,cursor<s.document->size?1:0);
+}
+void TypeDecoded(HWND h,State& s,wchar_t character) {
+    if(!s.edit||s.job||!s.document->Loaded()||character<32||character==127)return;
+    if(character>=0xd800&&character<=0xdbff){s.pendingSurrogate=character;return;}
+    std::wstring input;
+    if(s.pendingSurrogate&&character>=0xdc00&&character<=0xdfff)input+=s.pendingSurrogate;
+    s.pendingSurrogate=0;input+=character;
+    DatHex::Bytes bytes;
+    if(!DecodePaste(input,PasteFormat::Decoded,s.encodingIndex,bytes)){
+        SetDlgItemTextW(h,Status,L"This character cannot be represented in the selected encoding.");return;
+    }
+    TypeBytes(h,s,bytes);
+}
 void TypeHex(HWND h,State& s,wchar_t c) {
-    if(!s.edit||s.job||!s.document->Loaded()||s.selection>=s.document->size)return;
+    if(!s.edit||s.job||!s.document->Loaded()||(!s.insertMode&&s.selection>=s.document->size))return;
     int digit=c>=L'0'&&c<=L'9'?c-L'0':c>=L'a'&&c<=L'f'?c-L'a'+10:c>=L'A'&&c<=L'F'?c-L'A'+10:-1;
     if(digit<0)return;
-    if(s.activeNibble>=0){
+    if(s.activeNibble>=0&&!s.insertMode){
         DatHex::Bytes old;if(!s.document->Read(s.selection,1,old))return;
         int nibble=s.activeNibble;uint64_t offset=s.selection;
         unsigned char value=static_cast<unsigned char>(nibble?(old[0]&0xf0)|digit:(old[0]&0x0f)|(digit<<4));
@@ -658,11 +818,8 @@ void TypeHex(HWND h,State& s,wchar_t c) {
         s.highNibble=digit;s.nibbleOffset=s.selection;
         SetDlgItemTextW(h,Status,(L"Pending hex byte: "+Number(digit)+L"_   Type its second digit, or Esc to cancel.").c_str());return;
     }
-    unsigned char value=static_cast<unsigned char>(s.highNibble*16+digit);
-    uint64_t at=s.selection;
-    if(!s.document->Overwrite(at,DatHex::Bytes{value})){Error(h,L"Could not overwrite this byte.");return;}
-    Changed(h,s);s.length=1;Refresh(h,s);
-    Select(h,s,(std::min)(at+1,s.document->size-1),1);
+    const auto value=static_cast<unsigned char>(s.highNibble*16+digit);
+    TypeBytes(h,s,DatHex::Bytes{value});
 }
 void Bookmarks(HWND h,State& s) {
     SendDlgItemMessageW(h,BookmarkList,CB_RESETCONTENT,0,0);
@@ -691,7 +848,7 @@ void NumberedBookmarkMenus(HMENU menu,const State& state) {
 void SaveBlock(HWND h,State& s) {
     if(!s.length){Error(h,L"Select bytes to export as a new binary file.");return;}
     wchar_t path[32768]=L"dat-selection.bin";
-    OPENFILENAMEW d={};d.lStructSize=sizeof(d);d.hwndOwner=h;d.lpstrFile=path;d.nMaxFile=32768;
+    OPENFILENAMEW d={};d.lStructSize=sizeof(d);d.hwndOwner=GetAncestor(h,GA_ROOT);d.lpstrFile=path;d.nMaxFile=32768;
     d.lpstrFilter=L"Binary selection\0*.bin\0All files\0*.*\0\0";d.lpstrDefExt=L"bin";
     d.lpstrTitle=L"Export selection to a new file";d.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&d))return;
@@ -725,7 +882,7 @@ bool SaveIntelHex(const DatHex::Document& document,const std::wstring& path,uint
 void ExportIntelSelection(HWND h,State& s) {
     if(!s.length||s.length>1048576){Error(h,L"Select between 1 byte and 1 MB to export as Intel HEX.");return;}
     if(s.selection>UINT32_MAX||s.length-1>UINT32_MAX-s.selection){Error(h,L"Intel HEX export requires offsets within the 32-bit address range.");return;}
-    wchar_t path[32768]=L"dat-selection.hex";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;
+    wchar_t path[32768]=L"dat-selection.hex";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);
     dialog.lpstrFile=path;dialog.nMaxFile=32768;dialog.lpstrFilter=L"Intel HEX\0*.hex\0\0";dialog.lpstrDefExt=L"hex";
     dialog.lpstrTitle=L"Export selection as a new Intel HEX file";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -750,7 +907,7 @@ void ExportFormattedSelection(HWND h,State& s,ByteFormat format) {
     bool array=format==ByteFormat::CArray;wchar_t path[32768]={};
     const wchar_t* extension=array?L"h":format==ByteFormat::Pascal?L"pas":format==ByteFormat::Java?L"java":format==ByteFormat::CSharp?L"cs":format==ByteFormat::VB?L"vb":L"txt";
     swprintf_s(path,L"dat-selection.%s",extension);
-    OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;dialog.lpstrFile=path;dialog.nMaxFile=32768;
+    OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);dialog.lpstrFile=path;dialog.nMaxFile=32768;
     dialog.lpstrFilter=format>=ByteFormat::Pascal?L"Source code\0*.*\0\0":array?L"C header\0*.h\0\0":L"UTF-8 text\0*.txt\0\0";dialog.lpstrDefExt=extension;
     dialog.lpstrTitle=L"Export selection to a new formatted file";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -801,7 +958,7 @@ void InspectorReport(HWND h,State& state,bool copy) {
     Inspect(h,state);
     auto report=L"DATura data inspector\r\nSource: "+state.document->path+L"\r\nBuffer: "+(state.document->Dirty()?std::wstring(L"modified"):std::wstring(L"unmodified"))+L"\r\nByte order: "+(SendDlgItemMessageW(h,Endian,CB_GETCURSEL,0,0)==1?L"big endian":L"little endian")+L"\r\nInteger display: "+(state.inspectorHex?L"hexadecimal":L"decimal")+L"\r\nSelection length: "+std::to_wstring(state.length)+L" bytes\r\n\r\n"+Text(h,Inspector);
     if(copy){if(!Clipboard(h,report))Error(h,L"The inspector readout could not be copied.");else SetDlgItemTextW(h,Status,L"Copied the complete data inspector readout.");return;}
-    wchar_t path[32768]=L"dat-inspector.txt";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;
+    wchar_t path[32768]=L"dat-inspector.txt";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);
     dialog.lpstrFile=path;dialog.nMaxFile=32768;dialog.lpstrFilter=L"UTF-8 inspector report\0*.txt\0\0";dialog.lpstrDefExt=L"txt";
     dialog.lpstrTitle=L"Export inspector readout to a new file";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -851,7 +1008,7 @@ bool SaveDocumentSelection(const DatHex::Document& document,const std::wstring& 
 void ExportDocumentSelection(HWND h,State& state,bool html) {
     if(!state.length||state.length>1048576){Error(h,L"Select between 1 byte and 1 MB to export.");return;}
     if(!html&&(state.selection>UINT32_MAX||state.length-1>UINT32_MAX-state.selection)){Error(h,L"Motorola S-record requires offsets within the 32-bit address range.");return;}
-    wchar_t path[32768];wcscpy_s(path,html?L"dat-selection.html":L"dat-selection.srec");OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;
+    wchar_t path[32768];wcscpy_s(path,html?L"dat-selection.html":L"dat-selection.srec");OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);
     dialog.lpstrFile=path;dialog.nMaxFile=32768;dialog.lpstrFilter=html?L"HTML hex table\0*.html\0\0":L"Motorola S-record\0*.srec\0\0";dialog.lpstrDefExt=html?L"html":L"srec";
     dialog.lpstrTitle=L"Export selection to a new file";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -876,7 +1033,7 @@ void PlainTable(HWND h,State& state,bool copy) {
     auto text=PlainSelection(*state.document,state.selection,state.length,static_cast<int>(SendDlgItemMessageW(h,Encoding,CB_GETCURSEL,0,0)));
     if(!text){Error(h,L"Select between 1 byte and 1 MB to create a hex table.");return;}
     if(copy){if(!Clipboard(h,*text))Error(h,L"The hex table could not be copied. Try again when the clipboard is available.");else SetDlgItemTextW(h,Status,L"Copied selection as a hex table with offsets and decoded text.");return;}
-    wchar_t path[32768]=L"dat-selection-table.txt";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;
+    wchar_t path[32768]=L"dat-selection-table.txt";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);
     dialog.lpstrFile=path;dialog.nMaxFile=32768;dialog.lpstrFilter=L"UTF-8 hex table\0*.txt\0\0";dialog.lpstrDefExt=L"txt";
     dialog.lpstrTitle=L"Export selection to a new hex table";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -914,7 +1071,7 @@ bool SaveRichSelection(const DatHex::Document& document,const std::wstring& path
 }
 void ExportRichSelection(HWND h,State& state,bool rtf) {
     if(!state.length||state.length>1048576){Error(h,L"Select between 1 byte and 1 MB to export.");return;}
-    wchar_t path[32768];wcscpy_s(path,rtf?L"dat-selection.rtf":L"dat-selection.tex");OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;
+    wchar_t path[32768];wcscpy_s(path,rtf?L"dat-selection.rtf":L"dat-selection.tex");OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);
     dialog.lpstrFile=path;dialog.nMaxFile=32768;dialog.lpstrFilter=rtf?L"Rich Text hex dump\0*.rtf\0\0":L"LaTeX hex table\0*.tex\0\0";dialog.lpstrDefExt=rtf?L"rtf":L"tex";
     dialog.lpstrTitle=L"Export selection to a new document";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -928,7 +1085,7 @@ void SaveReport(HWND h,State& s) {
     if(!s.reportReady)return;
     std::wstring report=L"DATura analysis report\r\nSource: "+s.document->path+L"\r\nSource size: "+std::to_wstring(s.document->size)+
         L" bytes\r\nBuffer: "+(s.document->Dirty()?L"includes unsaved edits":L"matches source")+L"\r\n\r\n"+Text(h,AnalysisOutput);
-    wchar_t path[32768]=L"dat-analysis.txt";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;
+    wchar_t path[32768]=L"dat-analysis.txt";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);
     dialog.lpstrFile=path;dialog.nMaxFile=32768;dialog.lpstrFilter=L"UTF-8 analysis report\0*.txt\0\0";dialog.lpstrDefExt=L"txt";
     dialog.lpstrTitle=L"Export analysis to a new text file";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -1010,7 +1167,7 @@ void Analyze(HWND h,State& s,SearchJob::Kind kind,bool verify=false) {
 }
 void Compare(HWND h,State& s) {
     std::wstring path;
-    s.picking=true;bool picked=s.pickDatFile(h,s.root,L"Compare with a DAT or binary file",path);s.picking=false;
+    s.picking=true;bool picked=s.pickDatFile(GetAncestor(h,GA_ROOT),s.root,L"Compare with a DAT or binary file",path);s.picking=false;
     if(!picked)return;
     auto document=std::make_shared<DatHex::Document>();if(!document->Open(path)){Error(h,L"Cannot open the comparison file.");return;}
     s.comparison=std::move(document);s.compareStart=0;Analyze(h,s,SearchJob::Kind::Compare);
@@ -1024,6 +1181,33 @@ void Patch(HWND h,State& s,bool fill) {
         bytes=RepeatedPattern(bytes,static_cast<size_t>(s.length));
     } else if(bytes.size()!=s.length) {Error(h,L"The replacement must contain exactly the selected number of bytes. File size is preserved.");return;}
     if(!s.document->Overwrite(s.selection,bytes)){Error(h,L"Could not apply these bytes.");return;}Changed(h,s);Refresh(h,s);
+}
+void SpliceSelection(HWND h,State& s,bool insert,bool repeat=false) {
+    if(!s.edit||(!insert&&!s.length))return;
+    DatHex::Bytes bytes;
+    if(insert&&(!DatHex::ParseHex(Text(h,PatchText),bytes)||bytes.size()>PageSize)) {
+        Error(h,L"Enter up to 64 KB of complete hexadecimal byte pairs to insert.");return;
+    }
+    if(repeat) {
+        uint64_t count=0;
+        if(!DatHex::ParseNumber(Text(h,PatternLength),count,10)||!count||count>PageSize) {
+            Error(h,L"Enter a pattern length from 1 to 65536 bytes in decimal.");return;
+        }
+        bytes=RepeatedPattern(bytes,static_cast<size_t>(count));
+    }
+    if(!s.document->Splice(s.selection,insert?0:s.length,bytes)){
+        Error(h,L"Could not change the selected bytes.");return;
+    }
+    s.length=bytes.size();Changed(h,s);Refresh(h,s);
+}
+void CutSelection(HWND h,State& s,decltype(&Clipboard) copy=Clipboard) {
+    if(!s.edit||!s.length)return;
+    if(s.length>PageSize){Error(h,L"Select up to 64 KB to cut.");return;}
+    DatHex::Bytes bytes;
+    if(!s.document->Read(s.selection,static_cast<size_t>(s.length),bytes)||!copy(h,FormatBytes(bytes,ByteFormat::Hex))) {
+        Error(h,L"Could not copy the selected bytes to the clipboard.");return;
+    }
+    SpliceSelection(h,s,false);
 }
 enum class Transform { Invert,And,Or,Xor,Reverse,Swap16,Swap32,Swap64 };
 bool TransformBytes(DatHex::Bytes& bytes,Transform operation,const DatHex::Bytes& mask={}) {
@@ -1113,17 +1297,21 @@ bool SearchPattern(HWND h,const std::wstring& input,DatHex::Bytes& pattern) {
     bool big=SendDlgItemMessageW(h,Endian,CB_GETCURSEL,0,0)==1;
     pattern.resize(width);for(size_t i=0;i<width;++i)pattern[big?width-1-i:i]=static_cast<unsigned char>(bits>>(8*i));return true;
 }
+bool ReplacementBytes(HWND h,DatHex::Bytes& bytes) {
+    const auto text=Text(h,ReplacementText);
+    return text.empty()||(SearchPattern(h,text,bytes)&&bytes.size()<=PageSize);
+}
 void Replace(HWND h,State& s) {
     if(!s.edit)return;
     DatHex::Bytes pattern,replacement,current;
-    if(!SearchPattern(h,Text(h,SearchText),pattern)||!SearchPattern(h,Text(h,ReplacementText),replacement)||pattern.empty()||pattern.size()>PageSize||replacement.size()!=pattern.size()) {
-        Error(h,L"Enter valid search and replacement values of equal byte length. Numeric values use decimal or a 0x prefix, with the selected endian.");return;
+    if(!SearchPattern(h,Text(h,SearchText),pattern)||!ReplacementBytes(h,replacement)||pattern.empty()||pattern.size()>PageSize) {
+        Error(h,L"Enter valid search and replacement values up to 64 KB. Leave the replacement empty to delete the match.");return;
     }
     if(s.length!=pattern.size()||!s.document->Read(s.selection,pattern.size(),current)||current!=pattern) {
         Error(h,L"Use Find to select a matching value before replacing it.");return;
     }
-    if(!s.document->Overwrite(s.selection,replacement)){Error(h,L"Could not replace this match.");return;}
-    Changed(h,s);Refresh(h,s);SetDlgItemTextW(h,Status,L"Match replaced in the buffer. Undo restores it; Save Copy creates a separate file.");
+    if(!s.document->Splice(s.selection,s.length,replacement)){Error(h,L"Could not replace this match.");return;}
+    s.length=replacement.size();Changed(h,s);Refresh(h,s);SetDlgItemTextW(h,Status,L"Match replaced in the buffer. Undo restores it; Save Copy creates a separate file.");
 }
 void Search(HWND h,State& s,bool again,SearchJob::Kind kind=SearchJob::Kind::Search) {
     DatHex::Bytes pattern;
@@ -1135,8 +1323,8 @@ void Search(HWND h,State& s,bool again,SearchJob::Kind kind=SearchJob::Kind::Sea
     auto job=std::make_shared<SearchJob>();job->kind=kind;job->document=s.document;job->pattern=pattern;
     if(kind==SearchJob::Kind::ReplaceAll) {
         if(!s.edit)return;
-        if(!SearchPattern(h,Text(h,ReplacementText),job->replacement)||job->replacement.size()!=pattern.size()) {
-            Error(h,L"Replace all requires a valid replacement with the same byte length as the search pattern.");return;
+        if(!ReplacementBytes(h,job->replacement)) {
+            Error(h,L"Enter a valid replacement up to 64 KB, or leave it empty to delete matches.");return;
         }
     }
     bool selectionScope=SendDlgItemMessageW(h,SearchScope,CB_GETCURSEL,0,0)==1;
@@ -1146,6 +1334,7 @@ void Search(HWND h,State& s,bool again,SearchJob::Kind kind=SearchJob::Kind::Sea
     uint64_t end=job->rangeStart+job->rangeLength;
     job->start=s.selection<job->rangeStart||s.selection>=end?job->rangeStart:again?(std::min)(end,s.selection+1):s.selection;
     if(kind==SearchJob::Kind::PreviousMatch)job->start=s.selection;
+    if(!again)s.lastSearchWholeFile=!selectionScope;
     s.lastPattern=pattern;s.lastSearchStart=job->rangeStart;s.lastSearchLength=job->rangeLength;
     try {
         std::thread([job]{
@@ -1213,7 +1402,7 @@ void SplitFile(HWND h,State& s,uint64_t partSize) {
     if(!s.document->size){Error(h,L"This file is empty.");return;}
     uint64_t count=1+(s.document->size-1)/partSize;if(count>1024){Error(h,L"Choose a larger part size. A split can create up to 1,024 parts.");return;}
     struct Picking {State& state;Picking(State& value):state(value){state.picking=true;}~Picking(){state.picking=false;}} picking(s);
-    wchar_t path[32768]=L"dat-split.bin";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;
+    wchar_t path[32768]=L"dat-split.bin";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);
     dialog.lpstrFile=path;dialog.nMaxFile=32768;dialog.lpstrFilter=L"Binary part name\0*.bin\0All files\0*.*\0\0";dialog.lpstrDefExt=L"bin";
     dialog.lpstrTitle=L"Choose base name for numbered copies (.part0001, .part0002...)";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -1224,10 +1413,10 @@ void SplitFile(HWND h,State& s,uint64_t partSize) {
 }
 void JoinFile(HWND h,State& s,bool before) {
     struct Picking {State& state;Picking(State& value):state(value){state.picking=true;}~Picking(){state.picking=false;}} picking(s);
-    std::wstring input;if(!s.pickDatFile(h,s.root,before?L"Choose file to join before this buffer":L"Choose file to join after this buffer",input))return;
+    std::wstring input;if(!s.pickDatFile(GetAncestor(h,GA_ROOT),s.root,before?L"Choose file to join before this buffer":L"Choose file to join after this buffer",input))return;
     auto other=std::make_shared<DatHex::Document>();if(!other->Open(input)){Error(h,L"Could not read the chosen file.");return;}
     if(other->size>UINT64_MAX-s.document->size){Error(h,L"The combined size is too large.");return;}
-    wchar_t path[32768]=L"joined-copy.bin";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=h;
+    wchar_t path[32768]=L"joined-copy.bin";OPENFILENAMEW dialog={};dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=GetAncestor(h,GA_ROOT);
     dialog.lpstrFile=path;dialog.nMaxFile=32768;dialog.lpstrFilter=L"Binary copy\0*.bin\0All files\0*.*\0\0";dialog.lpstrDefExt=L"bin";
     dialog.lpstrTitle=L"Save joined files as a new copy";dialog.Flags=OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
     if(!GetSaveFileNameW(&dialog))return;
@@ -1243,7 +1432,7 @@ void JoinFile(HWND h,State& s,bool before) {
 void Command(HWND h,State& s,int id) {
     if(s.picking)return;
     if(s.job) {if(id==Cancel)s.job->cancel=true;return;}
-    s.highNibble=-1;s.activeNibble=-1;
+    s.highNibble=-1;s.activeNibble=-1;s.pendingSurrogate=0;
     if(id==Open){Browse(h,s);return;}
     if(id==EditMode){s.edit=SendDlgItemMessageW(h,EditMode,BM_GETCHECK,0,0)==BST_CHECKED;Buttons(h,s);Inspect(h,s);return;}
     if(id==ViewMenu) {
@@ -1283,8 +1472,8 @@ void Command(HWND h,State& s,int id) {
         else SetDlgItemTextW(h,Status,L"This numbered bookmark has not been set.");return;
     }
     switch(id) {
-    case Previous: if(s.offset){s.offset-=PageSize;s.selection=s.offset;s.length=s.document->size?1:0;Refresh(h,s);}break;
-    case Next: if(s.document->size-s.offset>PageSize){s.offset+=PageSize;s.selection=s.offset;s.length=1;Refresh(h,s);}break;
+    case Previous: ScrollBy(h,s,-int64_t(s.visibleRows));break;
+    case Next: ScrollBy(h,s,s.visibleRows);break;
     case Endian: Inspect(h,s);break;
     case Export: Save(h,s,false);break;
     case Split64K: SplitFile(h,s,65536);break;
@@ -1292,6 +1481,13 @@ void Command(HWND h,State& s,int id) {
     case Split16M: SplitFile(h,s,16777216);break;
     case JoinBefore: JoinFile(h,s,true);break;
     case JoinAfter: JoinFile(h,s,false);break;
+    case SaveWorking:
+        if(s.document->Untitled()){Save(h,s,true,true);break;}
+        if(!s.document->Dirty())break;
+        if(!s.canSave) {
+            SetDlgItemTextW(h,Status,L"Use Save Copy to save this buffer to a new file.");break;
+        }
+        StartSave(h,s,DatHex::Document::SaveMode::Working);break;
     case SaveCopy: Save(h,s,true);break;
     case Undo: if(s.edit&&s.document->Undo()){Changed(h,s);Refresh(h,s);}break;
     case Redo: if(s.edit&&s.document->Redo()){Changed(h,s);Refresh(h,s);}break;
@@ -1394,6 +1590,14 @@ void Command(HWND h,State& s,int id) {
     case Overwrite: if(s.edit)Patch(h,s,false);break;
     case Fill: if(s.edit)Patch(h,s,true);break;
     case ApplyOperation: ApplyByteOperation(h,s);break;
+    case InsertMode:
+        if(s.edit)s.insertMode=SendDlgItemMessageW(h,InsertMode,BM_GETCHECK,0,0)==BST_CHECKED;
+        Inspect(h,s);break;
+    case CutBytes: CutSelection(h,s);break;
+    case PasteInsert: if(s.edit)Paste(h,s,PasteFormat::Hex,true);break;
+    case InsertPattern: SpliceSelection(h,s,true,true);break;
+    case InsertBytes: SpliceSelection(h,s,true);break;
+    case DeleteBytes: SpliceSelection(h,s,false);break;
     case ReplaceMatch: Replace(h,s);break;
     case ReplaceAll: if(s.edit)Search(h,s,false,SearchJob::Kind::ReplaceAll);break;
     case ByteStatistics: Analyze(h,s,SearchJob::Kind::Statistics);break;
@@ -1408,12 +1612,36 @@ void Command(HWND h,State& s,int id) {
     case FindNext: if(!s.lastPattern.empty())Search(h,s,true);break;
     }
 }
+bool WorkspaceShortcut(const State& s,WPARAM key) {
+    if(!s.host||(GetKeyState(VK_CONTROL)&0x8000)==0)return false;
+    if(key==VK_TAB)SendMessageW(s.host,SwitchDocument,(GetKeyState(VK_SHIFT)&0x8000)!=0,0);
+    else if(key=='N'||key=='W')SendMessageW(s.host,WM_COMMAND,key=='N'?NewDocument:CloseDocument,0);
+    else if(key=='O')SendMessageW(s.host,WM_COMMAND,Open,0);
+    else return false;
+    return true;
+}
 LRESULT CALLBACK DumpProcedure(HWND edit,UINT m,WPARAM w,LPARAM l) {
     HWND h=GetParent(edit);auto s=reinterpret_cast<State*>(GetWindowLongPtrW(h,GWLP_USERDATA));
     if(!s)return DefWindowProcW(edit,m,w,l);
+    if(m==WM_MOUSEWHEEL) {
+        s->wheelDelta+=GET_WHEEL_DELTA_WPARAM(w);
+        const int steps=s->wheelDelta/WHEEL_DELTA;
+        s->wheelDelta%=WHEEL_DELTA;
+        UINT lines=3;SystemParametersInfoW(SPI_GETWHEELSCROLLLINES,0,&lines,0);
+        ScrollBy(h,*s,-int64_t(steps)*(lines==WHEEL_PAGESCROLL?s->visibleRows:lines));
+        return 0;
+    }
     if(m==WM_KEYDOWN||m==WM_SYSKEYDOWN) {
+        if(WorkspaceShortcut(*s,w))return 0;
         bool ctrl=(GetKeyState(VK_CONTROL)&0x8000)!=0;
         if(w==VK_INSERT&&(GetKeyState(VK_MENU)&0x8000)){Command(h,*s,CopyOffset);return 0;}
+        if(w==VK_INSERT&&!ctrl&&!(GetKeyState(VK_SHIFT)&0x8000)) {
+            if(s->edit&&!s->job) {
+                SendDlgItemMessageW(h,InsertMode,BM_SETCHECK,s->insertMode?BST_UNCHECKED:BST_CHECKED,0);
+                Command(h,*s,InsertMode);
+            }
+            return 0;
+        }
         if(ctrl&&(w==VK_LEFT||w==VK_RIGHT)){MoveNibble(h,*s,w==VK_RIGHT);return 0;}
         if(ctrl&&(w==VK_HOME||w==VK_END)) {
             bool extend=(GetKeyState(VK_SHIFT)&0x8000)!=0;
@@ -1421,31 +1649,34 @@ LRESULT CALLBACK DumpProcedure(HWND edit,UINT m,WPARAM w,LPARAM l) {
         }
         int bookmark=BookmarkShortcut(w,ctrl,(GetKeyState(VK_SHIFT)&0x8000)!=0);if(bookmark){Command(h,*s,bookmark);return 0;}
         if(ctrl) {
-            int id=w=='C'?CopyHex:w=='V'?PasteOverwrite:w=='B'?AddBookmark:w=='F'?Find:w=='G'?Go:w=='S'?SaveCopy:w=='Z'?Undo:w=='Y'?Redo:0;
+            int id=w=='C'?CopyHex:w=='X'?CutBytes:w=='V'?((GetKeyState(VK_SHIFT)&0x8000)||s->insertMode?PasteInsert:PasteOverwrite):w=='B'?AddBookmark:w=='F'?Find:w=='G'?Go:w=='S'?((GetKeyState(VK_SHIFT)&0x8000)?SaveCopy:SaveWorking):w=='Z'?Undo:w=='Y'?Redo:0;
             if(w=='F') {ActivateToolTab(h,*s,2);SetFocus(GetDlgItem(h,SearchText));return 0;}
             if(w=='G') {ActivateToolTab(h,*s,3);SetFocus(GetDlgItem(h,GoText));return 0;}
             if(w=='A'&&!s->job){Select(h,*s,0,s->document->size);return 0;}
             if(id) {Command(h,*s,id);return 0;}
         }
+        if(w==VK_DELETE&&!ctrl){Command(h,*s,DeleteBytes);return 0;}
         if(w==VK_F3) {Command(h,*s,(GetKeyState(VK_SHIFT)&0x8000)?FindPrevious:FindNext);return 0;}
-        if(w==VK_ESCAPE){s->highNibble=-1;s->activeNibble=-1;if(s->job)s->job->cancel=true;else {Inspect(h,*s);Highlight(h,*s);}return 0;}
+        if(w==VK_ESCAPE){s->pendingSurrogate=0;s->highNibble=-1;s->activeNibble=-1;if(s->job)s->job->cancel=true;else {Inspect(h,*s);Highlight(h,*s);}return 0;}
         if(!s->job && s->document->size && !(GetKeyState(VK_SHIFT)&0x8000) && !ctrl) {
             uint64_t at=s->selection;
             if(w==VK_LEFT)at=at?at-1:0;
             else if(w==VK_RIGHT)at=(std::min)(s->document->size-1,at+1);
             else if(w==VK_UP)at=at>=s->rowBytes?at-s->rowBytes:0;
             else if(w==VK_DOWN)at=(std::min)(s->document->size-1,at+s->rowBytes);
-            else if(w==VK_PRIOR)at=at>=PageSize?at-PageSize:0;
-            else if(w==VK_NEXT)at=(std::min)(s->document->size-1,at+PageSize);
+            else if(w==VK_PRIOR)at=at>=VisibleBytes(*s)?at-VisibleBytes(*s):0;
+            else if(w==VK_NEXT)at=(std::min)(s->document->size-1,at+VisibleBytes(*s));
             else at=NoByte;
             if(at!=NoByte){Select(h,*s,at,1);return 0;}
         }
     }
     if(m==WM_CHAR) {
-        if(w>=32 && w<127)TypeHex(h,*s,static_cast<wchar_t>(w));
+        if(s->displayMode==2||(s->displayMode==0&&s->textColumn))TypeDecoded(h,*s,static_cast<wchar_t>(w));
+        else if(w>=32&&w<127)TypeHex(h,*s,static_cast<wchar_t>(w));
         return 0;
     }
-    if(m==WM_PASTE){Command(h,*s,PasteOverwrite);return 0;}
+    if(m==WM_CUT){Command(h,*s,CutBytes);return 0;}
+    if(m==WM_PASTE){Command(h,*s,s->insertMode?PasteInsert:PasteOverwrite);return 0;}
     if(m==WM_CONTEXTMENU) {
         MouseSelection(h,*s);HMENU menu=CreatePopupMenu();
         AppendMenuW(menu,MF_STRING,CopyHex,L"Copy hex\tCtrl+C");AppendMenuW(menu,MF_STRING,CopyText,L"Copy decoded text");
@@ -1457,7 +1688,10 @@ LRESULT CALLBACK DumpProcedure(HWND edit,UINT m,WPARAM w,LPARAM l) {
         AppendMenuW(formats,MF_STRING,CopyPascal,L"Pascal byte array");AppendMenuW(formats,MF_STRING,CopyJava,L"Java byte array");
         AppendMenuW(formats,MF_STRING,CopyCSharp,L"C# byte array");AppendMenuW(formats,MF_STRING,CopyVB,L"VB.NET byte array");
         AppendMenuW(menu,MF_POPUP,reinterpret_cast<UINT_PTR>(formats),L"Copy as");
-        AppendMenuW(menu,MF_STRING|(s->edit&&!s->job?0:MF_GRAYED),PasteOverwrite,L"Paste overwrite\tCtrl+V");
+        AppendMenuW(menu,MF_STRING|(s->edit&&!s->job&&s->length?0:MF_GRAYED),CutBytes,L"Cut bytes\tCtrl+X");
+        AppendMenuW(menu,MF_STRING|(s->edit&&!s->job?0:MF_GRAYED),PasteInsert,L"Paste insert (hex)\tCtrl+Shift+V");
+        AppendMenuW(menu,MF_STRING|(s->edit&&!s->job&&s->length?0:MF_GRAYED),DeleteBytes,L"Delete selection\tDel");
+        AppendMenuW(menu,MF_STRING|(s->edit&&!s->job?0:MF_GRAYED),PasteOverwrite,L"Paste overwrite (hex)");
         HMENU pasteFormats=CreatePopupMenu();UINT pasteFlags=MF_STRING|(s->edit&&!s->job?0:MF_GRAYED);
         AppendMenuW(pasteFormats,pasteFlags,PasteDecoded,L"Decoded text (chosen encoding)");AppendMenuW(pasteFormats,pasteFlags,PasteUtf8,L"UTF-8 text");AppendMenuW(pasteFormats,pasteFlags,PasteBase64,L"Base64 bytes");AppendMenuW(pasteFormats,pasteFlags,PasteEscaped,L"Escaped bytes (\\xNN)");AppendMenuW(pasteFormats,pasteFlags,PasteBinary,L"Binary digits");AppendMenuW(menu,MF_POPUP,reinterpret_cast<UINT_PTR>(pasteFormats),L"Paste overwrite as");
         AppendMenuW(menu,MF_STRING,CopyOffset,L"Copy offset\tAlt+Insert");
@@ -1467,7 +1701,8 @@ LRESULT CALLBACK DumpProcedure(HWND edit,UINT m,WPARAM w,LPARAM l) {
         AppendMenuW(menu,MF_STRING,ExportBlock,L"Export selection as binary...");
         AppendMenuW(menu,MF_STRING,ExportIntelHex,L"Export selection as Intel HEX...");
         HMENU exports=CreatePopupMenu();AddFormattedExports(exports);AppendMenuW(menu,MF_POPUP,reinterpret_cast<UINT_PTR>(exports),L"Export selection as");
-        AppendMenuW(menu,MF_STRING,SaveCopy,L"Save Copy...\tCtrl+S");
+        AppendMenuW(menu,MF_STRING|(!s->job&&(s->document->Untitled()||(s->canSave&&s->document->Dirty()))?0:MF_GRAYED),SaveWorking,L"Save\tCtrl+S");
+        AppendMenuW(menu,MF_STRING,SaveCopy,L"Save Copy...\tCtrl+Shift+S");
         int x=static_cast<short>(LOWORD(l)),y=static_cast<short>(HIWORD(l));if(x==-1){POINT p={10,10};ClientToScreen(edit,&p);x=p.x;y=p.y;}
         int chosen=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,x,y,0,h,nullptr);DestroyMenu(menu);if(chosen)Command(h,*s,chosen);return 0;
     }
@@ -1479,8 +1714,12 @@ LRESULT CALLBACK DumpProcedure(HWND edit,UINT m,WPARAM w,LPARAM l) {
 LRESULT CALLBACK InputProcedure(HWND edit,UINT m,WPARAM w,LPARAM l) {
     HWND h=GetParent(edit);auto s=reinterpret_cast<State*>(GetWindowLongPtrW(h,GWLP_USERDATA));
     if(!s)return DefWindowProcW(edit,m,w,l);
+    if(m==WM_KEYDOWN&&WorkspaceShortcut(*s,w))return 0;
+    if(m==WM_KEYDOWN&&w=='S'&&(GetKeyState(VK_CONTROL)&0x8000)) {
+        Command(h,*s,(GetKeyState(VK_SHIFT)&0x8000)?SaveCopy:SaveWorking);return 0;
+    }
     if(m==WM_KEYDOWN && w==VK_RETURN) {
-        int id=GetDlgCtrlID(edit);Command(h,*s,id==GoText?Go:id==SearchText?Find:Overwrite);return 0;
+        int id=GetDlgCtrlID(edit);Command(h,*s,id==GoText?Go:id==SearchText?Find:id==PatchText?Overwrite:id==ReplacementText?ReplaceMatch:id==ExpectedChecksum?VerifyChecksum:SelectBlock);return 0;
     }
     if(m==WM_CHAR && w==VK_RETURN)return 0;
     return CallWindowProcW(s->originalInput,edit,m,w,l);
@@ -1490,6 +1729,7 @@ LRESULT CALLBACK Procedure(HWND h,UINT m,WPARAM w,LPARAM l) {
     switch(m) {
     case WM_CREATE: {
         s=reinterpret_cast<State*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);SetWindowLongPtrW(h,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(s));
+        Control(h,L"BUTTON",L"Save",SaveWorking,120,10,64);
         Control(h,L"BUTTON",L"Open DAT...",Open,10,10,100);Control(h,L"BUTTON",L"Save Copy...",SaveCopy,118,10,110);
         INITCOMMONCONTROLSEX commonControls={sizeof(commonControls),ICC_TAB_CLASSES};InitCommonControlsEx(&commonControls);
         HWND tabs=Control(h,WC_TABCONTROLW,L"",ToolTabs,10,48,1064,0,116);
@@ -1508,13 +1748,20 @@ LRESULT CALLBACK Procedure(HWND h,UINT m,WPARAM w,LPARAM l) {
         Control(h,L"STATIC",L"Length",LengthLabel,210,84,46);Control(h,L"EDIT",L"1",LengthText,262,82,100,ES_AUTOHSCROLL);
         Control(h,L"BUTTON",L"Select block",SelectBlock,370,82,104);Control(h,L"BUTTON",L"Copy hex",CopyHex,484,82,90);Control(h,L"BUTTON",L"Copy text",CopyText,584,82,90);
         Control(h,L"EDIT",L"",PatchText,10,118,430,ES_AUTOHSCROLL);Control(h,L"BUTTON",L"Overwrite selection",Overwrite,450,118,148);Control(h,L"BUTTON",L"Fill pattern",Fill,608,118,114);
+        Control(h,L"BUTTON",L"Insert mode",InsertMode,770,84,112,BS_AUTOCHECKBOX);
+        Control(h,L"BUTTON",L"Paste insert",PasteInsert,800,118,110);
+        Control(h,L"EDIT",L"",PatternLength,578,118,88,ES_AUTOHSCROLL);
+        SendDlgItemMessageW(h,PatternLength,EM_SETCUEBANNER,FALSE,reinterpret_cast<LPARAM>(L"Bytes (dec)"));
+        Control(h,L"BUTTON",L"Insert pattern",InsertPattern,676,118,114);
+        Control(h,L"BUTTON",L"Insert hex bytes",InsertBytes,715,118,130);
+        Control(h,L"BUTTON",L"Delete selection",DeleteBytes,855,118,135);
         Combo(h,Endian,732,118,144,{L"Little endian",L"Big endian"});
         Control(h,L"BUTTON",L"Paste overwrite",PasteOverwrite,886,118,142);
         Control(h,L"BUTTON",L"Bookmark",AddBookmark,10,154,96);Combo(h,BookmarkList,114,154,204,{});
         Control(h,L"BUTTON",L"Go",GoBookmark,328,154,52);Control(h,L"BUTTON",L"Remove",RemoveBookmark,388,154,72);
         Control(h,L"BUTTON",L"Compare file...",CompareFile,470,154,122);Control(h,L"BUTTON",L"Next difference",NextDifference,600,154,128);
         Control(h,L"BUTTON",L"Checksums",Checksums,736,154,100);Control(h,L"BUTTON",L"Export selection...",ExportSelectionMenu,846,154,150);
-        Control(h,L"EDIT",L"",ReplacementText,690,82,160,ES_AUTOHSCROLL);Control(h,L"BUTTON",L"Replace match",ReplaceMatch,858,82,100);Control(h,L"BUTTON",L"Replace all",ReplaceAll,966,82,98);
+        Control(h,L"EDIT",L"",ReplacementText,690,82,160,ES_AUTOHSCROLL);SendDlgItemMessageW(h,ReplacementText,EM_SETCUEBANNER,FALSE,reinterpret_cast<LPARAM>(L"Replacement (empty deletes)"));Control(h,L"BUTTON",L"Replace match",ReplaceMatch,858,82,100);Control(h,L"BUTTON",L"Replace all",ReplaceAll,966,82,98);
         Control(h,L"BUTTON",L"Find previous",FindPrevious,10,190,112);Control(h,L"BUTTON",L"Find all",FindAll,130,190,90);
         Combo(h,MatchList,230,190,250,{});Control(h,L"BUTTON",L"Go to match",GoMatch,490,190,100);
         Control(h,L"BUTTON",L"Byte statistics",ByteStatistics,600,190,132);
@@ -1532,14 +1779,16 @@ LRESULT CALLBACK Procedure(HWND h,UINT m,WPARAM w,LPARAM l) {
         Control(h,L"BUTTON",L"Verify checksum",VerifyChecksum,622,262,150);
         Control(h,L"BUTTON",L"Copy checksum",CopyChecksum,782,262,126);Control(h,L"BUTTON",L"Export report...",ExportReport,918,262,146);
         Control(h,L"BUTTON",L"Distribution chart",DistributionChart,806,298,258);
-        Control(h,L"STATIC",L"Open a DAT. Editing affects an in-memory buffer; Save Copy always creates a new file.",Info,10,300,786);
+        Control(h,L"STATIC",L"Open a DAT or working copy.",Info,10,300,786);
         static HMODULE richEdit=LoadLibraryW(L"Msftedit.dll");
         if(!richEdit)return -1;
-        HWND dump=Control(h,MSFTEDIT_CLASS,L"",Dump,10,328,780,ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL|ES_AUTOHSCROLL|WS_VSCROLL|WS_HSCROLL,420);
+        HWND dump=Control(h,MSFTEDIT_CLASS,L"",Dump,10,328,780,ES_MULTILINE|ES_READONLY|ES_NOHIDESEL|ES_AUTOHSCROLL|WS_HSCROLL,420);
+        Control(h,L"SCROLLBAR",L"",ScrollRows,790,328,GetSystemMetrics(SM_CXVSCROLL),SBS_VERT,420);
+        SendMessageW(dump,EM_SETTARGETDEVICE,0,1);
         SendMessageW(dump,EM_EXLIMITTEXT,0,2000000);
         SendMessageW(dump,EM_SETUNDOLIMIT,0,0);
         s->originalEdit=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(dump,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(DumpProcedure)));
-        for(int id:{GoText,SearchText,PatchText})s->originalInput=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(GetDlgItem(h,id),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(InputProcedure)));
+        for(int id:{GoText,SearchText,PatchText,ReplacementText,StartText,LengthText,ExpectedChecksum})s->originalInput=reinterpret_cast<WNDPROC>(SetWindowLongPtrW(GetDlgItem(h,id),GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(InputProcedure)));
         s->font=CreateFontW(-15,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,0,0,0,FIXED_PITCH,L"MS Gothic");SendMessageW(dump,WM_SETFONT,reinterpret_cast<WPARAM>(s->font),TRUE);
         Control(h,L"EDIT",L"Select bytes to inspect their values.",Inspector,800,328,264,ES_MULTILINE|ES_READONLY|WS_VSCROLL,260);
         Control(h,L"EDIT",L"Analysis: use Checksums or Compare file.",AnalysisOutput,800,490,264,ES_MULTILINE|ES_READONLY|WS_VSCROLL,150);
@@ -1550,11 +1799,34 @@ LRESULT CALLBACK Procedure(HWND h,UINT m,WPARAM w,LPARAM l) {
         int width=LOWORD(l),height=HIWORD(l);MoveWindow(GetDlgItem(h,ToolTabs),10,48,(std::max)(1,width-20),116,TRUE);
         MoveWindow(GetDlgItem(h,Info),10,172,(std::max)(1,width-304),24,TRUE);
         MoveWindow(GetDlgItem(h,DistributionChart),(std::max)(10,width-284),170,274,26,TRUE);
-        MoveWindow(GetDlgItem(h,Dump),10,200,(std::max)(1,width-304),(std::max)(1,height-238),TRUE);
+        const int scrollWidth=GetSystemMetrics(SM_CXVSCROLL);
+        const int viewHeight=(std::max)(1,height-238);
+        MoveWindow(GetDlgItem(h,Dump),10,200,(std::max)(1,width-304-scrollWidth),viewHeight,TRUE);
+        MoveWindow(GetDlgItem(h,ScrollRows),(std::max)(10,width-294-scrollWidth),200,scrollWidth,viewHeight,TRUE);
+        if(s&&s->font)Refresh(h,*s);
         MoveWindow(GetDlgItem(h,Inspector),(std::max)(10,width-284),200,274,(std::max)(1,height-406),TRUE);
         MoveWindow(GetDlgItem(h,AnalysisOutput),(std::max)(10,width-284),(std::max)(200,height-196),274,158,TRUE);
         MoveWindow(GetDlgItem(h,Status),10,(std::max)(200,height-30),(std::max)(1,width-20),24,TRUE);return 0;
     }
+    case WM_VSCROLL:
+        if(s&&!s->job&&reinterpret_cast<HWND>(l)==GetDlgItem(h,ScrollRows)) {
+            const int64_t top=s->offset/s->rowBytes,last=LastTopRow(*s),page=s->visibleRows;
+            switch(LOWORD(w)) {
+            case SB_LINEUP: ScrollBy(h,*s,-1);break;
+            case SB_LINEDOWN: ScrollBy(h,*s,1);break;
+            case SB_PAGEUP: ScrollBy(h,*s,-page);break;
+            case SB_PAGEDOWN: ScrollBy(h,*s,page);break;
+            case SB_TOP: ScrollBy(h,*s,-top);break;
+            case SB_BOTTOM: ScrollBy(h,*s,last-top);break;
+            case SB_THUMBPOSITION: case SB_THUMBTRACK: {
+                SCROLLINFO info{sizeof(info),SIF_TRACKPOS};
+                GetScrollInfo(reinterpret_cast<HWND>(l),SB_CTL,&info);
+                ScrollBy(h,*s,static_cast<int64_t>(ScaleScroll(info.nTrackPos,ScrollMaximum(*s),last))-top);break;
+            }
+            }
+            return 0;
+        }
+        break;
     case WM_NOTIFY:
         if(s&&reinterpret_cast<NMHDR*>(l)->idFrom==ToolTabs&&reinterpret_cast<NMHDR*>(l)->code==TCN_SELCHANGE){s->toolTab=TabCtrl_GetCurSel(GetDlgItem(h,ToolTabs));LayoutToolTabs(h,*s);return 0;}break;
     case WM_COMMAND:
@@ -1563,7 +1835,9 @@ LRESULT CALLBACK Procedure(HWND h,UINT m,WPARAM w,LPARAM l) {
         if(s && s->job) {
             if(s->job->done.load()) {
                 auto job=s->job;s->job.reset();Buttons(h,*s);
-                if(job->cancel && !((job->kind==SearchJob::Kind::Join||job->kind==SearchJob::Kind::Split)&&!job->failed)) {
+                if(job->kind==SearchJob::Kind::Save) {
+                    FinishSave(h,*s,*job);
+                } else if(job->cancel && !((job->kind==SearchJob::Kind::Join||job->kind==SearchJob::Kind::Split)&&!job->failed)) {
                     SetDlgItemTextW(h,Status,L"Operation cancelled.");
                     if(job->kind==SearchJob::Kind::Split)SetDlgItemTextW(h,Status,L"Split cancelled. The unfinished output set was removed.");
                     else if(job->kind==SearchJob::Kind::Join)SetDlgItemTextW(h,Status,L"Join cancelled. No complete output copy was created.");
@@ -1575,7 +1849,7 @@ LRESULT CALLBACK Procedure(HWND h,UINT m,WPARAM w,LPARAM l) {
                     if(job->failed)Error(h,L"Could not create the joined copy. Choose a new filename; existing files cannot be replaced.");
                     else SetDlgItemTextW(h,Status,(L"Created joined copy: "+job->outputPath).c_str());
                 } else if(job->replacementLimit) {
-                    SetDlgItemTextW(h,AnalysisOutput,L"Replace all exceeded 100,000 matches or 1 MB of replacement bytes. No changes were applied.");
+                    SetDlgItemTextW(h,AnalysisOutput,L"Replace all would exceed the maximum file size. No changes were applied.");
                     SetDlgItemTextW(h,Status,L"Replace all limit reached; the buffer is unchanged.");
                 } else if(job->failed) {
                     SetDlgItemTextW(h,AnalysisOutput,L"Analysis failed. No complete result is available.");Error(h,L"The operation could not read or analyze the file.");
@@ -1638,19 +1912,186 @@ LRESULT CALLBACK Procedure(HWND h,UINT m,WPARAM w,LPARAM l) {
         return 0;
     case WM_CLOSE:
         if(s&&(s->picking||!Discard(h,*s)))return 0;DestroyWindow(h);return 0;
-    case WM_DESTROY: KillTimer(h,1);if(s&&s->job)s->job->cancel=true;if(window==h)window=nullptr;return 0;
+    case WM_DESTROY: KillTimer(h,1);if(s&&s->job)s->job->cancel=true;return 0;
     case WM_NCDESTROY: SetWindowLongPtrW(h,GWLP_USERDATA,0);if(s){DeleteObject(s->font);s->font=nullptr;if(s->ownedByWindow)delete s;}break;
     }
     return DefWindowProcW(h,m,w,l);
 }
+State* ViewState(HWND view) {
+    return reinterpret_cast<State*>(GetWindowLongPtrW(view,GWLP_USERDATA));
+}
+Workspace* HostState(HWND host) {
+    return reinterpret_cast<Workspace*>(GetWindowLongPtrW(host,GWLP_USERDATA));
+}
+void LayoutDocuments(HWND host,Workspace& workspace) {
+    RECT bounds{};GetClientRect(host,&bounds);
+    MoveWindow(GetDlgItem(host,NewDocument),8,6,84,24,TRUE);
+    MoveWindow(GetDlgItem(host,CloseDocument),98,6,92,24,TRUE);
+    MoveWindow(GetDlgItem(host,DocumentTabs),198,6,(std::max)(1L,bounds.right-206),26,TRUE);
+    if(workspace.active>=0)
+        MoveWindow(workspace.tabs[workspace.active].view,0,34,bounds.right,(std::max)(1L,bounds.bottom-34),TRUE);
+}
+void ActivateDocument(HWND host,Workspace& workspace,int index) {
+    if(index<0||index>=static_cast<int>(workspace.tabs.size()))return;
+    if(workspace.active>=0&&workspace.active!=index)
+        ShowWindow(workspace.tabs[workspace.active].view,SW_HIDE);
+    workspace.active=index;
+    TabCtrl_SetCurSel(GetDlgItem(host,DocumentTabs),index);
+    LayoutDocuments(host,workspace);
+    const auto view=workspace.tabs[index].view;
+    ShowWindow(view,SW_SHOW);
+    SetFocus(GetDlgItem(view,Dump));
+}
+void UpdateDocumentLabel(HWND host,Workspace& workspace,HWND view) {
+    auto tab=std::find_if(workspace.tabs.begin(),workspace.tabs.end(),[&](const auto& entry){return entry.view==view;});
+    if(tab==workspace.tabs.end())return;
+    const auto& state=*ViewState(view);
+    std::wstring title=state.document->Loaded()?std::filesystem::path(DocumentName(state)).filename().wstring():L"Start";
+    if(state.document->Dirty()&&!state.changesSaved)title+=L" *";
+    if(title==tab->label)return;
+    tab->label=std::move(title);
+    TCITEMW item{};item.mask=TCIF_TEXT;item.pszText=tab->label.data();
+    TabCtrl_SetItem(GetDlgItem(host,DocumentTabs),static_cast<int>(tab-workspace.tabs.begin()),&item);
+}
+bool AddDocument(HWND host,std::shared_ptr<DatHex::Document> document) {
+    auto& workspace=*HostState(host);
+    auto state=std::make_unique<State>();
+    state->host=host;state->root=workspace.root;state->installRoots=workspace.roots;
+    state->document=std::move(document);
+    if(state->document->Untitled()){
+        state->untitledLabel=L"Untitled "+std::to_wstring(workspace.nextUntitled++);
+        state->edit=state->insertMode=true;
+    }
+    state->canSave=state->document->CanSave(workspace.roots);
+    state->length=state->document->size?1:0;
+    Win32ToolWindow::WideSpec spec{Procedure,L"DATuraDatHexDocument",L"",1180,720};
+    spec.style=WS_CHILD|WS_CLIPCHILDREN;spec.createParameter=state.get();
+    HWND view=Win32ToolWindow::Create(host,spec);
+    if(!view)return false;
+    state->ownedByWindow=true;
+    auto rawState=state.release();
+    const bool replaceStart=rawState->document->Loaded()&&workspace.tabs.size()==1&&!ViewState(workspace.tabs[0].view)->document->Loaded();
+    const int index=static_cast<int>(workspace.tabs.size());
+    TCITEMW item{};item.mask=TCIF_TEXT;wchar_t initial[]=L"";item.pszText=initial;
+    if(TabCtrl_InsertItem(GetDlgItem(host,DocumentTabs),index,&item)==-1){DestroyWindow(view);return false;}
+    workspace.tabs.push_back({view,{}});
+    if(rawState->edit)CheckDlgButton(view,EditMode,BST_CHECKED);
+    if(rawState->insertMode)CheckDlgButton(view,InsertMode,BST_CHECKED);
+    Refresh(view,*rawState);
+    ActivateDocument(host,workspace,index);
+    if(replaceStart){
+        DestroyWindow(workspace.tabs.front().view);
+        workspace.tabs.erase(workspace.tabs.begin());
+        TabCtrl_DeleteItem(GetDlgItem(host,DocumentTabs),0);
+        workspace.active=0;TabCtrl_SetCurSel(GetDlgItem(host,DocumentTabs),0);
+    }
+    return true;
+}
+LRESULT CALLBACK WorkspaceProcedure(HWND host,UINT message,WPARAM w,LPARAM l) {
+    auto workspace=HostState(host);
+    switch(message) {
+    case WM_CREATE: {
+        workspace=static_cast<Workspace*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams);
+        SetWindowLongPtrW(host,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(workspace));
+        INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_TAB_CLASSES};
+        InitCommonControlsEx(&controls);
+        Control(host,L"BUTTON",L"New",NewDocument,8,6,84);
+        Control(host,L"BUTTON",L"Close tab",CloseDocument,98,6,92);
+        Control(host,WC_TABCONTROLW,L"",DocumentTabs,198,6,840,TCS_SINGLELINE|WS_CLIPSIBLINGS);
+        return AddDocument(host,std::make_shared<DatHex::Document>())?0:-1;
+    }
+    case WM_GETMINMAXINFO:
+        reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize={1100,614};return 0;
+    case WM_SIZE: if(workspace)LayoutDocuments(host,*workspace);return 0;
+    case DocumentChanged: UpdateDocumentLabel(host,*workspace,reinterpret_cast<HWND>(l));return 0;
+    case SwitchDocument: {
+        if(workspace->active>=0&&ViewState(workspace->tabs[workspace->active].view)->picking)return 0;
+        const auto count=static_cast<int>(workspace->tabs.size());
+        if(count)ActivateDocument(host,*workspace,(workspace->active+count+(w?-1:1))%count);
+        return 0;
+    }
+    case WM_NOTIFY:
+        if(reinterpret_cast<NMHDR*>(l)->idFrom==DocumentTabs&&reinterpret_cast<NMHDR*>(l)->code==TCN_SELCHANGE)
+            ActivateDocument(host,*workspace,TabCtrl_GetCurSel(GetDlgItem(host,DocumentTabs)));
+        return 0;
+    case WM_COMMAND:
+        if(workspace->active<0||ViewState(workspace->tabs[workspace->active].view)->picking)return 0;
+        switch(LOWORD(w)) {
+        case Open: {
+            auto view=workspace->tabs[workspace->active].view;
+            Command(view,*ViewState(view),Open);return 0;
+        }
+        case NewDocument: {
+            auto document=std::make_shared<DatHex::Document>();document->New();
+            if(!AddDocument(host,std::move(document)))Error(host,L"Could not create an untitled tab.");
+            return 0;
+        }
+        case CloseDocument: {
+            const int index=workspace->active;
+            HWND view=workspace->tabs[index].view;
+            auto& state=*ViewState(view);
+            if(state.picking)return 0;
+            if(state.job&&state.job->kind==SearchJob::Kind::Save) {
+                SetDlgItemTextW(view,Status,L"Finish or cancel the save before closing this tab.");return 0;
+            }
+            if(!Discard(host,state))return 0;
+            if(workspace->tabs.size()==1&&!AddDocument(host,std::make_shared<DatHex::Document>()))return 0;
+            DestroyWindow(view);
+            workspace->tabs.erase(workspace->tabs.begin()+index);
+            TabCtrl_DeleteItem(GetDlgItem(host,DocumentTabs),index);
+            workspace->active=-1;
+            ActivateDocument(host,*workspace,(std::min)(index,static_cast<int>(workspace->tabs.size())-1));
+            return 0;
+        }
+        }
+        break;
+    case WM_CLOSE:
+        for(size_t i=0;i<workspace->tabs.size();++i) {
+            auto view=workspace->tabs[i].view;
+            const auto& state=*ViewState(view);
+            if(state.picking)return 0;
+            if(state.job&&state.job->kind==SearchJob::Kind::Save) {
+                ActivateDocument(host,*workspace,static_cast<int>(i));
+                SetDlgItemTextW(view,Status,L"Finish or cancel the save before closing the Hex Reader.");return 0;
+            }
+        }
+        for(size_t i=0;i<workspace->tabs.size();++i) {
+            auto& state=*ViewState(workspace->tabs[i].view);
+            if(state.document->Dirty()&&!state.changesSaved){
+                ActivateDocument(host,*workspace,static_cast<int>(i));
+                if(!Discard(host,state))return 0;
+            }
+        }
+        DestroyWindow(host);return 0;
+    case WM_DESTROY: if(window==host)window=nullptr;return 0;
+    case WM_NCDESTROY: SetWindowLongPtrW(host,GWLP_USERDATA,0);if(workspace&&workspace->ownedByWindow)delete workspace;break;
+    }
+    return DefWindowProcW(host,message,w,l);
+}
 }
 void Show(HWND owner,const char* root) {
     if(window){SetRootPath(root);Win32ToolWindow::Show(window,true);return;}
-    auto s=std::make_unique<State>();s->root=BrowseRoot(root);
-    Win32ToolWindow::WideSpec spec{Procedure,L"DATuraDatHexReader",L"DAT Hex Reader",1180,760};spec.style=WS_OVERLAPPEDWINDOW;spec.createParameter=s.get();
-    window=Win32ToolWindow::Create(owner,spec);if(window){s->ownedByWindow=true;s.release();Win32ToolWindow::Show(window,true);}
+    auto workspace=std::make_unique<Workspace>();
+    workspace->root=BrowseRoot(root);workspace->roots.push_back(workspace->root);
+    Win32ToolWindow::WideSpec spec{WorkspaceProcedure,L"DATuraDatHexReader",L"DAT Hex Reader",1180,794};
+    spec.style=WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN;spec.createParameter=workspace.get();
+    window=Win32ToolWindow::Create(owner,spec);
+    if(window){workspace->ownedByWindow=true;workspace.release();Win32ToolWindow::Show(window,true);}
 }
 void SetRootPath(const char* root) {
-    if(window){auto s=reinterpret_cast<State*>(GetWindowLongPtrW(window,GWLP_USERDATA));if(s)s->root=BrowseRoot(root);}
+    if(!window)return;
+    auto& workspace=*HostState(window);
+    auto selected=BrowseRoot(root);
+    if(selected==workspace.root)return;
+    workspace.root=std::move(selected);
+    if(std::find(workspace.roots.begin(),workspace.roots.end(),workspace.root)==workspace.roots.end())
+        workspace.roots.push_back(workspace.root);
+    for(const auto& tab:workspace.tabs) {
+        auto& state=*ViewState(tab.view);
+        state.root=workspace.root;state.installRoots=workspace.roots;
+        state.canSave=state.document->CanSave(state.installRoots);
+        Buttons(tab.view,state);
+        if(!state.job)Inspect(tab.view,state);
+    }
 }
 }

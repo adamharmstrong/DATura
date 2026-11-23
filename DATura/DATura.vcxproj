@@ -146,6 +146,7 @@
     <ClCompile Include="application_settings_store.cpp" />
     <ClCompile Include="npc_event_runtime.cpp" />
     <ClCompile Include="npc_conversation_controller.cpp" />
+    <ClCompile Include="npc_trigger_dialogue.cpp" />
     <ClCompile Include="query.cpp" />
     <ClCompile Include="menu.cpp" />
     <ClCompile Include="menu_cursor.cpp" />
@@ -259,6 +260,9 @@
     <ClCompile Include="zone_environment_render_state.cpp" />
     <ClCompile Include="zone_render_frustum.cpp" />
     <ClCompile Include="zone_weather_particles.cpp" />
+    <ClCompile Include="zone_weather_schedule.cpp" />
+    <ClCompile Include="zone_weather_audio.cpp" />
+    <ClCompile Include="gpu_selection.cpp" />
     <ClCompile Include="zone_sky_dome.cpp" />
     <ClCompile Include="zone_object_list_view.cpp" />
     <ClCompile Include="zone_object_list_columns.cpp" />
@@ -321,6 +325,7 @@
     <ClInclude Include="application_settings_store.h" />
     <ClInclude Include="npc_event_runtime.h" />
     <ClInclude Include="npc_conversation_controller.h" />
+    <ClInclude Include="npc_trigger_dialogue.h" />
     <ClInclude Include="ui_backbuffer.h" />
     <ClInclude Include="query.h" />
     <ClInclude Include="menu.h" />
@@ -438,6 +443,9 @@
     <ClInclude Include="zone_environment_render_state.h" />
     <ClInclude Include="zone_render_frustum.h" />
     <ClInclude Include="zone_weather_particles.h" />
+    <ClInclude Include="zone_weather_schedule.h" />
+    <ClInclude Include="zone_weather_audio.h" />
+    <ClInclude Include="gpu_selection.h" />
     <ClInclude Include="zone_sky_dome.h" />
     <ClInclude Include="zone_object_transform.h" />
     <ClInclude Include="zone_object_highlight_renderer.h" />
@@ -474,6 +482,8 @@
     <None Include="npc_placements.csv" />
     <None Include="npc_roles.csv" />
     <None Include="npc_starter_quests.csv" />
+    <None Include="npc_trigger_dialogue.csv" />
+    <None Include="zone_weather_schedule.bin" />
     <None Include="Vulture_DAT_Extractor.cs" />
   </ItemGroup>
   <ItemDefinitionGroup>
@@ -482,7 +492,9 @@
 copy /Y "$(ProjectDir)npc_placements.csv" "$(OutDir)npc_placements.csv"
 copy /Y "$(ProjectDir)npc_roles.csv" "$(OutDir)npc_roles.csv"
 copy /Y "$(ProjectDir)npc_starter_quests.csv" "$(OutDir)npc_starter_quests.csv"
-copy /Y "$(ProjectDir)map_dats.json" "$(OutDir)map_dats.json"</Command>
+copy /Y "$(ProjectDir)npc_trigger_dialogue.csv" "$(OutDir)npc_trigger_dialogue.csv"
+copy /Y "$(ProjectDir)map_dats.json" "$(OutDir)map_dats.json"
+copy /Y "$(ProjectDir)zone_weather_schedule.bin" "$(OutDir)zone_weather_schedule.bin"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

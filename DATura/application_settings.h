@@ -40,7 +40,8 @@ enum LightDirectionMode
 enum SceneClockMode
 {
     SceneClockVanadiel = 0,
-    SceneClockLocalSystem = 1
+    SceneClockLocalSystem = 1,
+    SceneClockManual = 2
 };
 
 enum RenderingBackend
@@ -117,6 +118,7 @@ struct State
     // not the first catalog entry.
     int resolutionIndex = 6;
     int renderingResolutionScaleIndex = 2;
+    bool vSync = true;
     int antiAliasingIndex = 0;
     int postProcessAntiAliasingMode = 0;
     int environmentalAnimationMode = EnvironmentalAnimationSmooth;
@@ -140,6 +142,7 @@ struct State
     int lightAzimuthOffsetDegrees = 0;
     int lightElevationOffsetDegrees = 0;
     int sceneClockMode = SceneClockVanadiel;
+    int sceneClockManualMinute = 12 * 60;
     bool shadowPlayer = true;
     bool shadowNpcs = true;
     bool shadowObjects = true;

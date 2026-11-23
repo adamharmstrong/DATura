@@ -3,6 +3,7 @@
 
 import argparse
 import csv
+import hashlib
 import json
 import re
 import sqlite3
@@ -15,6 +16,8 @@ DEFAULT_FFXI_ROOT = Path(r"C:\Program Files (x86)\PlayOnline\SquareEnix\FINAL FA
 DEFAULT_ZONE_TABLE = Path(__file__).resolve().parents[1] / "DATura" / "zone_dat_table.h"
 DEFAULT_OUTPUT = Path(__file__).resolve().parent / "zone_weather_database"
 DEFAULT_SCHEDULE_SQL = Path(__file__).resolve().parents[1] / ".tmp_lsb" / "sql" / "zone_weather.sql"
+DEFAULT_RUNTIME_SCHEDULE = Path(__file__).resolve().parents[1] / "DATura" / "zone_weather_schedule.bin"
+SCHEDULE_DAYS = 2160
 
 WEATHER_IDS = {
     0: "none", 1: "sunshine", 2: "clouds", 3: "fog",
@@ -105,6 +108,58 @@ def load_zones(path):
             for zone_id in range(300)]
 
 
+def describe_generator(name, payload):
+    """Flags plus the StandardParticleSetup (opcode 0x01) link of a 0x05 record."""
+    link_type, link_name = None, ""
+    setup = u32(payload, 0x74) - 0x10
+    if 0 <= setup <= len(payload) - 0x22 and payload[setup] == 0x01:
+        link_name = fourcc(payload[setup + 0x0C:setup + 0x10])
+        link_type = payload[setup + 0x21]
+    return {
+        "name": name,
+        "flags": payload[0x69],
+        "more_flags": payload[0x6B],
+        # PS2 YmGenerater::GetGenerateNum emits (count & 0x1FF) + 1.
+        "count_byte": payload[0x68],
+        "link_type": link_type,
+        "link_name": link_name,
+    }
+
+
+LINK_TYPE_NAMES = {0x0B: "mesh/MMB", 0x0E: "sprite", 0x39: "lens", 0x3D: "sound"}
+
+
+def classify_rain_branch(item):
+    """Explain how a rain/squall branch is represented (see RAIN_AND_WEATHER docs)."""
+    generators = item["generators"]
+    autorun = [g for g in generators if g["flags"] & 0x10]
+    precipitation = [g for g in autorun if g["more_flags"] & 0x20]
+    links = sorted({LINK_TYPE_NAMES.get(g["link_type"], f"0x{g['link_type'] or 0:02X}")
+                    for g in autorun})
+    sounds = sorted({s["sound_id"] for s in item["sounds"] if not s["indoor"]})
+    sound_text = (f"outdoor loop SeWave {','.join(map(str, sounds))}" if sounds
+                  else "no outdoor loop")
+    if precipitation:
+        return ("precipitation",
+                f"{len(precipitation)} autorun weather-batched emitters "
+                f"({', '.join(links)}) render; {sound_text}")
+    if not generators:
+        return ("environment_only",
+                "no 0x05 generators: weather changes 0x2F lighting/fog and ambient sound only "
+                f"(indoor/cave branch); {sound_text}")
+    if autorun and all(g["link_type"] == 0x3D for g in autorun):
+        return ("positional_sound_only",
+                f"{len(autorun)} autorun generators emit 0x3D positional sounds, no visuals; "
+                f"not yet played by DATura; {sound_text}")
+    if autorun:
+        return ("weather_scenery_unsupported",
+                f"{len(autorun)} autorun non-precipitation generators ({', '.join(links)}) that "
+                "the PS2 YmCombineWeather constructor activates outdoors; DATura's weather pass "
+                f"draws only weather-batched emitters; {sound_text}")
+    return ("inactive_generators_only",
+            f"{len(generators)} generators, none autorun (0x69 & 0x10); {sound_text}")
+
+
 def inspect_dat(path):
     raw_names = set()
     paths = set()
@@ -125,6 +180,8 @@ def inspect_dat(path):
                     "weather_batched_generators": 0,
                     "rain_activatable_generators": 0,
                     "sound_resources": 0,
+                    "sounds": [],
+                    "generators": [],
                 })
                 if chunk_type == 0x2F:
                     item["environment_records"] += 1
@@ -142,31 +199,58 @@ def inspect_dat(path):
                     # weather generators. These are the corresponding serialized flags.
                     if (generator_flags & 0x10) and (more_flags & 0x20):
                         item["rain_activatable_generators"] += 1
+                    item["generators"].append(describe_generator(name, payload))
                 elif chunk_type == 0x3D:
                     item["sound_resources"] += 1
+                    # 0x3D weather sounds are SeSep records named by HHMM; the
+                    # SeWave ID at +8 maps to sound*/win/se/seNNN/seNNNNNN.spw.
+                    if len(payload) >= 12:
+                        item["sounds"].append({
+                            "name": name,
+                            "sound_id": u32(payload, 8),
+                            "indoor": len(lower) > index + 2 and lower[index + 2] == "indo",
+                        })
     normalized = sorted({WEATHER_NAMES.get(name, f"unknown:{name}") for name in raw_names})
     for item in detail.values():
         item["environment_record_names"] = sorted(set(item["environment_record_names"]))
     return sorted(raw_names), normalized, sorted(paths), detail
 
 
-def load_schedules(path):
+def load_schedule_blobs(path):
+    """Return {zone_id: [2160 packed LSB day values]} from zone_weather.sql."""
     if not path or not path.is_file():
         return {}
-    schedules = {}
+    blobs = {}
     for zone_id, hex_blob in SCHEDULE_RE.findall(path.read_text(encoding="utf-8")):
         data = bytes.fromhex(hex_blob)
+        days = [struct.unpack_from("<H", data, offset)[0] for offset in range(0, len(data) - 1, 2)]
+        blobs[int(zone_id)] = (days + [0] * SCHEDULE_DAYS)[:SCHEDULE_DAYS]
+    return blobs
+
+
+def load_schedules(blobs):
+    schedules = {}
+    for zone_id, days in blobs.items():
         weather_ids = set()
-        for offset in range(0, len(data) - 1, 2):
-            value = struct.unpack_from("<H", data, offset)[0]
+        for value in days:
             if value:
                 weather_ids.update((value >> 10, (value >> 5) & 0x1F, value & 0x1F))
-        schedules[int(zone_id)] = sorted(weather_ids)
+        schedules[zone_id] = sorted(weather_ids)
     return schedules
 
 
-def build_rows(ffxi_root, zone_table, schedule_sql):
-    schedules = load_schedules(schedule_sql)
+def write_runtime_schedule(path, blobs):
+    """Compact schedule read by DATura's ZoneWeatherSchedule::Table."""
+    out = bytearray(b"DWSC")
+    out += struct.pack("<III", 1, len(blobs), SCHEDULE_DAYS)
+    for zone_id in sorted(blobs):
+        out += struct.pack("<I", zone_id)
+        out += struct.pack(f"<{SCHEDULE_DAYS}H", *blobs[zone_id])
+    path.write_bytes(bytes(out))
+
+
+def build_rows(ffxi_root, zone_table, schedule_blobs):
+    schedules = load_schedules(schedule_blobs)
     rows = []
     for zone in load_zones(zone_table):
         relative = zone["model_dat"]
@@ -216,7 +300,45 @@ def write_csv(path, rows):
                              "weather_details": json.dumps(row["weather_details"], separators=(",", ":"))})
 
 
-def write_sqlite(path, rows, metadata):
+def rain_branch_audit(rows):
+    audit = []
+    for row in rows:
+        for path in row["weather_paths"]:
+            raw = path.rsplit("/", 1)[-1].lower()
+            weather_type = WEATHER_NAMES.get(raw, f"unknown:{raw}")
+            if weather_type not in ("rain", "squalls"):
+                continue
+            item = row["weather_details"][path]
+            classification, cause = classify_rain_branch(item)
+            audit.append({
+                "zone_id": row["zone_id"], "zone_name": row["zone_name"],
+                "model_dat": row["model_dat"], "resource_path": path,
+                "weather_type": weather_type, "classification": classification, "cause": cause,
+                "environment_records": item["environment_records"],
+                "generators": item["particle_generators"],
+                "precipitation_generators": item["rain_activatable_generators"],
+                "outdoor_sound_ids": ";".join(str(i) for i in sorted(
+                    {s["sound_id"] for s in item["sounds"] if not s["indoor"]})),
+                "generator_summary": " ".join(
+                    f"{g['name']}:f{g['flags']:02x}/m{g['more_flags']:02x}/"
+                    f"{LINK_TYPE_NAMES.get(g['link_type'], g['link_type'])}:{g['link_name']}"
+                    for g in item["generators"]),
+            })
+    return audit
+
+
+def write_rain_audit_csv(path, rows):
+    audit = rain_branch_audit(rows)
+    if not audit:
+        return audit
+    with path.open("w", newline="", encoding="utf-8-sig") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(audit[0]))
+        writer.writeheader()
+        writer.writerows(audit)
+    return audit
+
+
+def write_sqlite(path, rows, metadata, schedule_blobs):
     if path.exists():
         path.unlink()
     db = sqlite3.connect(path)
@@ -246,6 +368,29 @@ def write_sqlite(path, rows, metadata):
                 environment_record_names TEXT NOT NULL,
                 PRIMARY KEY(zone_id, raw_group, resource_path)
             );
+            CREATE TABLE zone_weather_schedule (
+                zone_id INTEGER NOT NULL REFERENCES zones(zone_id),
+                cycle_day INTEGER NOT NULL CHECK(cycle_day BETWEEN 0 AND 2159),
+                normal_weather_id INTEGER NOT NULL REFERENCES weather_types(weather_id),
+                common_weather_id INTEGER NOT NULL REFERENCES weather_types(weather_id),
+                rare_weather_id INTEGER NOT NULL REFERENCES weather_types(weather_id),
+                PRIMARY KEY(zone_id, cycle_day)
+            ) WITHOUT ROWID;
+            CREATE TABLE zone_authored_weather_sounds (
+                zone_id INTEGER NOT NULL REFERENCES zones(zone_id),
+                resource_path TEXT NOT NULL, record_name TEXT NOT NULL,
+                indoor INTEGER NOT NULL CHECK(indoor IN (0,1)),
+                sound_id INTEGER NOT NULL, spw_path TEXT NOT NULL
+            );
+            CREATE TABLE zone_rain_branch_audit (
+                zone_id INTEGER NOT NULL REFERENCES zones(zone_id), zone_name TEXT NOT NULL,
+                model_dat TEXT NOT NULL, resource_path TEXT NOT NULL, weather_type TEXT NOT NULL,
+                classification TEXT NOT NULL, cause TEXT NOT NULL,
+                environment_records INTEGER NOT NULL, generators INTEGER NOT NULL,
+                precipitation_generators INTEGER NOT NULL, outdoor_sound_ids TEXT NOT NULL,
+                generator_summary TEXT NOT NULL,
+                PRIMARY KEY(zone_id, resource_path)
+            );
             CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE INDEX scheduled_weather_by_type ON zone_scheduled_weather(weather_id, zone_id);
             CREATE INDEX authored_weather_by_type ON zone_authored_weather(weather_type, zone_id);
@@ -269,6 +414,25 @@ def write_sqlite(path, rows, metadata):
                               item["rain_activatable_generators"], item["sound_resources"],
                               ";".join(item["environment_record_names"])))
         db.executemany("INSERT INTO zone_authored_weather VALUES (?,?,?,?,?,?,?,?,?,?,?)", links)
+        # LSB semantics: only non-zero days are entries; a day uses the most
+        # recent entry at or before it.
+        db.executemany("INSERT INTO zone_weather_schedule VALUES (?,?,?,?,?)", [
+            (zone_id, day, value >> 10, (value >> 5) & 0x1F, value & 0x1F)
+            for zone_id, days in sorted(schedule_blobs.items())
+            for day, value in enumerate(days) if value
+        ])
+        db.executemany("INSERT INTO zone_authored_weather_sounds VALUES (?,?,?,?,?,?)", [
+            (row["zone_id"], path, sound["name"], int(sound["indoor"]), sound["sound_id"],
+             f"se/se{sound['sound_id'] // 1000:03d}/se{sound['sound_id']:06d}.spw")
+            for row in rows for path in row["weather_paths"]
+            for sound in row["weather_details"][path]["sounds"]
+        ])
+        db.executemany("INSERT INTO zone_rain_branch_audit VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [
+            (a["zone_id"], a["zone_name"], a["model_dat"], a["resource_path"], a["weather_type"],
+             a["classification"], a["cause"], a["environment_records"], a["generators"],
+             a["precipitation_generators"], a["outdoor_sound_ids"], a["generator_summary"])
+            for a in rain_branch_audit(rows)
+        ])
         db.executemany("INSERT INTO metadata VALUES (?,?)", sorted(metadata.items()))
         db.commit()
     finally:
@@ -282,8 +446,11 @@ def main():
     parser.add_argument("--schedule-sql", type=Path, default=DEFAULT_SCHEDULE_SQL)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT,
                         help="output stem; .csv, .json, and .sqlite are written")
+    parser.add_argument("--runtime-schedule", type=Path, default=DEFAULT_RUNTIME_SCHEDULE,
+                        help="compact 2160-day schedule loaded by DATura at runtime")
     args = parser.parse_args()
-    rows = build_rows(args.ffxi_root, args.zone_table, args.schedule_sql)
+    schedule_blobs = load_schedule_blobs(args.schedule_sql)
+    rows = build_rows(args.ffxi_root, args.zone_table, schedule_blobs)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     metadata = {
         "scope": "FFXI retail zone IDs 0-299",
@@ -293,11 +460,21 @@ def main():
         "zone_table": "DATura/zone_dat_table.h",
         "interpretation": "scheduled types come from the 2160-day server cycle; authored types are client visuals",
     }
+    if args.schedule_sql.is_file():
+        metadata["schedule_sql_sha256"] = hashlib.sha256(args.schedule_sql.read_bytes()).hexdigest()
     write_csv(args.output.with_suffix(".csv"), rows)
     args.output.with_suffix(".json").write_text(
         json.dumps({"metadata": metadata, "zones": rows}, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8")
-    write_sqlite(args.output.with_suffix(".sqlite"), rows, metadata)
+    write_sqlite(args.output.with_suffix(".sqlite"), rows, metadata, schedule_blobs)
+    audit_path = args.output.parent / "zone_rain_branch_audit.csv"
+    audit = write_rain_audit_csv(audit_path, rows)
+    print("rain/squall branches=" + str(len(audit)) + " " + ", ".join(
+        f"{name}:{count}" for name, count in sorted(Counter(a["classification"] for a in audit).items())))
+    print(f"wrote {audit_path}")
+    if schedule_blobs:
+        write_runtime_schedule(args.runtime_schedule, schedule_blobs)
+        print(f"wrote {args.runtime_schedule}")
     counts = Counter(r["asset_status"] for r in rows)
     schedule_counts = Counter(r["schedule_status"] for r in rows)
     types = Counter(t for r in rows for t in r["scheduled_weather_types"])

@@ -34,7 +34,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>comdlg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>comdlg32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
@@ -58,6 +58,8 @@
     <ClCompile Include="..\DATura\d3d_math.cpp" />
     <ClCompile Include="..\DATura\zone_sky_dome.cpp" />
     <ClCompile Include="..\DATura\zone_weather_particles.cpp" />
+    <ClCompile Include="..\DATura\zone_weather_audio.cpp" />
+    <ClCompile Include="..\DATura\bgw_player.cpp" />
     <ClCompile Include="..\DATura\zone_environment_state.cpp" />
     <ClCompile Include="..\DATura\zone_environment_animation.cpp" />
     <ClCompile Include="..\DATura\zone_environment_render_state.cpp" />

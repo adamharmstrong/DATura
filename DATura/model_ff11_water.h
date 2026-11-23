@@ -121,6 +121,16 @@ inline bool IsSurfaceBatch(const char *objectName, const char *materialName)
         (object == "allsea" || object == "lowsea" || object == "sea0" ||
          object == "1sea"))
         return true;
+    // Confirmed in installed Bastok Markets and Port Bastok: the canal and
+    // harbor sheets are additive, layered over untextured vertex-colored base
+    // sheets placed by sibling generators with GS alpha 0x44. Without the base
+    // layer the surface adds onto whatever is behind it and reads as black.
+    if (material.empty() &&
+        (object == "allcol" || object == "lowcol" || object == "rvcol" || object == "col1"))
+        return true;
+    // Port Bastok's two plaza fountains (t_ba/effe/hun1, hun2): basin, spout
+    // and overflow meshes all use the "funsui" (fountain) material group.
+    if (material.compare(0, 8, "funsui  ") == 0) return true;
     return material.empty() && (object == "mizu" || object == "funmiz");
 }
 
@@ -153,6 +163,8 @@ inline std::shared_ptr<ZoneWater::Surface> BuildSurface(const ff11GeneratorRecor
     surface->resource = generator.linkedResource;
     surface->generator = generator.name;
     surface->sourceOffset = generator.sourceDataOffset;
+    for (int axis = 0; axis < 3; ++axis)
+        surface->placement[axis] = generator.spawnPosition[axis];
     // A collapsed axis has no determinant sign. After a later scene mirror,
     // culling cannot safely infer its facing from the authored scale product.
     // Preserve these valid planar sheets by rendering both faces.

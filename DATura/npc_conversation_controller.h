@@ -45,11 +45,15 @@ struct Presentation
 };
 
 void Reset(State& state);
-void BeginFallback(State& state, const std::string& dialogue);
+// splitLines=false keeps a multi-line retail message in one window.
+void BeginFallback(State& state, const std::string& dialogue, bool splitLines = true);
 bool HasFallbackFrame(const State& state);
 const std::string* CurrentFallbackFrame(const State& state);
 bool AdvanceFallback(State& state);
 Presentation PresentNext(State& state);
+// True when the loaded event would show a message or choice before ending.
+// Runs on a copy of the runtime, so the conversation itself does not move.
+bool WillPresent(const State& state);
 void DismissMessage(State& state);
 void SelectChoice(State& state, std::uint32_t value);
 }

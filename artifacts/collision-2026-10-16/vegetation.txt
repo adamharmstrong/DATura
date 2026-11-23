@@ -1,0 +1,7 @@
+﻿C:\Program Files (x86)\PlayOnline\SquareEnix\FINAL FANTASY XI/ROM/0/90.DAT: meshes=32172 wind=12294 grass=1833 fixed roots=63606 grass placements=1833 flowers=7735 shrubs=0 checked static placements=12233 authored triangles=479141 authored collision meshes=94268
+C:\Program Files (x86)\PlayOnline\SquareEnix\FINAL FANTASY XI/ROM/0/115.DAT: meshes=33189 wind=16114 grass=3220 fixed roots=241830 grass placements=3220 flowers=0 shrubs=0 checked static placements=11911 authored triangles=556974 authored collision meshes=109498
+C:\Program Files (x86)\PlayOnline\SquareEnix\FINAL FANTASY XI/ROM/0/120.DAT: meshes=17322 wind=0 grass=0 fixed roots=0 grass placements=0 flowers=0 shrubs=5656 checked static placements=8197 authored triangles=429001 authored collision meshes=70999
+C:\Program Files (x86)\PlayOnline\SquareEnix\FINAL FANTASY XI/ROM/1/43.DAT: meshes=1129 wind=0 grass=0 fixed roots=0 grass placements=0 flowers=0 shrubs=0 checked static placements=758 authored triangles=44865 authored collision meshes=3544
+C:\Program Files (x86)\PlayOnline\SquareEnix\FINAL FANTASY XI/ROM3/0/23.DAT: meshes=7146 wind=2032 grass=470 fixed roots=258030 grass placements=470 flowers=156 shrubs=0 checked static placements=3798 authored triangles=190133 authored collision meshes=31089
+C:\Program Files (x86)\PlayOnline\SquareEnix\FINAL FANTASY XI/ROM/1/37.DAT: meshes=1164 wind=0 grass=0 fixed roots=0 grass placements=0 flowers=0 shrubs=0 checked static placements=645 authored triangles=73241 authored collision meshes=3110
+PASS: vegetation checks

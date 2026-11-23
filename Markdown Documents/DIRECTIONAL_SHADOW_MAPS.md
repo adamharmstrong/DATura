@@ -49,7 +49,9 @@ Markets comparison; the first argument is the capture directory.
 
 The local v145 and v143 linkers encountered an MSPDB140.DLL version mismatch.
 Validation builds used v143 with debug information disabled via an artifact-only
-MSBuild import; the production project settings were preserved.
+MSBuild import; the production project settings were preserved. As of 2026-10-16
+the mismatch no longer reproduces, and symbol builds link normally
+(`artifacts/lnk1101-check/`).
 
 ## Receiver selection and stacked terrain
 

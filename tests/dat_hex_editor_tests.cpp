@@ -3,6 +3,7 @@
 #include <stdexcept>
 #define CHECK(x) do {if(!(x)) throw std::runtime_error(#x);} while(0)
 static int pickerCalls=0;
+static std::wstring pickedSaveFixture;
 struct RtfInput {std::string text;size_t position=0;};
 static DWORD CALLBACK ReadRtf(DWORD_PTR cookie,LPBYTE buffer,LONG count,LONG* actual) {
     auto& input=*reinterpret_cast<RtfInput*>(cookie);size_t take=(std::min)(size_t(count),input.text.size()-input.position);
@@ -62,6 +63,68 @@ int main() {
         CHECK(Crc32(Bytes({'1','2','3','4','5','6','7','8','9'}))==0xcbf43926);
         CHECK(UnsignedValue(Bytes({1,2,3,4}),4,false)==0x04030201);
         CHECK(UnsignedValue(Bytes({1,2,3,4}),4,true)==0x01020304);
+        const auto install=dir/L"install";
+        std::filesystem::create_directories(install/L"ROM");
+        const std::vector<std::wstring> roots{install.wstring()};
+        const auto installed=install/L"ROM"/L"protected.DAT";
+        {NewCopy output(installed.wstring());CHECK(output.Valid()&&output.Write("ABAB",4)&&output.Commit());}
+        const auto hardLink=dir/L"protected-link.DAT";
+        const auto otherInstalled=install/L"ROM"/L"other.DAT";
+        {NewCopy output(otherInstalled.wstring());CHECK(output.Valid()&&output.Write("ABAB",4)&&output.Commit());}
+        CHECK(CreateHardLinkW(hardLink.c_str(),otherInstalled.c_str(),nullptr));
+        Document official;CHECK(official.Open(installed.wstring(),roots));
+        CHECK(official.Splice(0,1,Bytes({'Z','Z'})));
+        CHECK(!official.CanSave(roots)&&!official.SaveWorkingCopy(roots));
+        CHECK(!official.SaveCopy(installed.wstring()));
+        Document linked;CHECK(linked.Open(hardLink.wstring(),roots));
+        CHECK(!linked.CanSave(roots)&&!linked.SaveWorkingCopy(roots));
+        CHECK(!official.SaveCopy(hardLink.wstring()));
+        const auto stream=installed.wstring()+L":hidden";
+        CHECK(!official.SaveCopy(stream));
+        const auto junction=dir/L"install-alias";
+        const auto junctionCommand=L"cmd.exe /d /c mklink /J \""+junction.wstring()+L"\" \""+install.wstring()+L"\" >nul";
+        CHECK(_wsystem(junctionCommand.c_str())==0);
+        const auto relocatedRom=dir/L"relocated-rom";
+        std::filesystem::create_directory(relocatedRom);
+        const auto relocatedDat=relocatedRom/L"relocated.DAT";
+        {NewCopy output(relocatedDat.wstring());CHECK(output.Valid()&&output.Write("ROM",3)&&output.Commit());}
+        const auto romCommand=L"cmd.exe /d /c mklink /J \""+(install/L"ROM2").wstring()+L"\" \""+relocatedRom.wstring()+L"\" >nul";
+        CHECK(_wsystem(romCommand.c_str())==0);
+        Document relocated;CHECK(relocated.Open(relocatedDat.wstring(),roots));
+        CHECK(!relocated.CanSave(roots)&&!relocated.SaveWorkingCopy(roots));
+        Document viaJunction;CHECK(viaJunction.Open((junction/L"ROM"/L"protected.DAT").wstring(),roots));
+        CHECK(!viaJunction.CanSave(roots)&&!viaJunction.SaveWorkingCopy(roots));
+        CHECK(!official.SaveCopy((junction/L"ROM"/L"protected.DAT").wstring()));
+        CHECK(ReadFileBytes(installed)==Bytes({'A','B','A','B'}));
+        const auto working=dir/L"working.DAT";
+        CHECK(official.SaveCopy(working.wstring()));
+        Document work;CHECK(work.Open(working.wstring(),roots)&&work.CanSave(roots));
+        CHECK(work.Splice(5,0,Bytes({'!'})));
+        CHECK(work.Splice(1,2,{}));
+        CHECK(work.Read(0,4,bytes)&&bytes==Bytes({'Z','A','B','!'}));
+        CHECK(work.Undo()&&work.size==6);
+        CHECK(work.Redo()&&work.size==4);
+        bool spliceFailed=false,spliceLimit=false;
+        auto splicePlan=work.PrepareReplaceAll(Bytes({'A','B'}),Bytes({'X','Y','Z'}),
+            []{return false;},[](uint64_t){},spliceFailed,spliceLimit);
+        CHECK(splicePlan&&splicePlan->count==1&&work.CommitReplacement(std::move(*splicePlan)));
+        CHECK(work.SaveWorkingCopy(roots)&&!work.Dirty());
+        CHECK(ReadFileBytes(working)==Bytes({'Z','X','Y','Z','!'}));
+        CHECK(work.Undo()&&work.Dirty()&&work.size==4);
+        CHECK(work.Redo()&&!work.Dirty());
+        CHECK(work.Splice(0,work.size,{})&&work.SaveWorkingCopy(roots));
+        CHECK(ReadFileBytes(working).empty());
+        CHECK(work.Splice(0,0,Bytes({'R'})));
+        auto stagedWorking=work.PrepareSave(Document::SaveMode::Working,{},roots,
+            []{return false;},[](uint64_t){});
+        CHECK(stagedWorking);
+        auto changedRoots=roots;changedRoots.push_back(dir.wstring());
+        CHECK(!work.CommitSave(std::move(stagedWorking),changedRoots));
+        CHECK(ReadFileBytes(working).empty());
+        CHECK(work.Undo()&&!work.Dirty());
+        CHECK(work.Undo()&&work.size==5);
+        CHECK(ReadFileBytes(installed)==Bytes({'A','B','A','B'}));
+
         auto source=dir/L"original.DAT",copy=dir/L"copy.DAT",existing=dir/L"existing.DAT";
         Bytes original(65540,0);original[100]=0x82;original[101]=0xa0;
         original[65535]=0xaa;original[65536]=0xbb;original[65537]=0xcc;
@@ -104,13 +167,32 @@ int main() {
         CHECK(!cancelled&&!failed&&!limit&&!batch.Dirty());
         auto stale=batch.PrepareReplaceAll(Bytes({0xaa,0xbb,0xcc}),Bytes({1,2,3}),[]{return false;},[](uint64_t){},failed,limit);
         CHECK(stale);CHECK(batch.Overwrite(0,Bytes({9})));CHECK(!batch.CommitReplacement(std::move(*stale)));CHECK(batch.Undo()&&!batch.Dirty());
-        CHECK(!batch.PrepareReplaceAll(Bytes({1}),Bytes({1,2}),[]{return false;},[](uint64_t){},failed,limit)&&failed);
+        auto absent=batch.PrepareReplaceAll(Bytes({1}),Bytes({1,2}),[]{return false;},[](uint64_t){},failed,limit);
+        CHECK(absent&&!failed&&!limit&&absent->count==0);
         auto unchanged=batch.PrepareReplaceAll(Bytes({0}),Bytes({0}),[]{return false;},[](uint64_t){},failed,limit);
         CHECK(unchanged&&unchanged->count==0);CHECK(batch.CommitReplacement(std::move(*unchanged))&&!batch.Dirty());
         auto largePath=dir/L"large.DAT";{Bytes zeros(1048592,0);NewCopy output(largePath.wstring());CHECK(output.Write(zeros.data(),zeros.size()));CHECK(output.Commit());}
         Document large;CHECK(large.Open(largePath.wstring()));
-        CHECK(!large.PrepareReplaceAll(Bytes({0}),Bytes({1}),[]{return false;},[](uint64_t){},failed,limit)&&limit&&!failed&&!large.Dirty());
-        CHECK(!large.PrepareReplaceAll(Bytes(16,0),Bytes(16,1),[]{return false;},[](uint64_t){},failed,limit)&&limit&&!failed&&!large.Dirty());
+        auto dense=large.PrepareReplaceAll(Bytes({0}),Bytes({1,2}),[]{return false;},[](uint64_t){},failed,limit);
+        CHECK(dense&&!failed&&!limit&&dense->count==1048592&&!large.Dirty());
+        CHECK(large.CommitReplacement(std::move(*dense))&&large.size==2097184);
+        CHECK(large.Read(65535,5,bytes)&&bytes==Bytes({2,1,2,1,2}));
+        CHECK(large.Splice(65536,3,Bytes({0xff})));
+        CHECK(large.Undo()&&large.Read(65535,5,bytes)&&bytes==Bytes({2,1,2,1,2}));
+        CHECK(large.Undo()&&!large.Dirty()&&large.size==1048592);
+        CHECK(large.Redo()&&large.Read(2097180,4,bytes)&&bytes==Bytes({1,2,1,2}));
+        CHECK(large.Undo());
+        auto cancellable=dir/L"cancel-save.DAT";
+        bool stop=false;
+        CHECK(!large.PrepareSave(Document::SaveMode::Copy,cancellable.wstring(),roots,
+            [&]{return stop;},[&](uint64_t written){CHECK(written==65536);stop=true;}));
+        CHECK(!std::filesystem::exists(cancellable));
+        auto savePlan=large.PrepareSave(Document::SaveMode::Copy,cancellable.wstring(),roots,
+            []{return false;},[](uint64_t){});
+        CHECK(savePlan);
+        CHECK(large.Splice(0,1,Bytes({9})));
+        CHECK(!large.CommitSave(std::move(savePlan),roots)&&!std::filesystem::exists(cancellable));
+        CHECK(large.Undo());
         CHECK(!doc.Find(Bytes({0xaa,0xbb,0xcc}),65534,[]{return false;},failed,65536)&&!failed);
         CHECK(doc.Find(Bytes({0xaa,0xbb,0xcc}),65534,[]{return false;},failed,65539)==65535);
         offsets.clear();CHECK(doc.ScanMatches(Bytes({0,0}),[]{return false;},[&](uint64_t at){offsets.push_back(at);return true;},[](uint64_t){},failed,3,5));
@@ -119,7 +201,7 @@ int main() {
         auto bounded=batch.PrepareReplaceAll(Bytes({0,0}),Bytes({9,8}),[]{return false;},[](uint64_t){},failed,limit,3,5);
         CHECK(bounded&&!failed&&bounded->count==2);CHECK(batch.CommitReplacement(std::move(*bounded)));
         CHECK(batch.Read(2,7,bytes)&&bytes==Bytes({0,9,8,9,8,0,0}));CHECK(batch.Undo()&&!batch.Dirty());
-        // Every save must be a new file, even with an unmodified document.
+        // Save Copy requires a new filename, including for an unmodified document.
         CHECK(!doc.SaveCopy(source.wstring()));CHECK(ReadFileBytes(source)==original);
         Handle writer(CreateFileW(source.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr));
         CHECK(writer.value==INVALID_HANDLE_VALUE);
@@ -473,6 +555,13 @@ int main() {
         CHECK(end>start);
         CHECK(Text(h,Inspector).find(L"UInt8")!=std::wstring::npos);
         CHECK(s->text.find(L"AA")!=std::wstring::npos);
+        Select(h,*s,0,1);
+        SendMessageW(h,WM_VSCROLL,SB_LINEDOWN,reinterpret_cast<LPARAM>(GetDlgItem(h,ScrollRows)));
+        CHECK(s->offset==s->rowBytes&&s->selection==0);
+        SendMessageW(h,WM_VSCROLL,SB_BOTTOM,reinterpret_cast<LPARAM>(GetDlgItem(h,ScrollRows)));
+        CHECK(s->offset==LastTopRow(*s)*s->rowBytes&&s->selection==0);
+        SendMessageW(h,WM_VSCROLL,SB_TOP,reinterpret_cast<LPARAM>(GetDlgItem(h,ScrollRows)));
+        CHECK(s->offset==0);
         s->offset=65536;Refresh(h,*s);CHECK(!IsWindowEnabled(GetDlgItem(h,Next)));
         CHECK(IsWindowEnabled(GetDlgItem(h,Previous)));
         Select(h,*s,0,1);SetDlgItemTextW(h,SearchText,L"AA BB CC");Command(h,*s,Find);
@@ -517,8 +606,18 @@ int main() {
         Select(h,*s,0,2);CHECK(PasteHex(h,*s,L"12 34"));CHECK(s->document->Read(0,2,bytes)&&bytes==Bytes({0x12,0x34}));
         Command(h,*s,Undo);CHECK(s->document->Read(0,2,bytes)&&bytes==Bytes({0xfe,0xff}));
         Select(h,*s,65535,1);SendDlgItemMessageW(h,Dump,WM_KEYDOWN,VK_RIGHT,0);
-        CHECK(s->selection==65536&&s->offset==65536);
-        SendDlgItemMessageW(h,Dump,WM_KEYDOWN,VK_UP,0);CHECK(s->selection==65536-s->rowBytes&&s->offset==0);
+        CHECK(s->selection==65536&&s->offset<=65536&&65536<s->offset+VisibleBytes(*s));
+        SendDlgItemMessageW(h,Dump,WM_KEYDOWN,VK_UP,0);CHECK(s->selection==65536-s->rowBytes&&s->offset<=s->selection);
+        const auto beforeSplice=s->document->size;
+        Command(h,*s,FileEnd);
+        SetDlgItemTextW(h,PatchText,L"DE AD");Command(h,*s,InsertBytes);
+        CHECK(s->document->size==beforeSplice+2&&s->length==2);
+        SendDlgItemMessageW(h,Dump,WM_KEYDOWN,VK_DELETE,0);
+        CHECK(s->document->size==beforeSplice&&s->length==0);
+        Command(h,*s,Undo);CHECK(s->document->size==beforeSplice+2);
+        Command(h,*s,Undo);CHECK(s->document->size==beforeSplice);
+        Command(h,*s,Redo);CHECK(s->document->size==beforeSplice+2);
+        Command(h,*s,Undo);
         auto complete=[&] {
             CHECK(s->job);
             for(int i=0;i<500&&!s->job->done.load();++i)std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -533,8 +632,8 @@ int main() {
         CHECK(SearchPattern(h,L"A\x3042",bytes)&&bytes==Bytes({0,0x41,0x30,0x42}));
         CHECK(!SearchPattern(h,L"",bytes));
         Select(h,*s,65535,1);SetDlgItemTextW(h,GoText,L"+1");Command(h,*s,Go);
-        CHECK(s->selection==65536&&s->offset==65536);
-        SetDlgItemTextW(h,GoText,L"-0x10");Command(h,*s,Go);CHECK(s->selection==65520&&s->offset==0);
+        CHECK(s->selection==65536&&s->offset<=65536&&65536<s->offset+VisibleBytes(*s));
+        SetDlgItemTextW(h,GoText,L"-0x10");Command(h,*s,Go);CHECK(s->selection==65520&&s->offset<=s->selection);
         Command(h,*s,SelectToEnd);CHECK(s->selection==65520&&s->length==20);
         Select(h,*s,100,1);Command(h,*s,SelectToStart);CHECK(s->selection==0&&s->length==100);
         Command(h,*s,FileEnd);CHECK(s->selection==s->document->size&&s->length==0);
@@ -543,8 +642,9 @@ int main() {
         Command(h,*s,PreviousModified);CHECK(s->selection==1);
         SendDlgItemMessageW(h,FindMode,CB_SETCURSEL,17,0);SetDlgItemTextW(h,SearchText,L"10101010 10111011 11001100");
         Command(h,*s,Find);complete();CHECK(s->selection==65535&&s->length==3);
-        SetDlgItemTextW(h,ReplacementText,L"00000001 00000010 00000011");Command(h,*s,ReplaceMatch);
-        CHECK(s->document->Read(65535,3,bytes)&&bytes==Bytes({1,2,3}));Command(h,*s,Undo);
+        SetDlgItemTextW(h,ReplacementText,L"00000001 00000010");Command(h,*s,ReplaceMatch);
+        CHECK(s->document->size==beforeSplice-1&&s->length==2);
+        CHECK(s->document->Read(65535,2,bytes)&&bytes==Bytes({1,2}));Command(h,*s,Undo);
         SendDlgItemMessageW(h,FindMode,CB_SETCURSEL,1,0);SendDlgItemMessageW(h,Encoding,CB_SETCURSEL,2,0);Command(h,*s,Encoding);
         CHECK(s->encodingIndex==2);CHECK(SearchPattern(h,L"\x20ac\x00e9",bytes)&&bytes==Bytes({0x80,0xe9}));
         CHECK(!SearchPattern(h,L"\x3042",bytes));
@@ -588,8 +688,9 @@ int main() {
         Select(h,*s,0,16);CHECK(Text(h,Inspector).find(L"UInt24")!=std::wstring::npos);
         CHECK(Text(h,Inspector).find(L"GUID (Windows layout)")!=std::wstring::npos);
         SetDlgItemTextW(h,SearchText,L"AA BB CC");SetDlgItemTextW(h,ReplacementText,L"01 02 03");
+        SetDlgItemTextW(h,ReplacementText,L"");
         Command(h,*s,ReplaceAll);CHECK(!IsWindowEnabled(GetDlgItem(h,ReplaceAll)));complete();
-        CHECK(s->document->Read(65535,3,bytes)&&bytes==Bytes({1,2,3}));
+        CHECK(s->document->size==beforeSplice-3);
         CHECK(Text(h,AnalysisOutput).find(L"1 non-overlapping matches replaced")!=std::wstring::npos);
         Command(h,*s,Undo);CHECK(s->document->Read(65535,3,bytes)&&bytes==Bytes({0xaa,0xbb,0xcc}));
         Command(h,*s,ReplaceAll);Command(h,*s,Cancel);complete();
@@ -668,8 +769,111 @@ int main() {
         Command(h,*s,NextDifference);complete();CHECK(s->compareStart==0);
         CHECK(Text(h,AnalysisOutput).find(L"No further differences")!=std::wstring::npos);
         CHECK(ReadFileBytes(source)==original);
+        s->installRoots=roots;s->changesSaved=true;
+        s->root=install.wstring();
+        pickedSaveFixture=installed.wstring();
+        s->pickDatFile=[](HWND,const std::wstring&,const wchar_t*,std::wstring& output) {
+            output=pickedSaveFixture;return true;
+        };
+        Command(h,*s,Open);CHECK(s->document->Splice(0,1,Bytes({'?'})));Refresh(h,*s);
+        CHECK(!IsWindowEnabled(GetDlgItem(h,SaveWorking))&&IsWindowEnabled(GetDlgItem(h,SaveCopy)));
+        Command(h,*s,SaveWorking);CHECK(ReadFileBytes(installed)==Bytes({'A','B','A','B'}));
+        s->changesSaved=true;
+        pickedSaveFixture=working.wstring();
+        Command(h,*s,Open);
+        SetDlgItemTextW(h,PatchText,L"43 44");Command(h,*s,InsertBytes);
+        CHECK(IsWindowEnabled(GetDlgItem(h,SaveWorking)));Command(h,*s,SaveWorking);complete();
+        CHECK(!IsWindowEnabled(GetDlgItem(h,SaveWorking))&&ReadFileBytes(working)==Bytes({'C','D'}));
+        Select(h,*s,0,1);
+        SendDlgItemMessageW(h,Dump,WM_KEYDOWN,VK_INSERT,0);
+        CHECK(s->insertMode);
+        SendDlgItemMessageW(h,Dump,WM_CHAR,L'A',0);
+        CHECK(s->document->size==2);
+        SendDlgItemMessageW(h,Dump,WM_CHAR,L'B',0);
+        CHECK(s->selection==1&&s->document->Read(0,3,bytes)&&bytes==Bytes({0xab,'C','D'}));
+        Command(h,*s,Undo);CHECK(s->document->size==2);
+        Command(h,*s,Redo);CHECK(s->document->size==3);
+        Command(h,*s,FileEnd);
+        SetDlgItemTextW(h,PatchText,L"12 34");SetDlgItemTextW(h,PatternLength,L"5");
+        Command(h,*s,InsertPattern);
+        CHECK(s->document->Read(3,5,bytes)&&bytes==Bytes({0x12,0x34,0x12,0x34,0x12}));
+        Command(h,*s,Undo);
+        size_t decoded=0;
+        while(decoded<s->positions.size()&&(!s->textPositions[decoded]||s->positions[decoded]!=1))++decoded;
+        CHECK(decoded<s->positions.size());
+        SendDlgItemMessageW(h,Dump,EM_SETSEL,decoded,decoded);MouseSelection(h,*s);
+        CHECK(s->textColumn);
+        SendDlgItemMessageW(h,Dump,WM_CHAR,0x3042,0);
+        CHECK(s->document->Read(1,2,bytes)&&bytes==Bytes({0x82,0xa0}));
+        Command(h,*s,Undo);CHECK(s->document->size==3);
+        SendDlgItemMessageW(h,Dump,WM_KEYDOWN,VK_INSERT,0);CHECK(!s->insertMode);
+        Select(h,*s,1,1);
+        SendDlgItemMessageW(h,Dump,WM_CHAR,L'Z',0);
+        CHECK(s->document->Read(0,3,bytes)&&bytes==Bytes({0xab,'Z','D'}));
+        Select(h,*s,1,2);CHECK(PasteBytes(h,*s,Bytes({1,2}),true));
+        CHECK(s->document->Read(0,5,bytes)&&bytes==Bytes({0xab,1,2,'Z','D'}));
+        Command(h,*s,Undo);CHECK(s->document->size==3);
+        Select(h,*s,1,2);
+        CutSelection(h,*s,[](HWND,const std::wstring& text){CHECK(text==L"5A 44");return true;});
+        CHECK(s->document->size==1);
+        Command(h,*s,Undo);
+        CHECK(s->document->Read(0,3,bytes)&&bytes==Bytes({0xab,'Z','D'}));
         DestroyWindow(h);s.reset();
-        std::cout<<"DAT hex editor: parsing, paging, search, inspector, edits, direct typing, paste, bookmarks, CRC-32/SHA-256, comparison, binary exports, undo/redo, copy-only saves, aliases, failed-save cleanup, and creation race passed.\n";
+        Workspace workspace;workspace.root=install.wstring();workspace.roots=roots;
+        Win32ToolWindow::WideSpec workspaceSpec{WorkspaceProcedure,L"DatHexWorkspaceTest",L"Workspace test",1180,794};
+        workspaceSpec.createParameter=&workspace;
+        HWND host=Win32ToolWindow::Create(nullptr,workspaceSpec);CHECK(host&&workspace.tabs.size()==1);
+        SendMessageW(host,WM_COMMAND,NewDocument,0);
+        CHECK(workspace.tabs.size()==1&&workspace.active==0);
+        const auto draftView=workspace.tabs[0].view;
+        auto& draft=*ViewState(draftView);
+        CHECK(draft.document->Untitled()&&draft.edit&&draft.insertMode);
+        CHECK(IsWindowEnabled(GetDlgItem(draftView,SaveWorking)));
+        CHECK(draft.document->Splice(0,0,Bytes({'D','A','T'})));
+        Select(draftView,draft,2,1);Refresh(draftView,draft);
+        CHECK(workspace.tabs[0].label==L"Untitled 1 *");
+        CHECK(!draft.document->SaveUntitled(installed.wstring(),roots));
+        CHECK(draft.document->Untitled()&&ReadFileBytes(installed)==Bytes({'A','B','A','B'}));
+        auto draftPath=dir/L"new-document.DAT";
+        CHECK(draft.document->SaveUntitled(draftPath.wstring(),roots));
+        draft.canSave=draft.document->CanSave(roots);Refresh(draftView,draft);
+        CHECK(draft.canSave&&workspace.tabs[0].label==L"new-document.DAT");
+        CHECK(draft.document->CanUndo()&&!draft.document->Dirty());
+        draft.pickDatFile=[](HWND,const std::wstring&,const wchar_t*,std::wstring& output) {
+            output=pickedSaveFixture;return true;
+        };
+        pickedSaveFixture=source.wstring();Command(draftView,draft,Open);
+        CHECK(workspace.tabs.size()==2&&workspace.active==1);
+        const auto otherView=workspace.tabs[1].view;
+        auto& other=*ViewState(otherView);
+        Select(otherView,other,65520,1);
+        const auto otherScroll=other.offset;
+        SendMessageW(host,SwitchDocument,0,0);
+        CHECK(workspace.active==0&&draft.selection==2&&draft.document->CanUndo());
+        SendMessageW(host,SwitchDocument,0,0);
+        CHECK(workspace.active==1&&other.selection==65520&&other.offset==otherScroll);
+        SendMessageW(host,WM_COMMAND,CloseDocument,0);
+        CHECK(workspace.tabs.size()==1&&workspace.active==0&&workspace.tabs[0].view==draftView);
+        Command(draftView,draft,Undo);
+        CHECK(draft.document->size==0&&draft.document->Dirty());
+        Command(draftView,draft,Redo);
+        CHECK(draft.document->size==3&&!draft.document->Dirty());
+        CHECK(draft.document->Splice(3,0,Bytes({'!'})));
+        Command(draftView,draft,SaveWorking);
+        CHECK(draft.job);
+        Command(draftView,draft,Cancel);
+        for(int i=0;i<500&&!draft.job->done.load();++i)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        CHECK(draft.job->done.load());SendMessageW(draftView,WM_TIMER,1,0);
+        CHECK(!draft.job&&draft.document->Dirty()&&ReadFileBytes(draftPath)==Bytes({'D','A','T'}));
+        Command(draftView,draft,SaveWorking);
+        CHECK(draft.job);
+        for(int i=0;i<500&&!draft.job->done.load();++i)std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        CHECK(draft.job->done.load());SendMessageW(draftView,WM_TIMER,1,0);
+        CHECK(!draft.job&&!draft.document->Dirty());
+        CHECK(ReadFileBytes(draftPath)==Bytes({'D','A','T','!'}));
+        SendMessageW(host,WM_CLOSE,0,0);CHECK(!IsWindow(host));
+
+        std::cout<<"DAT hex editor: parsing, continuous scrolling, search, inspector, edits, direct typing, paste, bookmarks, CRC-32/SHA-256, comparison, binary exports, structural undo/redo, working-copy saves, installed-file protection, aliases, failed-save cleanup, and creation race passed.\n";
         // Test artifacts are retained for inspection; every fixture lives in a new folder.
         return 0;
     } catch(const std::exception& error) {std::cerr<<error.what()<<"\n";return 1;}

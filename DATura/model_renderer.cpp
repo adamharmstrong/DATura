@@ -623,6 +623,20 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
     if (!context.device || !pModel)
         return;
     DirectionalShadowMap::Submit(context, pModel, baseWorld);
+    // Actor meshes are low-poly and lit by bright authored light; keep their
+    // lighting clamp per pixel so it does not crease along triangle edges.
+    struct ActorLightClamp
+    {
+        IDirect3DDevice9* device;
+        ActorLightClamp(IDirect3DDevice9* target, bool enabled) : device(target)
+        { D3DModelRenderState::SetActorPixelLightClamp(enabled); }
+        ~ActorLightClamp()
+        {
+            D3DModelRenderState::SetActorPixelLightClamp(false);
+            D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::diffuseSource, RendererBackend::MaterialSource::DiffuseVertex);
+            D3D9Graphics::Context(device).SetLightingField(&RendererBackend::LightingState::ambientSource, RendererBackend::MaterialSource::DiffuseVertex);
+        }
+    } actorLightClamp(context.device, !context.rendersZoneObjects);
     ModelRenderer::TextureScrollState textureAnimation;
     textureAnimation.Reset(context.device);
 
@@ -740,6 +754,10 @@ void DrawGeometry(const Context& context, noesisModel_t* pModel,
             const bool aWater = pModel->submeshes[a.index].water != nullptr;
             const bool bWater = pModel->submeshes[b.index].water != nullptr;
             if (aWater != bWater) return !aWater;
+            bool aFirst = false;
+            if (aWater && ZoneWater::OrderStackedLayers(*pModel->submeshes[a.index].water,
+                    *pModel->submeshes[b.index].water, aFirst))
+                return aFirst;
             return a.distanceSq > b.distanceSq;
         });
 

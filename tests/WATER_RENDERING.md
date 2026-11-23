@@ -26,13 +26,14 @@ Captures deliberately isolate model rendering without sky, weather or UI. They e
 
 ## Validation record
 
-Validated on 2026-09-09 against the local retail installation and desktop D3D9 device:
+Validated on 2026-09-09 (Bastok rows updated 2026-10-22 after admitting base color sheets and Port Bastok fountains) against the local retail installation and desktop D3D9 device:
 
 | Fixture | Water placements | Water submeshes | Pixels changed by enabling water |
 | --- | ---: | ---: | ---: |
 | East Ronfaure, `ROM/0/121.DAT` | 44 | 44 | 39,807 |
 | Valkurm Dunes, `ROM/0/102.DAT` | 11 | 22 | 168,439 |
-| Bastok Markets, `ROM/1/35.DAT` | 4 | 5 | 120,495 |
+| Bastok Markets, `ROM/1/35.DAT` | 8 | 9 | 117,830 |
+| Port Bastok, `ROM/1/36.DAT` | 43 | 47 | 82,830 |
 
 The complete Debug suite passed with zero failures. Actor composition and the wide-water/submerged-overlay fixture each matched their reference exactly. Synthetic flow changed 65,732 pixels; all 13,974 opaque foreground pixels remained correctly occluded. Installed river/sea frames changed with authored UV time, while the untextured fountain changed with its day/night curves. Final Valkurm captures show neither the earlier rectangular terrain overlays nor the opacity band introduced by the discarded stencil experiment.
 

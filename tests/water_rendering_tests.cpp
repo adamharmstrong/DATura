@@ -507,6 +507,26 @@ void TestWaterPolicy()
     Check(!FF11Water::IsSurfaceBatch("waterfall", "fire") &&
         FF11Water::IsSurfaceBatch("ka1", "effect  kaw1    "),
         "water classification uses verified material identity rather than name substrings");
+    Check(FF11Water::IsSurfaceBatch("col1", "") && FF11Water::IsSurfaceBatch("allcol", "") &&
+        FF11Water::IsSurfaceBatch("miz2", "funsui  miz1    ") &&
+        !FF11Water::IsSurfaceBatch("col1", "effect  abuk    ") && !FF11Water::IsSurfaceBatch("sh-n", "effect  awin    "),
+        "Bastok base color sheets and fountain water are admitted without generic effect spray");
+
+    ZoneWater::Surface base, ripples, elsewhere;
+    base.directory = ripples.directory = elsewhere.directory = "t_ba/effe/esea";
+    const float basePlacement[3] = { -8.84f, 9.87f, -104.24f };
+    std::copy(basePlacement, basePlacement + 3, base.placement);
+    std::copy(basePlacement, basePlacement + 3, ripples.placement);
+    ripples.placement[1] = 9.84f;
+    std::copy(basePlacement, basePlacement + 3, elsewhere.placement);
+    elsewhere.placement[0] = 116.0f;
+    bool baseFirst = false, rippleFirst = true, unused = false;
+    Check(ZoneWater::OrderStackedLayers(base, ripples, baseFirst) && baseFirst &&
+        ZoneWater::OrderStackedLayers(ripples, base, rippleFirst) && !rippleFirst,
+        "stacked water layers draw the deeper (+Y) sheet first regardless of camera distance");
+    Check(!ZoneWater::OrderStackedLayers(base, elsewhere, unused) &&
+        !ZoneWater::OrderStackedLayers(base, base, unused),
+        "separately placed water keeps ordinary back-to-front distance sorting");
 
     const auto savedCurves = std::move(gFF11LastKeyframeRecords);
     struct RestoreCurves
@@ -717,10 +737,10 @@ int main(int argc, char** argv)
         const InstalledFixture sea = {"valkurm", "ROM/0/102.DAT", "uma1", "umi0", "f_ki/effe/umi1", 11,
             {295, -6, -155}, {295, 3.956f, -205}, 0.12f, true, false, true, true, true, true};
         TestInstalledDat(device.device.ptr, argv[1], output, sea);
-        const InstalledFixture fountain = {"bastok-markets", "ROM/1/35.DAT", "fnmz", "funm", "t_ba/effe/funs", 4,
+        const InstalledFixture fountain = {"bastok-markets", "ROM/1/35.DAT", "fnmz", "funm", "t_ba/effe/funs", 8,
             {-276, -24, -42}, {-276, -12.93f, -68}, 0.48f, true, true, false, false, false, false};
         TestInstalledDat(device.device.ptr, argv[1], output, fountain);
-        const InstalledFixture port = {"port-bastok", "ROM/1/36.DAT", "1sea", "1sea", "t_ba/effe/esea", 1,
+        const InstalledFixture port = {"port-bastok", "ROM/1/36.DAT", "1sea", "1sea", "t_ba/effe/esea", 43,
             {18, -29, -86}, {18, -18, -130}, -0.0479998f, false, true, true, true, true, false};
         TestInstalledDat(device.device.ptr, argv[1], output, port);
     }

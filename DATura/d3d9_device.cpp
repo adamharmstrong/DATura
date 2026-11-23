@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "d3d9_device.h"
+#include "gpu_selection.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -92,7 +93,7 @@ HRESULT DrawFullscreen(IDirect3DDevice9* device, RendererBackend::Shader* vertex
     return result;
 }
 
-void BuildPresentParameters(const int width, const int height, const bool windowed,
+void BuildPresentParameters(const int width, const int height, const bool windowed, const bool vSync,
                             D3DPRESENT_PARAMETERS& outParameters)
 {
     ZeroMemory(&outParameters, sizeof(outParameters));
@@ -103,7 +104,7 @@ void BuildPresentParameters(const int width, const int height, const bool window
     outParameters.BackBufferHeight = height > 0 ? height : 720;
     outParameters.EnableAutoDepthStencil = TRUE;
     outParameters.AutoDepthStencilFormat = D3DFMT_D24S8;
-    outParameters.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+    outParameters.PresentationInterval = vSync ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE;
     // Title/nation text is rendered with GDI directly onto the completed D3D
     // frame so textures and labels are presented atomically. GetDC on a swap-
     // chain back buffer requires this flag.
@@ -178,7 +179,7 @@ InitializeResult Runtime::Initialize(const HWND window, const DisplayConfigurati
     window_ = window;
     display_ = display;
     BuildPresentParameters(display.renderWidth, display.renderHeight,
-                           !display.fullscreen, parameters_);
+                           !display.fullscreen, display.vSync, parameters_);
 
     d3d_ = Direct3DCreate9(D3D_SDK_VERSION);
     if (!d3d_)
@@ -200,10 +201,11 @@ InitializeResult Runtime::Initialize(const HWND window, const DisplayConfigurati
         { D3DDEVTYPE_REF, D3DCREATE_SOFTWARE_VERTEXPROCESSING, "REF + SW VP" },
     };
 
+    const UINT adapter = GpuSelection::ChooseD3D9Adapter(d3d_);
     for (const Attempt& attempt : attempts)
     {
         const HRESULT result = d3d_->CreateDevice(
-            D3DADAPTER_DEFAULT,
+            adapter,
             attempt.deviceType,
             window_,
             attempt.vertexProcessingFlags,
@@ -214,6 +216,7 @@ InitializeResult Runtime::Initialize(const HWND window, const DisplayConfigurati
             char message[128] = {};
             sprintf_s(message, "D3D9 device created (%s)\n", attempt.description);
             OutputDebugStringA(message);
+            GpuSelection::RecordActiveD3D9Adapter(d3d_, adapter);
             deviceLost_ = false;
             graphics_.SetDevice(device_);
             CreateMultisampleTargets();
@@ -419,7 +422,7 @@ void Runtime::Shutdown()
 
 bool Runtime::ResetWithBackBufferSize(const int width, const int height)
 {
-    BuildPresentParameters(width, height, !display_.fullscreen, parameters_);
+    BuildPresentParameters(width, height, !display_.fullscreen, display_.vSync, parameters_);
     return ResetCurrentParameters();
 }
 

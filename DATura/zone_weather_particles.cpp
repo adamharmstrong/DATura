@@ -36,8 +36,11 @@ float Hash(const unsigned int valueInput)
 
 bool Active(const ff11GeneratorRecord_t &g, const char *weatherPath)
 {
+    // A stored count of zero still emits one particle (PS2
+    // YmGenerater::GetGenerateNum uses count + 1), so it does not disable the
+    // generator; 114 snow, 2 gales, and 1 dust generator store zero.
     return weatherPath && weatherPath[0] && (g.moreFlags & 0x20) &&
-        (g.generatorFlags & 0x10) && g.particlesPerEmission &&
+        (g.generatorFlags & 0x10) &&
         ZoneEnvironmentIdentity::EnvironmentWeatherRootsMatch(g.directoryPath, weatherPath);
 }
 

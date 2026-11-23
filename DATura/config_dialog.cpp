@@ -3,6 +3,8 @@
 #include "ffxi_player_icons.h"
 #include "ffxi_stat_system.h"
 #include "ffxi_install_path.h"
+#include "zone_environment_state.h"
+#include "gpu_selection.h"
 #include <commctrl.h>
 #include <commdlg.h>
 #include <cstdio>
@@ -176,6 +178,12 @@ enum ControlId
     ,IDC_CONFIG_TRIGGER_VOLUMES = 8454
     ,IDC_CONFIG_ARRIVAL_VOLUMES = 8455
     ,IDC_CONFIG_ZONE_LINE_MARKERS = 8456
+    ,IDC_CONFIG_MANUAL_TIME = 8457
+    ,IDC_CONFIG_MANUAL_TIME_LABEL = 8458
+    ,IDC_CONFIG_VSYNC = 8459
+    ,IDC_CONFIG_GRAPHICS_DEVICE = 8460
+    ,IDC_CONFIG_GRAPHICS_DEVICE_LABEL = 8461
+    ,IDC_CONFIG_GRAPHICS_DEVICE_STATUS = 8462
 };
 
 constexpr LONG_PTR kNoConfigTab = 0;
@@ -248,6 +256,91 @@ ConfigDialog::State* GetState(const HWND window)
 {
     return reinterpret_cast<ConfigDialog::State*>(
         GetWindowLongPtrA(window, GWLP_USERDATA));
+}
+
+// Graphics Device combo: item 0 is Automatic, then one item per GPU.
+int GraphicsDeviceSelection()
+{
+    const GpuSelection::Choice choice = GpuSelection::LoadChoice();
+    const auto& adapters = GpuSelection::Adapters();
+    for (size_t index = 0; index < adapters.size(); ++index)
+        if (GpuSelection::Matches(choice, adapters[index]))
+            return static_cast<int>(index) + 1;
+    return 0;
+}
+
+void SyncGraphicsDevice(const HWND window)
+{
+    SendDlgItemMessageA(window, IDC_CONFIG_GRAPHICS_DEVICE, CB_SETCURSEL,
+        GraphicsDeviceSelection(), 0);
+    const std::string active = GpuSelection::ActiveAdapterName();
+    const std::string status = "Rendering on: " + (active.empty() ? std::string("(unknown)") : active);
+    SetDlgItemTextA(window, IDC_CONFIG_GRAPHICS_DEVICE_STATUS, status.c_str());
+}
+
+void ChangeGraphicsDevice(const HWND window)
+{
+    const int selection = static_cast<int>(SendDlgItemMessageA(
+        window, IDC_CONFIG_GRAPHICS_DEVICE, CB_GETCURSEL, 0, 0));
+    if (selection == GraphicsDeviceSelection())
+        return;
+    const auto& adapters = GpuSelection::Adapters();
+    GpuSelection::Choice choice;
+    if (selection > 0 && selection <= static_cast<int>(adapters.size()))
+    {
+        const GpuSelection::Adapter& adapter = adapters[static_cast<size_t>(selection - 1)];
+        choice.name = adapter.name;
+        choice.vendorId = adapter.vendorId;
+        choice.deviceId = adapter.deviceId;
+    }
+
+    int answer = IDNO;
+    if (GpuSelection::RequiresRestart(choice))
+    {
+        const std::string target = GpuSelection::IsAutomatic(choice) ?
+            std::string("the high-performance GPU") : choice.name;
+        const std::string message = "DATura will render on " + target +
+            " after it restarts.\n\nRestart DATura now?\n\n"
+            "Yes: restart now\nNo: switch the next time DATura starts\nCancel: keep the current device";
+        answer = MessageBoxA(window, message.c_str(), "Restart DATura to switch GPUs",
+            MB_YESNOCANCEL | MB_ICONQUESTION);
+    }
+    if (answer == IDCANCEL)
+    {
+        SyncGraphicsDevice(window);
+        return;
+    }
+    if (!GpuSelection::Apply(choice))
+        MessageBoxA(window, "The Windows graphics preference for DATura could not be saved.",
+            "Graphics Device", MB_OK | MB_ICONWARNING);
+    SyncGraphicsDevice(window);
+    if (answer == IDYES)
+    {
+        GpuSelection::RequestRestart();
+        if (const ConfigDialog::State* state = GetState(window))
+            if (state->owner)
+                PostMessageA(state->owner, WM_CLOSE, 0, 0);
+    }
+}
+
+// Refresh just the clock so timer ticks never reset other in-progress edits.
+void RefreshSceneClock(ConfigDialog::State& state)
+{
+    if (!state.window || !state.settings)
+        return;
+    const bool manual = state.settings->sceneClockMode == ApplicationSettings::SceneClockManual;
+    const HWND field = GetDlgItem(state.window, IDC_CONFIG_MANUAL_TIME);
+    SendMessageA(field, EM_SETREADONLY, manual ? FALSE : TRUE, 0);
+    if (manual && GetFocus() == field)
+        return;
+    const int minute = manual ? state.settings->sceneClockManualMinute :
+        ZoneEnvironmentState::CurrentMinuteOfDay();
+    char text[16] = {};
+    std::snprintf(text, sizeof(text), "%02d:%02d", minute / 60, minute % 60);
+    char previous[16] = {};
+    GetWindowTextA(field, previous, sizeof(previous));
+    if (std::strcmp(text, previous) != 0)
+        SetWindowTextA(field, text);
 }
 
 void Notify(ConfigDialog::State& state, const ConfigDialog::Command command, const int value = 0)
@@ -331,7 +424,7 @@ int PageContentBottom(const int categoryTab)
 {
     switch (categoryTab)
     {
-    case 0: return 620;
+    case 0: return 656;
     case 1: return 500;
     case 2: return 170;
     case 3: return 438;
@@ -552,6 +645,20 @@ void CreateControls(ConfigDialog::State& state)
     Win32PanelControls::AddPanelControl(
         window, "STATIC", "Multisample Anti-Aliasing (MSAA)", 0,
         IDC_CONFIG_ANTI_ALIASING_LABEL, 340, 190, 260, 18);
+    Win32PanelControls::AddPanelControl(window, "BUTTON", "Enable V-sync", BS_AUTOCHECKBOX,
+        IDC_CONFIG_VSYNC, 24, 186, 220, 22);
+    // Created in the General band; final positions are set with place() below.
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Graphics Device", 0,
+        IDC_CONFIG_GRAPHICS_DEVICE_LABEL, 24, 150, 156, 22);
+    const HWND graphicsDevice = Win32PanelControls::AddPanelCombo(
+        window, IDC_CONFIG_GRAPHICS_DEVICE, 188, 150, 176, 180);
+    SendMessageA(graphicsDevice, CB_ADDSTRING, 0,
+        reinterpret_cast<LPARAM>("Automatic (prefer high performance)"));
+    for (const GpuSelection::Adapter& adapter : GpuSelection::Adapters())
+        SendMessageA(graphicsDevice, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(adapter.name.c_str()));
+    SendMessageA(graphicsDevice, CB_SETDROPPEDWIDTH, 320, 0);
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Rendering on:", SS_ENDELLIPSIS,
+        IDC_CONFIG_GRAPHICS_DEVICE_STATUS, 24, 150, 340, 22);
     const HWND antiAliasing = Win32PanelControls::AddPanelCombo(
         window, IDC_CONFIG_ANTI_ALIASING, 450, 186, 170, 150);
     for (int i = 0; i < ApplicationSettings::AntiAliasingOptionCount(); ++i)
@@ -749,6 +856,12 @@ void CreateControls(ConfigDialog::State& state)
         window, IDC_CONFIG_SCENE_CLOCK, 574, 465, 158, 100);
     SendMessageA(sceneClock, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Vana'diel (Retail)"));
     SendMessageA(sceneClock, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Local System Time"));
+    SendMessageA(sceneClock, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>("Manual (Fixed)"));
+    Win32PanelControls::AddPanelControl(window, "STATIC", "Time (HH:MM, 24h)", 0,
+        IDC_CONFIG_MANUAL_TIME_LABEL, 428, 499, 138, 22);
+    const HWND manualTime = Win32PanelControls::AddPanelControl(window, "EDIT", "12:00",
+        WS_BORDER | ES_AUTOHSCROLL, IDC_CONFIG_MANUAL_TIME, 574, 495, 158, 24);
+    SendMessageA(manualTime, EM_SETLIMITTEXT, 5, 0);
     Win32PanelControls::AddPanelControl(
         window, "STATIC", "Door Interaction", 0, IDC_CONFIG_DOOR_INTERACTION_LABEL,
         428, 499, 120, 18);
@@ -898,6 +1011,10 @@ void CreateControls(ConfigDialog::State& state)
         GetDlgItem(window, IDC_CONFIG_RESOLUTION),
         GetDlgItem(window, IDC_CONFIG_RENDER_RESOLUTION),
         GetDlgItem(window, IDC_CONFIG_RENDER_RESOLUTION_LABEL),
+        GetDlgItem(window, IDC_CONFIG_VSYNC),
+        GetDlgItem(window, IDC_CONFIG_GRAPHICS_DEVICE),
+        GetDlgItem(window, IDC_CONFIG_GRAPHICS_DEVICE_LABEL),
+        GetDlgItem(window, IDC_CONFIG_GRAPHICS_DEVICE_STATUS),
         GetDlgItem(window, IDC_CONFIG_ANTI_ALIASING),
         GetDlgItem(window, IDC_CONFIG_ANTI_ALIASING_LABEL),
         GetDlgItem(window, IDC_CONFIG_POST_PROCESS_AA),
@@ -918,6 +1035,7 @@ void CreateControls(ConfigDialog::State& state)
         GetDlgItem(window, IDC_CONFIG_LIGHT_AZIMUTH),
         GetDlgItem(window, IDC_CONFIG_LIGHT_ELEVATION),
         GetDlgItem(window, IDC_CONFIG_SCENE_CLOCK),
+        GetDlgItem(window, IDC_CONFIG_MANUAL_TIME),
         GetDlgItem(window, IDC_CONFIG_DOOR_INTERACTION),
         GetDlgItem(window, IDC_CONFIG_ENV_ANIM),
         GetDlgItem(window, IDC_CONFIG_MIRROR_WORLD),
@@ -1071,6 +1189,10 @@ void CreateControls(ConfigDialog::State& state)
     place(IDC_CONFIG_RENDERING_BACKEND, 188, 374, 176, 180);
     place(IDC_CONFIG_RENDER_RESOLUTION_LABEL, 390, 306, 138, 22);
     place(IDC_CONFIG_RENDER_RESOLUTION, 536, 302, 196, 180);
+    place(IDC_CONFIG_VSYNC, 24, 414, 220, 22);
+    place(IDC_CONFIG_GRAPHICS_DEVICE_LABEL, 24, 454, 156, 22);
+    place(IDC_CONFIG_GRAPHICS_DEVICE, 188, 450, 176, 180);
+    place(IDC_CONFIG_GRAPHICS_DEVICE_STATUS, 24, 532, 340, 22);
     place(IDC_CONFIG_ANTI_ALIASING_LABEL, 390, 338, 342, 22);
     place(IDC_CONFIG_ANTI_ALIASING, 390, 360, 142, 150);
     place(IDC_CONFIG_POST_PROCESS_AA_LABEL, 390, 392, 342, 22);
@@ -1085,8 +1207,10 @@ void CreateControls(ConfigDialog::State& state)
     place(IDC_CONFIG_MOVEMENT_STYLE, 536, 492, 196, 120);
     place(IDC_CONFIG_SCENE_CLOCK_LABEL, 390, 532, 138, 22);
     place(IDC_CONFIG_SCENE_CLOCK, 536, 528, 196, 100);
-    place(IDC_CONFIG_DOOR_INTERACTION_LABEL, 390, 568, 138, 22);
-    place(IDC_CONFIG_DOOR_INTERACTION, 536, 564, 196, 100);
+    place(IDC_CONFIG_MANUAL_TIME_LABEL, 390, 568, 138, 22);
+    place(IDC_CONFIG_MANUAL_TIME, 536, 564, 196, 24);
+    place(IDC_CONFIG_DOOR_INTERACTION_LABEL, 390, 604, 138, 22);
+    place(IDC_CONFIG_DOOR_INTERACTION, 536, 600, 196, 100);
 
     // Interface: all three groups share one page instead of hiding behind
     // sub-tabs. The taller dialog leaves each group enough room to breathe.
@@ -1149,11 +1273,17 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             return -1;
         state->window = window;
         CreateControls(*state);
+        SetTimer(window, 1, 250, nullptr);
         Win32Theme::ApplyWindowTheme(window, *state->theme);
         ApplyActiveTab(*state);
         ConfigDialog::Sync(*state);
         state->categoryTab = std::clamp(state->categoryTab, 0, 5);
         UpdatePageScroll(*state, state->scrollOffsets[state->categoryTab]);
+        return 0;
+
+    case WM_TIMER:
+        if (state && wParam == 1)
+            RefreshSceneClock(*state);
         return 0;
 
     case WM_HSCROLL:
@@ -1326,12 +1456,37 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 Notify(*state, ConfigDialog::Command::LightDirectionChanged);
             }
             return 0;
+        case IDC_CONFIG_MANUAL_TIME:
+            if (HIWORD(wParam) == EN_KILLFOCUS &&
+                state->settings->sceneClockMode == ApplicationSettings::SceneClockManual)
+            {
+                char text[16] = {};
+                GetDlgItemTextA(window, IDC_CONFIG_MANUAL_TIME, text, sizeof(text));
+                const bool valid = std::strlen(text) == 5 && text[2] == ':' &&
+                    text[0] >= '0' && text[0] <= '2' &&
+                    text[1] >= '0' && text[1] <= '9' &&
+                    text[3] >= '0' && text[3] <= '5' &&
+                    text[4] >= '0' && text[4] <= '9';
+                const int hour = valid ? (text[0] - '0') * 10 + text[1] - '0' : 24;
+                if (valid && hour < 24)
+                    state->settings->sceneClockManualMinute = hour * 60 +
+                        (text[3] - '0') * 10 + text[4] - '0';
+                else
+                    MessageBoxA(window, "Enter a time from 00:00 to 23:59. The previous time will be restored.",
+                        "Invalid game time", MB_OK | MB_ICONWARNING);
+                Notify(*state, ConfigDialog::Command::SceneClockChanged);
+            }
+            return 0;
         case IDC_CONFIG_SCENE_CLOCK:
             if (HIWORD(wParam) == CBN_SELCHANGE)
             {
-                state->settings->sceneClockMode = ApplicationSettings::ClampSceneClockMode(
+                const int mode = ApplicationSettings::ClampSceneClockMode(
                     static_cast<int>(SendDlgItemMessageA(
                         window, IDC_CONFIG_SCENE_CLOCK, CB_GETCURSEL, 0, 0)));
+                if (mode == ApplicationSettings::SceneClockManual &&
+                    state->settings->sceneClockMode != ApplicationSettings::SceneClockManual)
+                    state->settings->sceneClockManualMinute = ZoneEnvironmentState::CurrentMinuteOfDay();
+                state->settings->sceneClockMode = mode;
                 Notify(*state, ConfigDialog::Command::SceneClockChanged);
             }
             return 0;
@@ -1458,6 +1613,19 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                             CB_GETCURSEL, 0, 0)));
                 Notify(*state, ConfigDialog::Command::RenderingResolutionChanged);
             }
+            return 0;
+        case IDC_CONFIG_VSYNC:
+            if (HIWORD(wParam) == BN_CLICKED)
+            {
+                state->settings->vSync = SendDlgItemMessageA(
+                    window, IDC_CONFIG_VSYNC, BM_GETCHECK, 0, 0) == BST_CHECKED;
+                Notify(*state, ConfigDialog::Command::RenderingResolutionChanged);
+            }
+            return 0;
+        case IDC_CONFIG_GRAPHICS_DEVICE:
+            // Saved immediately: the GPU is chosen by Windows at process start.
+            if (HIWORD(wParam) == CBN_SELCHANGE)
+                ChangeGraphicsDevice(window);
             return 0;
         case IDC_CONFIG_ANTI_ALIASING:
             if (HIWORD(wParam) == CBN_SELCHANGE)
@@ -1935,7 +2103,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
                 panels[0] = {14, 72, 746, 170}; titles[0] = "FFXI Installation";
                 panels[1] = {14, 176, 746, 266}; titles[1] = "Title Background";
                 panels[2] = {14, 272, 746, 454}; titles[2] = "Display";
-                panels[3] = {14, 464, 746, 620}; titles[3] = "Mode / Input";
+                panels[3] = {14, 464, 746, 656}; titles[3] = "Mode / Input";
                 panelCount = 4;
                 break;
             case 1:
@@ -2020,6 +2188,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         break;
 
     case WM_DESTROY:
+        KillTimer(window, 1);
         if (state)
         {
             EndEditing(*state);
@@ -2077,7 +2246,7 @@ void Show(State& state)
     RECT ownerRect = {};
     GetWindowRect(state.owner, &ownerRect);
     const int width = 780;
-    const int height = 700;
+    const int height = 780;
     Win32ToolWindow::Spec spec =
     {
         WindowProcedure, kWindowClassName, "DATura Config", width, height,
@@ -2214,6 +2383,7 @@ void Sync(State& state)
         ApplicationSettings::ClampLightDirectionMode(settings.lightDirectionMode), 0);
     SendDlgItemMessageA(state.window, IDC_CONFIG_SCENE_CLOCK, CB_SETCURSEL,
         ApplicationSettings::ClampSceneClockMode(settings.sceneClockMode), 0);
+    RefreshSceneClock(state);
     SendDlgItemMessageA(state.window, IDC_CONFIG_TITLE_BACKGROUND_MODE, CB_SETCURSEL,
         ApplicationSettings::ClampTitleBackgroundMode(settings.titleBackgroundMode), 0);
     SendDlgItemMessageA(state.window, IDC_CONFIG_TITLE_BACKGROUND_ZONE, CB_SETCURSEL,
@@ -2242,6 +2412,9 @@ void Sync(State& state)
         settings.resolutionIndex, 0);
     SendDlgItemMessageA(state.window, IDC_CONFIG_RENDER_RESOLUTION, CB_SETCURSEL,
         settings.renderingResolutionScaleIndex, 0);
+    SendDlgItemMessageA(state.window, IDC_CONFIG_VSYNC, BM_SETCHECK,
+        settings.vSync ? BST_CHECKED : BST_UNCHECKED, 0);
+    SyncGraphicsDevice(state.window);
     SendDlgItemMessageA(state.window, IDC_CONFIG_ANTI_ALIASING, CB_SETCURSEL,
         settings.antiAliasingIndex, 0);
     SendDlgItemMessageA(state.window, IDC_CONFIG_POST_PROCESS_AA, CB_SETCURSEL,

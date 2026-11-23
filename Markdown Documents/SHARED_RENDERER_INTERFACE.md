@@ -147,13 +147,14 @@ shared service. D3D matrix types still occur in CPU math and higher-level APIs;
 the shared transform interface itself does not depend on them. Queries and setters
 do not bind shaders, draw, or change unrelated state.
 
-Other pipeline settings, including fog setup, retain native calls in some paths.
-Swap-chain/MSAA presentation plumbing and some surface operations retain native
-bridges; this is not yet a fully portable renderer. Draw submission consumes
-configured state. Windows handles
-and HRESULT remain in the lifecycle contract; LegacyD3D9Device and NativeTexture
-are explicit temporary bridges. A second backend still needs the remaining
-pipeline-state migration before it can render the whole scene.
+Pipeline setup and MSAA/resolve operations now use shared interfaces, but many
+callers still construct the D3D9 adapter directly. Some texture bindings,
+capability queries, and surface-description access retain native bridges.
+Windows handles and HRESULT remain in the lifecycle contract; LegacyD3D9Device
+and NativeTexture are explicit temporary bridges. This is not yet a fully
+portable renderer. See [RENDERING_BACKEND_ROADMAP.md](RENDERING_BACKEND_ROADMAP.md)
+for remaining caller migration, effect portability, platform work, backend
+implementations, configuration, and validation milestones.
 
 Validation: build DATura Release/x64, then build and run
 `tests/RendererBackendTests.vcxproj`. The test covers uninitialized calls,

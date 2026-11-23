@@ -29,6 +29,18 @@ DWORD LerpColor(const unsigned int a, const unsigned int b, const float t)
     return D3DCOLOR_XRGB(r, g, bl);
 }
 
+// Data colors are already D3DCOLOR XRGB (blue in the low byte); decoding them
+// with LerpColor's packed 0x2F order would swap red and blue.
+DWORD LerpD3DColor(const DWORD a, const DWORD b, const float t)
+{
+    const int ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+    const int br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+    const int r = (int)(ar + (br - ar) * t + 0.5f);
+    const int g = (int)(ag + (bg - ag) * t + 0.5f);
+    const int bl = (int)(ab + (bb - ab) * t + 0.5f);
+    return D3DCOLOR_XRGB(r, g, bl);
+}
+
 void DecodeLightDirection(const unsigned int packed, float out[3])
 {
     out[0] = static_cast<float>(static_cast<int8_t>(packed & 0xff));
@@ -109,15 +121,15 @@ Data BlendWeatherData(const Data& from, const Data& to, const float t)
 {
     Data result = t < 0.5f ? from : to;
     result.valid = from.valid || to.valid;
-    result.modelMainLightColor = LerpColor(from.modelMainLightColor, to.modelMainLightColor, t);
-    result.modelSecondaryLightColor = LerpColor(
+    result.modelMainLightColor = LerpD3DColor(from.modelMainLightColor, to.modelMainLightColor, t);
+    result.modelSecondaryLightColor = LerpD3DColor(
         from.modelSecondaryLightColor, to.modelSecondaryLightColor, t);
-    result.modelAmbientColor = LerpColor(from.modelAmbientColor, to.modelAmbientColor, t);
+    result.modelAmbientColor = LerpD3DColor(from.modelAmbientColor, to.modelAmbientColor, t);
     result.modelLightPower = from.modelLightPower + (to.modelLightPower - from.modelLightPower) * t;
-    result.terrainMainLightColor = LerpColor(from.terrainMainLightColor, to.terrainMainLightColor, t);
-    result.terrainSecondaryLightColor = LerpColor(
+    result.terrainMainLightColor = LerpD3DColor(from.terrainMainLightColor, to.terrainMainLightColor, t);
+    result.terrainSecondaryLightColor = LerpD3DColor(
         from.terrainSecondaryLightColor, to.terrainSecondaryLightColor, t);
-    result.terrainAmbientColor = LerpColor(from.terrainAmbientColor, to.terrainAmbientColor, t);
+    result.terrainAmbientColor = LerpD3DColor(from.terrainAmbientColor, to.terrainAmbientColor, t);
     result.terrainLightPower = from.terrainLightPower +
         (to.terrainLightPower - from.terrainLightPower) * t;
     if (from.authoredLightDirection && to.authoredLightDirection)
@@ -127,8 +139,8 @@ Data BlendWeatherData(const Data& from, const Data& to, const float t)
         InterpolateDirectionVectors(from.terrainMainLightDirection,
             to.terrainMainLightDirection, t, result.terrainMainLightDirection);
     }
-    result.clearColor = LerpColor(from.clearColor, to.clearColor, t);
-    result.fogColor = LerpColor(from.fogColor, to.fogColor, t);
+    result.clearColor = LerpD3DColor(from.clearColor, to.clearColor, t);
+    result.fogColor = LerpD3DColor(from.fogColor, to.fogColor, t);
     if (from.fogFar > 0.0f && to.fogFar > 0.0f)
     {
         result.fogNear = from.fogNear + (to.fogNear - from.fogNear) * t;
@@ -141,7 +153,7 @@ Data BlendWeatherData(const Data& from, const Data& to, const float t)
         result.ringCount = to.ringCount;
         for (int ring = 0; ring < result.ringCount; ++ring)
         {
-            result.ringColors[ring] = LerpColor(from.ringColors[ring], to.ringColors[ring], t);
+            result.ringColors[ring] = LerpD3DColor(from.ringColors[ring], to.ringColors[ring], t);
             result.ringElevations[ring] = from.ringElevations[ring] +
                 (to.ringElevations[ring] - from.ringElevations[ring]) * t;
         }
@@ -228,8 +240,11 @@ void Update(Data &state, Cache &cache, int &weatherIndex,
     {
         state = {};
         cache.weatherGroups.clear();
+        cache.dirty = true;
         cache.cachedMinute = -1;
         cache.cachedWeatherIndex = -1;
+        // A blend started in a previous zone must not resume when records return.
+        cache.transitioningWeather = false;
         return;
     }
 

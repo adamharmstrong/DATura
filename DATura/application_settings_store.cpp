@@ -154,6 +154,10 @@ const char* RegistryKey()
 
 void Load(ApplicationSettings::State& settings)
 {
+    settings.sceneClockMode = ApplicationSettings::ClampSceneClockMode(
+        static_cast<int>(ReadDword("SceneClockMode", ApplicationSettings::SceneClockVanadiel)));
+    const DWORD manualMinute = ReadDword("SceneClockManualMinute", 720);
+    settings.sceneClockManualMinute = manualMinute < 1440 ? static_cast<int>(manualMinute) : 720;
     settings.enableHdTextures = ReadDword(kEnableHdTexturesValue, 0) != 0;
     settings.hdTextureFolder = ReadString(kHdTextureFolderValue);
     settings.enablePbr = ReadDword(kEnablePbrValue, 0) != 0;
@@ -168,6 +172,7 @@ void Load(ApplicationSettings::State& settings)
     settings.showZoneArrivalVolumes = ReadDword("ShowZoneArrivalVolumes", 0) != 0;
     settings.showZoneLineMarkers = ReadDword("ShowZoneLineMarkers", 1) != 0;
     settings.invertBumpMapping = ReadDword(kInvertBumpMappingValue, 0) != 0;
+    settings.vSync = ReadDword("VSync", 1) != 0;
     settings.antiAliasingIndex = ApplicationSettings::ClampAntiAliasingIndex(
         static_cast<int>(ReadDword(kAntiAliasingValue, 0)));
     settings.postProcessAntiAliasingMode =
@@ -220,6 +225,8 @@ void SaveCustomTextures(const ApplicationSettings::State& settings)
 
 void SaveExtendedGraphics(const ApplicationSettings::State& settings)
 {
+    WriteDword("SceneClockMode", ApplicationSettings::ClampSceneClockMode(settings.sceneClockMode));
+    WriteDword("SceneClockManualMinute", settings.sceneClockManualMinute);
     WriteDword(kRenderingResolutionValue, static_cast<DWORD>(
         ApplicationSettings::ClampRenderingResolutionScaleIndex(
             settings.renderingResolutionScaleIndex)));
@@ -229,6 +236,7 @@ void SaveExtendedGraphics(const ApplicationSettings::State& settings)
     WriteDword("ShowZoneArrivalVolumes", settings.showZoneArrivalVolumes ? 1u : 0u);
     WriteDword("ShowZoneLineMarkers", settings.showZoneLineMarkers ? 1u : 0u);
     WriteDword(kInvertBumpMappingValue, settings.invertBumpMapping ? 1u : 0u);
+    WriteDword("VSync", settings.vSync ? 1u : 0u);
     WriteDword(kAntiAliasingValue, static_cast<DWORD>(
         ApplicationSettings::ClampAntiAliasingIndex(settings.antiAliasingIndex)));
     WriteDword(kPostProcessAntiAliasingValue, static_cast<DWORD>(

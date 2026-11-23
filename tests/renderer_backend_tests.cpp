@@ -376,10 +376,27 @@ static bool TestPostProcessing(HWND window)
         display.postProcessAntiAliasingMode = mode;
         display.antiAliasingSamples = samples;
         if (renderer.Initialize(window, display) != RendererBackend::InitializeResult::Success) return false;
+        // Verify both startup defaults and live presentation changes, including resize.
+        const auto checkVSync = [&]()
+        {
+            IDirect3DSwapChain9* chain = nullptr;
+            if (FAILED(renderer.Device()->GetSwapChain(0, &chain))) return false;
+            D3DPRESENT_PARAMETERS parameters = {};
+            const HRESULT result = chain->GetPresentParameters(&parameters);
+            chain->Release();
+            return SUCCEEDED(result) && parameters.PresentationInterval ==
+                (display.vSync ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE);
+        };
+        if (!checkVSync()) return false;
+        for (bool enabled : {false, true, false})
+        {
+            display.vSync = enabled;
+            if (!renderer.ApplyDisplayConfiguration(display) || !checkVSync()) return false;
+        }
         for (int width : {64, 96})
         {
             if (width != 64 && !renderer.Resize(width, 64)) return false;
-            if (renderer.PrepareFrame() != RendererBackend::FrameStatus::Ready) return false;
+            if (renderer.PrepareFrame() != RendererBackend::FrameStatus::Ready || !checkVSync()) return false;
             auto* device = renderer.Device();
             IDirect3DSurface9* target = nullptr;
             if (FAILED(device->GetRenderTarget(0, &target))) return false;

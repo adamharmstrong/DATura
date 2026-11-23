@@ -371,6 +371,45 @@ void TestClassicBumpMapping(IDirect3DDevice9* device, const std::filesystem::pat
         "classic bump mapping embosses diffuse height differences without a normal map");
 }
 
+// Bright authored light (ambient plus sun ~1.9 in Bastok) saturates D3D's
+// per-vertex colour at 1.0, creasing low-poly actors along triangle edges.
+// Actors halve vertex lighting and clamp per pixel; the zone path is unchanged.
+void TestActorPerPixelLightClamp(IDirect3DDevice9* device, const std::filesystem::path& output)
+{
+    Texture grey;
+    if (!grey.Create(device, 0xff404040)) return;
+    auto opaque = Material("actor-light-clamp", true);
+    const auto draw = [&](bool actor)
+    {
+        device->SetRenderState(D3DRS_LIGHTING, TRUE);
+        device->SetRenderState(D3DRS_AMBIENT, D3DCOLOR_XRGB(153,153,153));
+        D3DLIGHT9 sun = {}; sun.Type = D3DLIGHT_DIRECTIONAL;
+        sun.Diffuse = {1.3f,1.3f,1.3f,1}; sun.Direction = {0,0,1};
+        device->SetLight(0,&sun); device->LightEnable(0,TRUE); device->LightEnable(1,FALSE);
+        D3DModelRenderState::SetActorPixelLightClamp(actor);
+        D3DModelRenderState::MaterialBindingCache cache;
+        ApplySharedOpaque(device, cache, &opaque, &grey.info, false, 1.0f);
+        auto mesh = Quad("actor-light-clamp", -.85f, .85f, 2, 0xffffffff);
+        // Left corners face the sun (light 1.9); right corners face sideways (ambient 0.6).
+        for (int i : {1, 2}) { mesh.cpuVerts[i].nrm[0] = 1; mesh.cpuVerts[i].nrm[2] = 0; }
+        Check(SUCCEEDED(device->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, 4, 2,
+            mesh.cpuIndices.data(), D3DFMT_INDEX32, mesh.cpuVerts.data(), sizeof(FFXIVertex))),
+            "draw actor light clamp fixture");
+        D3DModelRenderState::SetActorPixelLightClamp(false);
+        device->SetRenderState(D3DRS_LIGHTING, FALSE);
+    };
+    const Capture zone = Frame(device, [&] { draw(false); }, output / "light-clamp-per-vertex.bmp");
+    const Capture actor = Frame(device, [&] { draw(true); }, output / "light-clamp-per-pixel.bmp");
+    // Midway, interpolated light is 1.25: per-vertex clamping gives (1+0.6)/2=0.8
+    // (2*0.25*0.8 -> 102); per-pixel clamping keeps the cap at 1 (-> 128).
+    Expect(zone, 64, 64, {102,102,102}, "zone path keeps D3D per-vertex light clamping", 4);
+    Expect(actor, 64, 64, {128,128,128}, "actor light saturates per pixel, not at triangle corners", 4);
+    // Near the sideways edge (94% across) actor light is the true interpolated
+    // 0.68 (-> 86); per-vertex clamping pulls it to 0.62 (-> 80).
+    Expect(zone, 112, 64, {80,80,80}, "zone light interpolates clamped corners", 5);
+    Expect(actor, 112, 64, {86,86,86}, "actor light interpolates unclamped corners", 5);
+}
+
 struct Model
 {
     noesisModel_t value;
@@ -549,7 +588,8 @@ void TestDirectionalShadows(IDirect3DDevice9* device, const std::filesystem::pat
     context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
     context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
     context.useAuthoredLightDirection=true;
-    context.authoredMainLightDirection[0]=.6f; context.authoredMainLightDirection[2]=.8f;
+    // Light directions point toward the light, here behind the camera.
+    context.authoredMainLightDirection[0]=-.6f; context.authoredMainLightDirection[2]=-.8f;
     context.shadowMaxDistance=16; context.shadowOpacity=.5f;
     const auto draw = [&](bool shadow, bool castActor, bool changeSharedPose=false)
     {
@@ -633,8 +673,8 @@ void TestDirectionalShadows(IDirect3DDevice9* device, const std::filesystem::pat
     terrain.value.ReleaseD3DBuffers(); terrain.value.submeshes.pop_back(); terrain.Prepare(device,&data);
     const auto noActor=Frame(device,[&]{draw(true,false);});
     Expect(noActor,88,64,{255,255,255},"disabled actor casting removes its shadow");
-    context.authoredMainLightDirection[0]=.9995f;
-    context.authoredMainLightDirection[2]=.03f;
+    context.authoredMainLightDirection[0]=-.9995f;
+    context.authoredMainLightDirection[2]=-.03f;
     for(int frame=0;frame<6;++frame)
     {
         auto rotatingView=D3DMath::BuildRotationY((frame-3)*.015f);
@@ -645,8 +685,8 @@ void TestDirectionalShadows(IDirect3DDevice9* device, const std::filesystem::pat
         });
         Expect(grazing,25,64,{255,255,255},"grazing sunlight does not create rotating self-shadow stripes",3);
     }
-    context.authoredMainLightDirection[0]=.6f;
-    context.authoredMainLightDirection[2]=.8f;
+    context.authoredMainLightDirection[0]=-.6f;
+    context.authoredMainLightDirection[2]=-.8f;
     context.shadowCenterValid=true; context.shadowCenter[2]=8;
     for(int frame=0;frame<9;++frame)
     {
@@ -712,7 +752,7 @@ void TestLayeredDirectionalShadows(IDirect3DDevice9* device, const std::filesyst
     context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
     context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
     context.useAuthoredLightDirection=true;
-    context.authoredMainLightDirection[0]=.6f; context.authoredMainLightDirection[2]=.8f;
+    context.authoredMainLightDirection[0]=-.6f; context.authoredMainLightDirection[2]=-.8f;
     context.shadowMaxDistance=160; context.shadowOpacity=.5f;
     context.shadowCenterValid=true; context.shadowCenter[2]=400;
     // The lower surface is invisible to the camera but farther from the light.
@@ -785,7 +825,7 @@ void TestTemporalShadowEdges(IDirect3DDevice9* device, const std::filesystem::pa
     context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
     context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
     context.useAuthoredLightDirection=true;
-    context.authoredMainLightDirection[0]=.6f; context.authoredMainLightDirection[2]=.8f;
+    context.authoredMainLightDirection[0]=-.6f; context.authoredMainLightDirection[2]=-.8f;
     context.shadowMaxDistance=160; context.shadowOpacity=.5f;
     context.shadowCenterValid=true; context.shadowCenter[2]=8;
     const auto render=[&]
@@ -803,7 +843,7 @@ void TestTemporalShadowEdges(IDirect3DDevice9* device, const std::filesystem::pa
         int largestChange=0, changedPixels=0;
         for(int frame=0;frame<33;++frame)
         {
-            context.authoredMainLightDirection[0]=.6f+(movement==0 ? (frame-16)*.00002f : 0);
+            context.authoredMainLightDirection[0]=-.6f-(movement==0 ? (frame-16)*.00002f : 0);
             context.shadowCenter[0]=movement==1 ? (frame-16)*.006f : 0;
             const auto capture=Frame(device,render,frame==16 ? output/
                 (movement==0 ? "sun-shadow-tiny-light-motion.bmp" : "sun-shadow-subtexel-focus.bmp") :
@@ -846,7 +886,7 @@ void TestHighResolutionShadowSlope(IDirect3DDevice9* device, UINT resolution,
     context.lightingQuality=2; context.dynamicObjectShadows=true;
     context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
     context.useAuthoredLightDirection=true;
-    context.authoredMainLightDirection[0]=1; context.authoredMainLightDirection[2]=.02f;
+    context.authoredMainLightDirection[0]=-1; context.authoredMainLightDirection[2]=-.02f;
     context.shadowMaxDistance=160; context.shadowOpacity=.5f;
     context.shadowCenterValid=true; context.shadowCenter[2]=2;
     for(int frame=0;frame<5;++frame)
@@ -973,6 +1013,237 @@ void TestInstalledSunShadows(IDirect3DDevice9* device, const std::filesystem::pa
     std::cout<<"Bastok sunlight shadow pixels: "<<changed<<'\n';
     ModelRenderer::ReleaseDirectionalShadowResources();
 }
+
+// DATura scene space is Y-down: the automatic sun direction points toward a
+// sun above the scene (negative Y), as the planar fallback already assumes.
+// A plate held above the ground must shade the ground on the side away from
+// the sun, and the plate itself must stay lit. A light camera placed on the
+// wrong side of the scene lets the ground shadow everything standing on it.
+void TestSunAboveYDownScene(IDirect3DDevice9* device, const std::filesystem::path& output)
+{
+    std::filesystem::create_directories(output);
+    {
+        // D3D light directions are the direction light travels: a daytime sun
+        // above a Y-down scene must travel toward +Y, onto upward-facing ground.
+        D3DModelRenderState::ApplyDynamicLighting(device,2,600,false,true,0,0,false,0,0,0,1,false,nullptr);
+        D3DLIGHT9 sun={}; device->GetLight(0,&sun);
+        Check(sun.Direction.y>0 && sun.Direction.x<0,
+            "fixed-function sunlight travels away from the sun shadows are cast from");
+        D3DModelRenderState::ApplyDynamicLighting(device,2,60,false,true,0,0,false,0,0,0,1,false,nullptr);
+        device->GetLight(0,&sun);
+        Check(sun.Direction.y>0,"at night the main light shines down from above the horizon, not up through the ground");
+    }
+    auto opaque=Material("y-down-sun",true);
+    noesisMaterial_t* materials[]={&opaque};
+    noesisMatData_t data={}; data.mats=materials; data.matCount=1;
+    const auto plate=[](float x0,float x1,float y,float z0,float z1)
+    {
+        noesisModel_t::Submesh mesh;
+        mesh.objectName=mesh.materialName="y-down-sun";
+        for(const auto& corner:{std::array<float,2>{x0,z0},std::array<float,2>{x1,z0},
+            std::array<float,2>{x1,z1},std::array<float,2>{x0,z1}})
+        {
+            FFXIVertex vertex={};
+            vertex.pos[0]=corner[0]; vertex.pos[1]=y; vertex.pos[2]=corner[1];
+            vertex.nrm[1]=-1; vertex.diffuse=0xffffffff;
+            mesh.cpuVerts.push_back(vertex);
+        }
+        mesh.cpuIndices={0,1,2,0,2,3}; mesh.vertCount=4; mesh.triCount=2;
+        return mesh;
+    };
+    Model ground, roof;
+    ground.value.submeshes.push_back(plate(-10,10,0,-10,10));
+    roof.value.submeshes.push_back(plate(-1,1,-3,-1,1));
+    ground.Prepare(device,&data); roof.Prepare(device,&data);
+    const auto identity=D3DMath::BuildIdentity();
+    ModelRenderer::Context context; context.device=device;
+    context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
+    context.rendersZoneObjects=true; context.geometryPass=ModelRenderer::GeometryPass::Opaque;
+    context.automaticLightDirection=true; context.useAuthoredLightDirection=false;
+    context.minuteOfDay=600; // 10:00, sun 60 degrees above the horizon toward +X
+    context.shadowMaxDistance=16; context.shadowOpacity=.5f;
+    context.shadowCenterValid=true;
+    const float eye[3]={0,-12,-12};
+    context.cameraPosition[0]=eye[0]; context.cameraPosition[1]=eye[1]; context.cameraPosition[2]=eye[2];
+    const auto view=D3DMath::BuildLookAtLH(eye[0],eye[1],eye[2],-1,0,0);
+    const auto projection=D3DMath::BuildPerspectiveFovLH(.9f,1,.1f,100);
+    const auto draw=[&](bool shadows)
+    {
+        device->SetTransform(D3DTS_VIEW,&view); device->SetTransform(D3DTS_PROJECTION,&projection);
+        ModelRenderer::BeginDirectionalShadowFrame();
+        ModelRenderer::DrawGeometry(context,&ground.value,identity);
+        auto actorContext=context; actorContext.rendersZoneObjects=false;
+        ModelRenderer::DrawGeometry(actorContext,&roof.value,identity);
+        if(shadows) Check(ModelRenderer::DrawDirectionalShadowFrame(),"render Y-down sun fixture");
+        else ModelRenderer::BeginDirectionalShadowFrame();
+        CheckBaseline(device);
+    };
+    const auto lit=Frame(device,[&]{draw(false);},output/"y-down-sun-disabled.bmp");
+    const auto shadowed=Frame(device,[&]{draw(true);},output/"y-down-sun-shadow.bmp");
+    const auto viewProjection=D3DMath::Multiply(view,projection);
+    const auto pixel=[&](float x,float y,float z)
+    {
+        const float cx=x*viewProjection._11+y*viewProjection._21+z*viewProjection._31+viewProjection._41;
+        const float cy=x*viewProjection._12+y*viewProjection._22+z*viewProjection._32+viewProjection._42;
+        const float w=x*viewProjection._14+y*viewProjection._24+z*viewProjection._34+viewProjection._44;
+        return std::array<int,2>{int((cx/w*.5f+.5f)*size),int((.5f-cy/w*.5f)*size)};
+    };
+    const auto green=[&](const Capture& image,std::array<int,2> at)
+    {
+        return at[0]>=0 && at[0]<int(size) && at[1]>=0 && at[1]<int(size) && image.size()==size*size ?
+            int((image[at[1]*size+at[0]]>>8)&255) : -1;
+    };
+    // tan(30 degrees) * 3 units of height: the roof's shadow centre lands 1.73 units toward -X.
+    const auto groundShadow=pixel(-1.73f,0,0), groundLit=pixel(4,0,0), roofTop=pixel(.3f,-3,-.6f);
+    std::cout<<"Y-down sun: ground behind roof "<<green(lit,groundShadow)<<" -> "<<green(shadowed,groundShadow)
+        <<", open ground "<<green(lit,groundLit)<<" -> "<<green(shadowed,groundLit)
+        <<", roof top "<<green(lit,roofTop)<<" -> "<<green(shadowed,roofTop)<<'\n';
+    Check(green(shadowed,groundShadow)>=0 && green(shadowed,groundShadow)<green(lit,groundShadow)-40,
+        "an object above the ground casts the sun's shadow onto the ground below it");
+    Check(green(shadowed,groundLit)>=green(lit,groundLit)-3,"open ground stays in sunlight");
+    Check(green(shadowed,roofTop)>=green(lit,roofTop)-3,
+        "the ground does not shadow the sunlit top of an object standing above it");
+    ModelRenderer::ReleaseDirectionalShadowResources();
+}
+
+// Real-zone temporal stability. Bastok's streets lie ~280 units from the world
+// origin, so this catches errors that scale with world position, which the
+// synthetic fixtures near the origin cannot.
+void TestInstalledTemporalSunShadows(IDirect3DDevice9* device, UINT resolution,
+    const std::filesystem::path& root, const std::filesystem::path& output)
+{
+    std::filesystem::create_directories(output);
+    const auto path=root/"ROM/1/35.DAT";
+    std::ifstream stream(path,std::ios::binary|std::ios::ate);
+    Check(stream.good(),"open installed Bastok Markets DAT for temporal shadow validation");
+    if(!stream.good()) return;
+    std::vector<BYTE> bytes(static_cast<size_t>(stream.tellg()));
+    stream.seekg(0); stream.read(reinterpret_cast<char*>(bytes.data()),bytes.size());
+    noeRAPI_t rapi(device); rapi.SetCurrentFilePath(path.string().c_str());
+    ff11Opts_t options={}; options.renderWater=true; options.renderEnvironment=true;
+    const auto previousOptions=gpFF11Opts; gpFF11Opts=&options;
+    int count=0; auto* model=Model_FF11_LoadDAT(bytes.data(),static_cast<int>(bytes.size()),count,&rapi);
+    gpFF11Opts=previousOptions;
+    Check(model!=nullptr,"load installed Bastok Markets geometry for temporal shadows");
+    if(!model) return;
+    for(int minute:{600,900,1260})
+    {
+        // Authored actor lighting, which the live renderer feeds to fixed-function lights.
+        ZoneEnvironmentState::Data environment; ZoneEnvironmentState::Cache cache; int weather=0;
+        ZoneEnvironmentState::Update(environment,cache,weather,gFF11LastEnvironmentRecords,minute);
+        std::cout<<"Bastok "<<minute<<" model light: main="<<std::hex<<environment.modelMainLightColor
+            <<" secondary="<<environment.modelSecondaryLightColor<<" ambient="<<environment.modelAmbientColor
+            <<std::dec<<" power="<<environment.modelLightPower<<" authored direction="<<environment.authoredLightDirection<<'\n';
+    }
+    ZoneModelRenderMetadata::Prepare(model,device);
+    ModelRenderer::Context context; context.device=device; context.rendersZoneObjects=true;
+    context.geometryPass=ModelRenderer::GeometryPass::Opaque;
+    context.lightingQuality=2; context.dynamicObjectShadows=true; context.dynamicActorShadows=true;
+    // The automatic Vana'diel sun, as in live outdoor play.
+    context.automaticLightDirection=true; context.useAuthoredLightDirection=false;
+    context.shadowOpacity=.5f; context.shadowMaxDistance=80;
+    const float eye[3]={-276,-24,-42}, focus[3]={-276,-12.93f,-68};
+    const auto projection=D3DMath::BuildPerspectiveFovLH(.9f,1,.1f,1000);
+    const auto identity=D3DMath::BuildIdentity();
+    // One 60 Hz frame of the 25x Vana'diel clock.
+    constexpr float frameMinutes=25.0f/60.0f/60.0f;
+    const auto shadowDelta=[&](float minute,float offset,float centerOffset,const char* name)
+    {
+        context.minuteOfDay=minute;
+        context.cameraPosition[0]=eye[0]+offset; context.cameraPosition[1]=eye[1]; context.cameraPosition[2]=eye[2];
+        context.shadowCenterValid=true;
+        context.shadowCenter[0]=focus[0]+centerOffset; context.shadowCenter[1]=focus[1]; context.shadowCenter[2]=focus[2];
+        const auto view=D3DMath::BuildLookAtLH(eye[0]+offset,eye[1],eye[2],focus[0]+offset,focus[1],focus[2]);
+        const auto draw=[&](bool shadows)
+        {
+            device->SetTransform(D3DTS_VIEW,&view); device->SetTransform(D3DTS_PROJECTION,&projection);
+            ModelRenderer::BeginDirectionalShadowFrame();
+            ModelRenderer::PrepareFixedFunctionPass(context,identity);
+            ModelRenderer::DrawGeometry(context,model,identity);
+            if(shadows) Check(ModelRenderer::DrawDirectionalShadowFrame(),"render installed temporal sunlight shadows");
+            else ModelRenderer::BeginDirectionalShadowFrame();
+            CheckBaseline(device);
+        };
+        const auto lit=Frame(device,[&]{draw(false);});
+        const auto shadowed=Frame(device,[&]{draw(true);},name ? output/name : std::filesystem::path{});
+        // Shadow darkening per pixel, independent of slow fixed-function lighting changes.
+        std::vector<int> delta(lit.size());
+        for(size_t i=0;i<lit.size() && i<shadowed.size();++i)
+            delta[i]=int((lit[i]>>8)&255)-int((shadowed[i]>>8)&255);
+        return delta;
+    };
+    const auto compare=[&](const std::vector<int>& a,const std::vector<int>& b,int& largest)
+    {
+        int popped=0; largest=0;
+        for(size_t i=0;i<a.size() && i<b.size();++i)
+        {
+            const int change=std::abs(a[i]-b[i]);
+            largest=(std::max)(largest,change);
+            if(change>12) ++popped;
+        }
+        return popped;
+    };
+    const int pixels=int(resolution*resolution);
+    // 20 at 640x640. With sunlit ground the origin-pivoted sun popped 109 (1976 in
+    // 23 frames); pivoting near the focus leaves ~12 from slow crawl far away.
+    const int allowed=(std::max)(4,pixels/20000);
+    {
+        // The sun's real per-frame motion moves a 60-degree-elevation shadow
+        // by ~1e-4 units, far below one pixel. Whole-edge changes are aliasing.
+        std::vector<int> previous;
+        int worst=0, worstLargest=0, total=0;
+        for(int frame=0;frame<24;++frame)
+        {
+            const auto delta=shadowDelta(600+frame*frameMinutes,0,0,
+                frame==0 ? "bastok-sun-motion-first.bmp" : frame==23 ? "bastok-sun-motion-last.bmp" : nullptr);
+            if(!previous.empty())
+            {
+                int largest=0; const int popped=compare(previous,delta,largest);
+                total+=popped; worst=(std::max)(worst,popped); worstLargest=(std::max)(worstLargest,largest);
+            }
+            previous=delta;
+        }
+        std::cout<<"Bastok "<<resolution<<" sun motion: worst frame popped pixels="<<worst
+            <<" (allowed "<<allowed<<"), total="<<total<<", largest change="<<worstLargest<<'\n';
+        Check(worst<=allowed,"automatic sun motion does not pop shadow edges frame to frame in Bastok");
+    }
+    {
+        // Sub-texel focus motion must not change which world texels hold the
+        // shadow. Same camera view, different focus: shadows must match.
+        const auto reference=shadowDelta(600,0,0,nullptr);
+        int worst=0, worstLargest=0;
+        for(int frame=1;frame<12;++frame)
+        {
+            const auto moved=shadowDelta(600,0,frame*.013f,nullptr);
+            int largest=0; worst=(std::max)(worst,compare(reference,moved,largest));
+            worstLargest=(std::max)(worstLargest,largest);
+        }
+        std::cout<<"Bastok "<<resolution<<" focus motion: worst popped pixels="<<worst
+            <<", largest change="<<worstLargest<<'\n';
+        Check(worst<=allowed,"orbit-focus motion leaves Bastok shadow edges fixed in the world");
+    }
+    {
+        // Camera and focus translating together with the sun moving, as when
+        // walking at midday. Compare each frame against the same view rendered
+        // with the sun frozen at the previous frame's time.
+        int worst=0, worstLargest=0;
+        for(int frame=0;frame<12;++frame)
+        {
+            const float offset=frame*.05f;
+            const auto delta=shadowDelta(600+frame*frameMinutes,offset,offset,nullptr);
+            if(frame>0)
+            {
+                const auto earlierSun=shadowDelta(600+(frame-1)*frameMinutes,offset,offset,nullptr);
+                int largest=0; worst=(std::max)(worst,compare(earlierSun,delta,largest));
+                worstLargest=(std::max)(worstLargest,largest);
+            }
+        }
+        std::cout<<"Bastok "<<resolution<<" walking with moving sun: worst popped pixels="<<worst
+            <<", largest change="<<worstLargest<<'\n';
+        Check(worst<=allowed,"walking with a moving sun keeps Bastok shadow edges stable");
+    }
+    ModelRenderer::ReleaseDirectionalShadowResources();
+}
 }
 int main(int argc, char** argv)
 {
@@ -988,6 +1259,24 @@ int main(int argc, char** argv)
         if(fullResolution.gpu) TestHighResolutionShadowSlope(fullResolution.gpu.ptr,1920,
             std::filesystem::path(argv[2])/"1920");
         std::cout<<"Temporal shadows: "<<assertions<<" assertions, "<<failures<<" failures\n";
+        return failures ? 1 : 0;
+    }
+    if (argc == 3 && std::string(argv[1]) == "--shadow-sun-side")
+    {
+        Device device;
+        Check(device.Create(true),"create Y-down sun validation device");
+        if(!device.gpu) return 2;
+        TestSunAboveYDownScene(device.gpu.ptr,argv[2]);
+        std::cout<<"Y-down sun: "<<assertions<<" assertions, "<<failures<<" failures\n";
+        return failures ? 1 : 0;
+    }
+    if (argc == 4 && std::string(argv[1]) == "--shadow-bastok-temporal")
+    {
+        Device device;
+        Check(device.Create(true,D3DMULTISAMPLE_NONE,640),"create Bastok temporal shadow device");
+        if(!device.gpu) return 2;
+        TestInstalledTemporalSunShadows(device.gpu.ptr,640,argv[2],argv[3]);
+        std::cout<<"Bastok temporal shadows: "<<assertions<<" assertions, "<<failures<<" failures\n";
         return failures ? 1 : 0;
     }
     if (argc == 4 && std::string(argv[1]) == "--zone-fog")
@@ -1016,6 +1305,7 @@ int main(int argc, char** argv)
     TestUiShader(device.gpu.ptr);
     TestTextureTransitions(device.gpu.ptr,output);
     TestClassicBumpMapping(device.gpu.ptr,output);
+    TestActorPerPixelLightClamp(device.gpu.ptr,output);
     TestDepthOrdering(device.gpu.ptr,output);
     TestFog(device.gpu.ptr,output);
     if (materialsOnly)
@@ -1026,6 +1316,7 @@ int main(int argc, char** argv)
     TestDirectionalShadows(device.gpu.ptr,output);
     TestLayeredDirectionalShadows(device.gpu.ptr,output);
     TestTemporalShadowEdges(device.gpu.ptr,output);
+    TestSunAboveYDownScene(device.gpu.ptr,output);
     TestHighResolutionShadowSlope(device.gpu.ptr,size,output/"slope-128");
     if(argc>2) TestInstalledSunShadows(device.gpu.ptr,argv[2],output);
     Device hardware;
@@ -1048,6 +1339,12 @@ int main(int argc, char** argv)
         Device fullResolution;
         Check(fullResolution.Create(true,D3DMULTISAMPLE_NONE,1920),"create full-resolution grazing-shadow validation device");
         if(fullResolution.gpu) TestHighResolutionShadowSlope(fullResolution.gpu.ptr,1920,output/"slope-1920");
+    }
+    if(argc>2)
+    {
+        Device temporal;
+        Check(temporal.Create(true,D3DMULTISAMPLE_NONE,640),"create Bastok temporal shadow device");
+        if(temporal.gpu) TestInstalledTemporalSunShadows(temporal.gpu.ptr,640,argv[2],output/"bastok-temporal");
     }
     std::cout << "Material/depth/fog: " << assertions << " assertions, " << failures << " failures\n";
     return failures ? 1 : 0;

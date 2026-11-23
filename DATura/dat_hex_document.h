@@ -4,9 +4,11 @@
 #endif
 #include <windows.h>
 #include <algorithm>
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <map>
+#include <cstring>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -86,12 +88,14 @@ inline bool CopyPathAllowed(const std::wstring& path) {
 class NewCopy {
     std::unique_ptr<Handle> handle;
     bool committed=false;
-public:
-    explicit NewCopy(const std::wstring& path) {
-        if(!CopyPathAllowed(path)) return;
+    struct CanonicalPath {};
+    NewCopy(const std::wstring& path,CanonicalPath) {
+        if(path.empty())return;
         HANDLE h=CreateFileW(path.c_str(),GENERIC_WRITE|DELETE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
         if(h!=INVALID_HANDLE_VALUE) handle=std::make_unique<Handle>(h);
     }
+public:
+    explicit NewCopy(const std::wstring& path):NewCopy(CopyPathAllowed(path)?path:L"",CanonicalPath{}) {}
     ~NewCopy() {
         if(handle && !committed) {
             FILE_DISPOSITION_INFO info={TRUE};
@@ -111,129 +115,490 @@ public:
         }
         return true;
     }
+private:
+    friend class Document;
+    bool Replace(const std::wstring& destination) {
+        if(!handle)return false;
+        const auto length=destination.size()*sizeof(wchar_t);
+        const auto total=sizeof(FILE_RENAME_INFO)+length;
+        std::vector<unsigned char> storage(total);
+        auto info=reinterpret_cast<FILE_RENAME_INFO*>(storage.data());
+        // POSIX replacement leaves the old read handle available to undo history.
+        info->Flags=FILE_RENAME_FLAG_REPLACE_IF_EXISTS|FILE_RENAME_FLAG_POSIX_SEMANTICS;
+        info->FileNameLength=static_cast<DWORD>(length);
+        std::memcpy(info->FileName,destination.c_str(),length+sizeof(wchar_t));
+        if(!SetFileInformationByHandle(handle->value,FileRenameInfoEx,info,static_cast<DWORD>(total)))return false;
+        committed=true;return true;
+    }
+    bool Identity(BY_HANDLE_FILE_INFORMATION& identity) const {
+        return handle&&GetFileInformationByHandle(handle->value,&identity);
+    }
+public:
     bool Commit() {
         if(!handle || !FlushFileBuffers(handle->value)) return false;
         committed=true; return true;
     }
 };
+inline std::wstring FinalLocalPath(HANDLE handle) {
+    constexpr DWORD flags=FILE_NAME_NORMALIZED|VOLUME_NAME_GUID;
+    DWORD count=GetFinalPathNameByHandleW(handle,nullptr,0,flags);
+    if(!count)return {};
+    std::wstring path(count,L'\0');
+    DWORD written=GetFinalPathNameByHandleW(handle,path.data(),count,flags);
+    if(!written||written>=count)return {};
+    path.resize(written);
+    if(path.rfind(L"\\\\?\\Volume{",0)!=0)return {};
+    while(path.back()==L'\\')path.pop_back();
+    return path;
+}
+inline bool Within(const std::wstring& path,const std::wstring& directory) {
+    return path.size()>=directory.size() &&
+        CompareStringOrdinal(path.data(),static_cast<int>(directory.size()),directory.data(),
+            static_cast<int>(directory.size()),TRUE)==CSTR_EQUAL &&
+        (path.size()==directory.size()||path[directory.size()]==L'\\');
+}
+inline bool SameFile(const BY_HANDLE_FILE_INFORMATION& left,const BY_HANDLE_FILE_INFORMATION& right) {
+    return left.dwVolumeSerialNumber==right.dwVolumeSerialNumber&&
+        left.nFileIndexHigh==right.nFileIndexHigh&&left.nFileIndexLow==right.nFileIndexLow;
+}
+inline bool ReadInstallRoots(std::vector<std::wstring>& roots) {
+    for(auto view:{KEY_WOW64_32KEY,KEY_WOW64_64KEY}) {
+        for(auto key:{L"SOFTWARE\\PlayOnlineUS\\InstallFolder",L"SOFTWARE\\PlayOnlineEU\\InstallFolder",
+                      L"SOFTWARE\\PlayOnline\\InstallFolder"}) {
+            wchar_t value[32768];DWORD length=sizeof(value);
+            auto status=RegGetValueW(HKEY_LOCAL_MACHINE,key,L"0001",RRF_RT_REG_SZ|RRF_RT_REG_EXPAND_SZ|
+                (view==KEY_WOW64_32KEY?RRF_SUBKEY_WOW6432KEY:RRF_SUBKEY_WOW6464KEY),nullptr,value,&length);
+            if(status==ERROR_FILE_NOT_FOUND||status==ERROR_PATH_NOT_FOUND)continue;
+            if(status!=ERROR_SUCCESS)return false;
+            if(*value)roots.emplace_back(value);
+        }
+    }
+    return true;
+}
 class Document {
     std::unique_ptr<Handle> source;
-    std::map<uint64_t,unsigned char> patches;
-    struct Change {uint64_t offset; Bytes before,after;};
-    using Transaction=std::vector<Change>;
-    std::vector<Transaction> undo,redo;
-    uint64_t revision=0;
-    bool Original(uint64_t offset,size_t count,Bytes& result) const {
-        if(!source || offset>size || count>size-offset) return false;
-        result.resize(count); LARGE_INTEGER position; position.QuadPart=offset;
-        if(!SetFilePointerEx(source->value,position,nullptr,FILE_BEGIN)) return false;
-        size_t read=0;
-        while(read<count) {
-            DWORD part=static_cast<DWORD>((std::min)(count-read,size_t(65536))),actual=0;
-            if(!ReadFile(source->value,result.data()+read,part,&actual,nullptr)||actual!=part) return false;
-            read+=actual;
+    BY_HANDLE_FILE_INFORMATION saveIdentity{};
+    std::wstring openedPath;
+    std::vector<std::wstring> openRoots;
+    bool protectedAtOpen=false,memoryDocument=false;
+
+    static bool OutsideInstall(const std::wstring& destination,const std::wstring& name) {
+        Handle directory(CreateFileW(name.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,
+            nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,nullptr));
+        if(directory.value==INVALID_HANDLE_VALUE) {
+            auto error=GetLastError();
+            return error==ERROR_FILE_NOT_FOUND||error==ERROR_PATH_NOT_FOUND;
+        }
+        auto resolved=FinalLocalPath(directory.value);
+        if(resolved.empty()||Within(destination,resolved))return false;
+
+        // ROM volumes can be relocated with a junction. Protect the resolved
+        // backing directory even when the user opens it directly.
+        WIN32_FIND_DATAW info{};
+        HANDLE search=FindFirstFileW((name+L"\\ROM*").c_str(),&info);
+        if(search==INVALID_HANDLE_VALUE)return GetLastError()==ERROR_FILE_NOT_FOUND;
+        bool outside=true;
+        do {
+            const DWORD redirected=FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT;
+            if((info.dwFileAttributes&redirected)!=redirected)continue;
+            const auto child=name+L"\\"+info.cFileName;
+            Handle rom(CreateFileW(child.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,
+                nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,nullptr));
+            if(rom.value==INVALID_HANDLE_VALUE){outside=false;break;}
+            auto target=FinalLocalPath(rom.value);
+            if(target.empty()||Within(destination,target)){outside=false;break;}
+        } while(FindNextFileW(search,&info));
+        if(outside)outside=GetLastError()==ERROR_NO_MORE_FILES;
+        FindClose(search);
+        return outside;
+    }
+
+    // Resolve the target from its handle, then pin its canonical directory chain.
+    // Refuse ambiguous destinations, including multiply linked files and streams.
+    std::wstring WorkingDestination(const std::vector<std::wstring>& configuredRoots,
+                                    std::vector<std::unique_ptr<Handle>>& directories,
+                                    std::unique_ptr<Handle>& target) const {
+        if(!Loaded()||protectedAtOpen||!CopyPathAllowed(openedPath))return {};
+        auto candidate=std::make_unique<Handle>(CreateFileW(openedPath.c_str(),FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+        BY_HANDLE_FILE_INFORMATION identity{};
+        if(candidate->value==INVALID_HANDLE_VALUE||!GetFileInformationByHandle(candidate->value,&identity)||
+           !SameFile(identity,saveIdentity)||identity.nNumberOfLinks!=1||
+           (identity.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT)))return {};
+        auto destination=FinalLocalPath(candidate->value);
+        if(destination.empty())return {};
+        auto volumeEnd=destination.find(L'}');
+        if(volumeEnd==std::wstring::npos)return {};
+        auto roots=openRoots;
+        roots.insert(roots.end(),configuredRoots.begin(),configuredRoots.end());
+        roots.emplace_back(L"C:\\Program Files (x86)\\PlayOnline\\SquareEnix\\FINAL FANTASY XI");
+        if(!ReadInstallRoots(roots))return {};
+        for(const auto& root:roots) {
+            if(root.empty())continue;
+            std::error_code errorCode;
+            auto name=std::filesystem::absolute(root,errorCode).lexically_normal().make_preferred().wstring();
+            if(errorCode)return {};
+            while(name.size()>3&&(name.back()==L'\\'||name.back()==L'/'))name.pop_back();
+            if(Within(std::filesystem::path(openedPath).lexically_normal().make_preferred().wstring(),name)||
+               !OutsideInstall(destination,name))return {};
+        }
+        auto slash=destination.find(L'\\',volumeEnd);
+        while(slash!=std::wstring::npos) {
+            auto parent=destination.substr(0,slash==volumeEnd+1?slash+1:slash);
+            auto directory=std::make_unique<Handle>(CreateFileW(parent.c_str(),FILE_LIST_DIRECTORY|FILE_READ_ATTRIBUTES,
+                FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+            BY_HANDLE_FILE_INFORMATION info{};
+            if(directory->value==INVALID_HANDLE_VALUE||!GetFileInformationByHandle(directory->value,&info)||
+               !(info.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)||(info.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)||
+               !Within(destination,FinalLocalPath(directory->value)))return {};
+            if(parent.back()!=L'\\')parent+=L'\\';
+            // Recognize an installation tree even if it is absent from the registry.
+            for(auto marker:{L"FTABLE.DAT",L"VTABLE.DAT"}) {
+                if(GetFileAttributesW((parent+marker).c_str())!=INVALID_FILE_ATTRIBUTES)return {};
+                auto error=GetLastError();
+                if(error!=ERROR_FILE_NOT_FOUND&&error!=ERROR_PATH_NOT_FOUND)return {};
+            }
+            directories.push_back(std::move(directory));
+            slash=destination.find(L'\\',slash+1);
+        }
+        auto pinned=std::make_unique<Handle>(CreateFileW(destination.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_DELETE,
+            nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+        if(pinned->value==INVALID_HANDLE_VALUE||!GetFileInformationByHandle(pinned->value,&identity)||
+           !SameFile(identity,saveIdentity)||identity.nNumberOfLinks!=1||
+           (identity.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT))return {};
+        target=std::move(pinned);
+        return destination;
+    }
+    struct Piece {
+        // A null buffer refers to an unchanged span in the open source file.
+        std::shared_ptr<const Bytes> bytes;
+        uint64_t start,length,end=0;
+    };
+    struct Version {
+        std::vector<Piece> pieces;
+        uint64_t size=0,id=0;
+    };
+    Version current;
+    // Each change records the untouched gap before it. The same gap works
+    // in both directions even when earlier changes have shifted offsets.
+    struct Change {
+        uint64_t gap=0,beforeLength=0,afterLength=0;
+        size_t firstRemoved=0,removedCount=0;
+    };
+    struct Edit {
+        std::vector<Change> changes;
+        std::vector<Piece> removed;
+        std::shared_ptr<const Bytes> inserted;
+        uint64_t beforeId=0,afterId=0,beforeSize=0,afterSize=0;
+    };
+    std::vector<Edit> undo,redo;
+    uint64_t revision=0,saved=0;
+    static uint64_t PieceOffset(const Piece& piece,uint64_t within) {
+        const auto position=piece.start+within;
+        return piece.bytes?position%piece.bytes->size():position;
+    }
+    static void Append(std::vector<Piece>& pieces,const Piece& piece,size_t first=0) {
+        if(pieces.size()>first&&pieces.back().bytes==piece.bytes&&
+           PieceOffset(pieces.back(),pieces.back().length)==piece.start) {
+            pieces.back().length+=piece.length;
+            pieces.back().end+=piece.length;
+        } else if(piece.length) {
+            const auto end=pieces.empty()?0:pieces.back().end;
+            pieces.push_back({piece.bytes,piece.start,piece.length,end+piece.length});
+        }
+    }
+    // A cursor consumes spans in ascending order, so replace-all walks the
+    // piece list once even when it has thousands of matches.
+    struct Cursor {
+        const std::vector<Piece>& pieces;
+        size_t index=0;
+        uint64_t within=0;
+        void Advance(uint64_t count,std::vector<Piece>* output=nullptr,size_t first=0) {
+            while(count) {
+                const auto& piece=pieces[index];
+                auto take=(std::min)(count,piece.length-within);
+                if(output) Append(*output,{piece.bytes,PieceOffset(piece,within),take},first);
+                within+=take;
+                if(within==piece.length){++index;within=0;}
+                count-=take;
+            }
+        }
+    };
+    Cursor At(uint64_t offset) const {
+        auto it=std::upper_bound(current.pieces.begin(),current.pieces.end(),offset,
+            [](uint64_t value,const Piece& piece){return value<piece.end;});
+        const size_t index=static_cast<size_t>(it-current.pieces.begin());
+        const uint64_t start=index?current.pieces[index-1].end:0;
+        return {current.pieces,index,offset-start};
+    }
+    bool ReadOriginal(uint64_t offset,size_t count,unsigned char* result) const {
+        LARGE_INTEGER position;position.QuadPart=offset;
+        if(!SetFilePointerEx(source->value,position,nullptr,FILE_BEGIN))return false;
+        while(count) {
+            DWORD part=static_cast<DWORD>((std::min)(count,size_t(65536))),actual=0;
+            if(!ReadFile(source->value,result,part,&actual,nullptr)||actual!=part)return false;
+            result+=actual;count-=actual;
         }
         return true;
     }
-    bool Apply(const Transaction& changes,bool forward) {
-        auto staged=patches;Bytes original;
-        for(const auto& change:changes) {
-            const auto& bytes=forward?change.after:change.before;
-            if(!Original(change.offset,bytes.size(),original))return false;
-            for(size_t i=0;i<bytes.size();++i){if(bytes[i]==original[i])staged.erase(change.offset+i);else staged[change.offset+i]=bytes[i];}
+    static void Record(Edit& edit,Cursor& cursor,uint64_t gap,uint64_t removed,uint64_t inserted) {
+        if(gap||edit.changes.empty())edit.changes.push_back({gap,0,0,edit.removed.size(),0});
+        auto& change=edit.changes.back();
+        cursor.Advance(removed,&edit.removed,change.firstRemoved);
+        change.beforeLength+=removed;
+        change.afterLength+=inserted;
+        change.removedCount=edit.removed.size()-change.firstRemoved;
+    }
+    void Apply(Version&& next,Edit&& edit) {
+        edit.beforeId=current.id;edit.afterId=revision+1;
+        edit.beforeSize=current.size;edit.afterSize=next.size;
+        undo.push_back(std::move(edit));
+        next.id=++revision;
+        current=std::move(next);size=current.size;redo.clear();
+    }
+    bool Restore(std::vector<Edit>& from,std::vector<Edit>& to,bool forward) {
+        if(from.empty())return false;
+        const auto& edit=from.back();
+        Version next;
+        next.size=forward?edit.afterSize:edit.beforeSize;
+        next.id=forward?edit.afterId:edit.beforeId;
+        Cursor cursor{current.pieces};
+        uint64_t remaining=size;
+        for(const auto& change:edit.changes) {
+            cursor.Advance(change.gap,&next.pieces);
+            const auto removed=forward?change.beforeLength:change.afterLength;
+            cursor.Advance(removed);remaining-=change.gap+removed;
+            if(forward) {
+                if(change.afterLength)Append(next.pieces,{edit.inserted,0,change.afterLength});
+            } else {
+                for(size_t i=0;i<change.removedCount;++i)
+                    Append(next.pieces,edit.removed[change.firstRemoved+i]);
+            }
         }
-        patches.swap(staged);++revision;return true;
+        cursor.Advance(remaining,&next.pieces);
+        to.push_back(std::move(from.back()));from.pop_back();
+        current=std::move(next);size=current.size;++revision;return true;
     }
 public:
     uint64_t size=0;
     std::wstring path;
-    bool Open(const std::wstring& name) {
-        auto next=std::make_unique<Handle>(CreateFileW(name.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr));
+    bool Open(const std::wstring& name,const std::vector<std::wstring>& roots={}) {
+        auto next=std::make_unique<Handle>(CreateFileW(name.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr));
         LARGE_INTEGER length;
-        if(next->value==INVALID_HANDLE_VALUE || !GetFileSizeEx(next->value,&length)) return false;
-        ++revision;source=std::move(next); size=length.QuadPart; path=name; patches.clear(); undo.clear(); redo.clear(); return true;
+        if(next->value==INVALID_HANDLE_VALUE || GetFileType(next->value)!=FILE_TYPE_DISK ||
+           !GetFileSizeEx(next->value,&length)||!GetFileInformationByHandle(next->value,&saveIdentity))return false;
+        Version original;original.size=length.QuadPart;original.id=++revision;
+        Append(original.pieces,{nullptr,0,original.size});
+        source=std::move(next);memoryDocument=false;path=name;size=original.size;saved=original.id;
+        current=std::move(original);undo.clear();redo.clear();
+        std::error_code error;
+        openedPath=std::filesystem::absolute(name,error).wstring();
+        if(error||!CopyPathAllowed(name))openedPath.clear();
+        protectedAtOpen=false;openRoots=roots;
+        // Readers used only for analysis/export do not need an installation probe.
+        if(!roots.empty())protectedAtOpen=!CanSave({});
+        return true;
     }
-    bool Loaded() const {return bool(source);}
-    bool Dirty() const {return !patches.empty();}
-    bool Modified(uint64_t offset) const {return patches.find(offset)!=patches.end();}
-    std::optional<uint64_t> ModifiedOffset(uint64_t current,bool previous=false) const {
-        if(patches.empty())return {};
-        if(previous){auto it=patches.lower_bound(current);if(it==patches.begin())return patches.rbegin()->first;return std::prev(it)->first;}
-        auto it=patches.upper_bound(current);return (it==patches.end()?patches.begin():it)->first;
+    void New() {
+        source.reset();memoryDocument=true;protectedAtOpen=false;
+        openedPath.clear();openRoots.clear();path.clear();
+        current=Version{};current.id=++revision;saved=current.id;size=0;
+        undo.clear();redo.clear();
+    }
+    bool Loaded() const {return source||memoryDocument;}
+    bool Untitled() const {return memoryDocument&&path.empty();}
+    bool Dirty() const {return current.id!=saved;}
+    bool Modified(uint64_t offset) const {
+        auto cursor=At(offset);
+        return cursor.index<current.pieces.size()&&bool(current.pieces[cursor.index].bytes);
+    }
+    std::optional<uint64_t> ModifiedOffset(uint64_t currentOffset,bool previous=false) const {
+        uint64_t start=0;
+        std::optional<uint64_t> first,last,prior;
+        for(const auto& piece:current.pieces) {
+            const uint64_t end=start+piece.length;
+            if(piece.bytes) {
+                if(!first)first=start;
+                last=end-1;
+                if(!previous&&currentOffset<end-1)return currentOffset<start?start:currentOffset+1;
+                if(previous&&currentOffset>start)prior=(std::min)(currentOffset-1,end-1);
+            }
+            start=end;
+        }
+        return previous?(prior?prior:last):first;
     }
     bool CanUndo() const {return !undo.empty();}
     bool CanRedo() const {return !redo.empty();}
     bool Read(uint64_t offset,size_t count,Bytes& result) const {
-        if(!Original(offset,count,result)) return false;
-        for(auto it=patches.lower_bound(offset);it!=patches.end() && it->first-offset<count;++it) result[static_cast<size_t>(it->first-offset)]=it->second;
+        if(!Loaded()||offset>size||count>size-offset)return false;
+        result.resize(count);
+        auto cursor=At(offset);
+        size_t read=0;
+        while(read<count) {
+            const auto& piece=cursor.pieces[cursor.index];
+            auto take=static_cast<size_t>((std::min)(uint64_t(count-read),piece.length-cursor.within));
+            uint64_t start=PieceOffset(piece,cursor.within);
+            if(piece.bytes) {
+                const auto period=piece.bytes->size();
+                const auto tail=(std::min)(take,period-static_cast<size_t>(start));
+                std::copy_n(piece.bytes->data()+start,tail,result.data()+read);
+                const auto head=(std::min)(take-tail,static_cast<size_t>(start));
+                std::copy_n(piece.bytes->data(),head,result.data()+read+tail);
+                for(size_t copied=tail+head;copied<take;) {
+                    const auto repeat=(std::min)(copied,take-copied);
+                    std::copy_n(result.data()+read,repeat,result.data()+read+copied);
+                    copied+=repeat;
+                }
+            }
+            else if(!ReadOriginal(start,take,result.data()+read))return false;
+            cursor.Advance(take);read+=take;
+        }
         return true;
     }
+    bool Splice(uint64_t offset,uint64_t removed,const Bytes& bytes) {
+        if(!Loaded()||offset>size||removed>size-offset||bytes.size()>INT64_MAX-(size-removed))return false;
+        if(removed==bytes.size()) {
+            Bytes before;
+            if(!Read(offset,bytes.size(),before))return false;
+            if(before==bytes)return true;
+        }
+        Version next;next.size=size-removed+bytes.size();
+        Cursor cursor{current.pieces};cursor.Advance(offset,&next.pieces);
+        Edit edit;
+        if(!bytes.empty())edit.inserted=std::make_shared<const Bytes>(bytes);
+        Record(edit,cursor,offset,removed,bytes.size());
+        if(edit.inserted)Append(next.pieces,{edit.inserted,0,bytes.size()});
+        cursor.Advance(size-offset-removed,&next.pieces);
+        Apply(std::move(next),std::move(edit));return true;
+    }
     bool Overwrite(uint64_t offset,const Bytes& bytes) {
-        Change change{offset,{},bytes};
-        if(bytes.empty()||!Read(offset,bytes.size(),change.before))return false;
-        if(change.before==bytes)return true;
-        Transaction transaction;transaction.push_back(std::move(change));undo.reserve(undo.size()+1);
-        if(!Apply(transaction,true))return false;
-        undo.push_back(std::move(transaction));redo.clear();return true;
+        return !bytes.empty()&&Splice(offset,bytes.size(),bytes);
     }
-    bool Undo() {
-        if(undo.empty())return false;redo.reserve(redo.size()+1);
-        if(!Apply(undo.back(),false))return false;
-        redo.push_back(std::move(undo.back()));undo.pop_back();return true;
-    }
-    bool Redo() {
-        if(redo.empty())return false;undo.reserve(undo.size()+1);
-        if(!Apply(redo.back(),true))return false;
-        undo.push_back(std::move(redo.back()));redo.pop_back();return true;
-    }
-    struct ReplacementPlan {
-        const Document* owner=nullptr;uint64_t revision=0,count=0;
-        std::map<uint64_t,unsigned char> patches;
-        Transaction changes;
+    bool Undo() {return Restore(undo,redo,false);}
+    bool Redo() {return Restore(redo,undo,true);}
+    class ReplacementPlan {
+        friend class Document;
+        const Document* owner=nullptr;
+        uint64_t revision=0;
+        Version next;
+        Edit edit;
+    public:
+        uint64_t count=0;
     };
-    // Stage a complete non-overlapping replacement without mutating the document.
-    // Cap history and sparse-map growth: exceeding either limit rejects the entire operation.
     template<class Cancel,class Progress>
     std::optional<ReplacementPlan> PrepareReplaceAll(const Bytes& pattern,const Bytes& replacement,Cancel cancel,Progress progress,bool& failed,bool& limit,uint64_t start=0,uint64_t length=UINT64_MAX) const {
         failed=limit=false;
-        if(!Loaded()||pattern.empty()||pattern.size()!=replacement.size()||start>size||(length!=UINT64_MAX&&length>size-start)){failed=true;return {};}
-        ReplacementPlan plan;plan.owner=this;plan.revision=revision;
+        if(!Loaded()||pattern.empty()||start>size||(length!=UINT64_MAX&&length>size-start)){failed=true;return {};}
+        ReplacementPlan plan;plan.owner=this;plan.revision=revision;plan.next.size=size;
         if(pattern==replacement)return plan;
-        std::vector<uint64_t> offsets;uint64_t next=0;
+        Cursor cursor{current.pieces};uint64_t next=0;
+        if(!replacement.empty())plan.edit.inserted=std::make_shared<const Bytes>(replacement);
         bool complete=ScanMatches(pattern,cancel,[&](uint64_t at){
             if(at<next)return true;
-            if(offsets.size()>=100000||offsets.size()>=1048576/pattern.size()){limit=true;return false;}
-            offsets.push_back(at);next=at+pattern.size();return true;
+            if(replacement.size()>INT64_MAX-(plan.next.size-pattern.size())){
+                limit=true;return false;
+            }
+            cursor.Advance(at-next,&plan.next.pieces);
+            Record(plan.edit,cursor,at-next,pattern.size(),replacement.size());
+            if(plan.edit.inserted)Append(plan.next.pieces,{plan.edit.inserted,0,replacement.size()});
+            next=at+pattern.size();++plan.count;
+            plan.next.size=plan.next.size-pattern.size()+replacement.size();
+            return true;
         },progress,failed,start,length);
         if(!complete||failed||limit||cancel())return {};
-        plan.patches=patches;plan.changes.reserve(offsets.size());Bytes original;
-        for(auto at:offsets) {
-            if(cancel())return {};
-            Change change{at,{},replacement};
-            if(!Read(at,pattern.size(),change.before)||change.before!=pattern||!Original(at,pattern.size(),original)){failed=true;return {};}
-            for(size_t i=0;i<replacement.size();++i){if(replacement[i]==original[i])plan.patches.erase(at+i);else plan.patches[at+i]=replacement[i];}
-            plan.changes.push_back(std::move(change));
-        }
-        if(cancel())return {};
-        plan.count=offsets.size();return plan;
+        cursor.Advance(size-next,&plan.next.pieces);return plan;
     }
     bool CommitReplacement(ReplacementPlan&& plan) {
         if(plan.owner!=this||plan.revision!=revision)return false;
-        if(plan.changes.empty())return true;
-        undo.reserve(undo.size()+1);
-        undo.push_back(std::move(plan.changes));patches.swap(plan.patches);redo.clear();++revision;return true;
+        if(plan.count)Apply(std::move(plan.next),std::move(plan.edit));
+        return true;
     }
+    bool CanSave(const std::vector<std::wstring>& roots) const {
+        std::vector<std::unique_ptr<Handle>> directories;
+        std::unique_ptr<Handle> target;
+        return !WorkingDestination(roots,directories,target).empty();
+    }
+    enum class SaveMode { Working, Copy, Untitled };
+    class PendingSave {
+        friend class Document;
+        const Document* owner=nullptr;
+        uint64_t revision=0;
+        SaveMode mode=SaveMode::Copy;
+        std::wstring destination;
+        std::vector<std::unique_ptr<Handle>> directories;
+        std::unique_ptr<Handle> target;
+        std::unique_ptr<NewCopy> output;
+    };
+    template<class Cancel,class Progress>
+    std::unique_ptr<PendingSave> PrepareSave(SaveMode mode,const std::wstring& name,
+        const std::vector<std::wstring>& roots,Cancel cancel,Progress progress) const {
+        if(!Loaded()||cancel()||(mode==SaveMode::Untitled&&!Untitled()))return {};
+        auto pending=std::make_unique<PendingSave>();
+        pending->owner=this;pending->revision=revision;pending->mode=mode;
+        if(mode==SaveMode::Working) {
+            pending->destination=WorkingDestination(roots,pending->directories,pending->target);
+            if(pending->destination.empty())return {};
+            const auto parent=pending->destination.substr(0,pending->destination.find_last_of(L'\\')+1);
+            static std::atomic<uint64_t> serial{0};
+            auto temp=parent+L".datura-save-"+std::to_wstring(GetCurrentProcessId())+L"-"+
+                std::to_wstring(GetTickCount64())+L"-"+std::to_wstring(++serial)+L".tmp";
+            pending->output.reset(new NewCopy(temp,NewCopy::CanonicalPath{}));
+        } else {
+            if(!CopyPathAllowed(name))return {};
+            std::error_code error;
+            pending->destination=std::filesystem::absolute(name,error).wstring();
+            if(error)return {};
+            pending->output=std::make_unique<NewCopy>(pending->destination);
+        }
+        auto& output=*pending->output;
+        if(!output.Valid()||!WriteRange(output,0,size,cancel,progress)||
+           !FlushFileBuffers(output.handle->value)||cancel())return {};
+        return pending;
+    }
+    bool CommitSave(std::unique_ptr<PendingSave> pending,const std::vector<std::wstring>& roots) {
+        if(!pending||pending->owner!=this||pending->revision!=revision)return false;
+        auto& output=*pending->output;
+        if(pending->mode==SaveMode::Copy){output.committed=true;return true;}
+        BY_HANDLE_FILE_INFORMATION identity{};
+        if(!output.Identity(identity))return false;
+        if(pending->mode==SaveMode::Working) {
+            if(WorkingDestination(roots,pending->directories,pending->target)!=pending->destination||
+               !output.Replace(pending->destination))return false;
+        } else {
+            auto nameForDisplay=pending->destination;
+            auto protectedRoots=roots;
+            output.committed=true;pending->output.reset();
+            openedPath=std::move(pending->destination);path=std::move(nameForDisplay);
+            openRoots=std::move(protectedRoots);
+        }
+        saveIdentity=identity;saved=current.id;++revision;
+        if(pending->mode==SaveMode::Untitled)protectedAtOpen=!CanSave({});
+        return true;
+    }
+    bool SaveWorkingCopy(const std::vector<std::wstring>& roots) {
+        return CommitSave(PrepareSave(SaveMode::Working,{},roots,[]{return false;},[](uint64_t){}),roots);
+    }
+    bool SaveUntitled(const std::wstring& name,const std::vector<std::wstring>& roots) {
+        return CommitSave(PrepareSave(SaveMode::Untitled,name,roots,[]{return false;},[](uint64_t){}),roots);
+    }
+private:
+    template<class Cancel,class Progress>
+    bool WriteRange(NewCopy& output,uint64_t start,uint64_t length,Cancel cancel,Progress progress) const {
+        Bytes bytes;
+        for(uint64_t offset=0;offset<length;) {
+            if(cancel())return false;
+            size_t count=static_cast<size_t>((std::min)(uint64_t(65536),length-offset));
+            if(!Read(start+offset,count,bytes)||!output.Write(bytes.data(),bytes.size()))return false;
+            offset+=count;progress(offset);
+        }
+        return !cancel();
+    }
+public:
     bool SaveRangeCopy(const std::wstring& name,uint64_t start,uint64_t length) const {
         if(!Loaded() || start>size || length>size-start) return false;
         NewCopy output(name);
-        if(!output.Valid()) return false;
-        Bytes bytes;
-        for(uint64_t offset=0;offset<length;) {
-            size_t count=static_cast<size_t>((std::min)(uint64_t(65536),length-offset));
-            if(!Read(start+offset,count,bytes)||!output.Write(bytes.data(),bytes.size())) return false;
-            offset+=count;
-        }
-        return output.Commit();
+        return output.Valid()&&WriteRange(output,start,length,[]{return false;},[](uint64_t){})&&output.Commit();
     }
     bool SaveCopy(const std::wstring& name) const {return SaveRangeCopy(name,0,size);}
     // Scan every overlapping match with bounded memory; callbacks may stop early.

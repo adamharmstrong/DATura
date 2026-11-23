@@ -14,6 +14,7 @@ struct DisplayConfiguration
 {
     bool borderless = false;
     bool fullscreen = false;
+    bool vSync = true;
     int width = 1280;
     int height = 720;
     int renderWidth = 1280;

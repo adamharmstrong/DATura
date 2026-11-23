@@ -10,7 +10,9 @@
 #include "model_renderer.h"
 #include "zone_model_render_metadata.h"
 #include "d3d_math.h"
+#include "d3d_model_buffers.h"
 #include <filesystem>
+#include <map>
 #include <fstream>
 #include <iostream>
 
@@ -357,8 +359,280 @@ void TestRace(const char *root, int race, IDirect3DDevice9 *device)
 }
 }
 
+std::vector<DWORD> CaptureTarget(IDirect3DDevice9* device, const std::string& path)
+{
+    std::vector<DWORD> result;
+    IDirect3DSurface9 *target = nullptr, *surface = nullptr;
+    device->GetRenderTarget(0, &target);
+    D3DSURFACE_DESC desc = {};
+    if (target) target->GetDesc(&desc);
+    if (target) device->CreateOffscreenPlainSurface(desc.Width, desc.Height, D3DFMT_X8R8G8B8, D3DPOOL_SYSTEMMEM, &surface, nullptr);
+    D3DLOCKED_RECT pixels = {};
+    if (surface && SUCCEEDED(device->GetRenderTargetData(target, surface)) &&
+        SUCCEEDED(surface->LockRect(&pixels, nullptr, D3DLOCK_READONLY)))
+    {
+        result.resize(desc.Width * desc.Height);
+        for (UINT y = 0; y < desc.Height; ++y)
+            memcpy(result.data() + y * desc.Width, static_cast<char*>(pixels.pBits) + y * pixels.Pitch, desc.Width * 4);
+        surface->UnlockRect();
+        if (!path.empty())
+        {
+            BITMAPFILEHEADER header = {}; BITMAPINFOHEADER info = {};
+            info.biSize = sizeof(info); info.biWidth = desc.Width; info.biHeight = -(LONG)desc.Height;
+            info.biPlanes = 1; info.biBitCount = 32;
+            header.bfType = 0x4D42; header.bfOffBits = sizeof(header) + sizeof(info);
+            header.bfSize = header.bfOffBits + desc.Width * desc.Height * 4;
+            std::ofstream output(path, std::ios::binary);
+            output.write(reinterpret_cast<char*>(&header), sizeof(header));
+            output.write(reinterpret_cast<char*>(&info), sizeof(info));
+            output.write(reinterpret_cast<const char*>(result.data()), result.size() * 4);
+        }
+    }
+    if (surface) surface->Release();
+    if (target) target->Release();
+    return result;
+}
+
+// Characters are Gouraud shaded in retail. Separate faceting caused by the
+// mesh normals or fixed-function lighting from faceting added by the
+// directional shadow map applied to the actor as a receiver.
+void TestActorShading(const char* root, IDirect3DDevice9* device, const std::filesystem::path& output)
+{
+    std::filesystem::create_directories(output);
+    noeRAPI_t rapi(device);
+    rapi.SetCurrentFilePath("actor shading.ff11datset");
+    char datSet[4096] = {};
+    FFXIDatSet::PlayerOptions options; options.raceIndex = 0;
+    std::string assetRoot(root);
+    if (assetRoot.back() != '/' && assetRoot.back() != '\\') assetRoot += '/';
+    Check(FFXIDatSet::BuildPlayer(assetRoot.c_str(), options, datSet, sizeof(datSet)), "build actor shading player");
+    int count = 0;
+    noesisModel_t* model = Model_FF11_LoadDATSet(reinterpret_cast<BYTE*>(datSet), static_cast<int>(strlen(datSet)), count, &rapi);
+    Check(model != nullptr, "load actor shading player");
+    if (!model) return;
+    model->pAnim = model->FindAnimation("idl_relaxed");
+    model->UpdateAnimation(0, device);
+    ZoneModelRenderMetadata::Prepare(model, device);
+
+    // Mesh normals: smooth meshes share normals between a triangle's corners.
+    size_t triangles = 0, flat = 0;
+    for (const auto& mesh : model->submeshes)
+        for (size_t i = 0; i + 2 < mesh.cpuIndices.size(); i += 3)
+        {
+            const FFXIVertex* v[3] = {&mesh.cpuVerts[mesh.cpuIndices[i]], &mesh.cpuVerts[mesh.cpuIndices[i+1]],
+                &mesh.cpuVerts[mesh.cpuIndices[i+2]]};
+            const auto dot = [](const float* a, const float* b)
+            {
+                const float la = sqrtf(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]), lb = sqrtf(b[0]*b[0]+b[1]*b[1]+b[2]*b[2]);
+                return la > 0 && lb > 0 ? (a[0]*b[0]+a[1]*b[1]+a[2]*b[2])/(la*lb) : 1.0f;
+            };
+            ++triangles;
+            if (dot(v[0]->nrm, v[1]->nrm) > .9995f && dot(v[0]->nrm, v[2]->nrm) > .9995f) ++flat;
+        }
+    std::cout << "Actor shading: " << triangles << " triangles, " << flat << " with identical corner normals\n";
+    {
+        DWORD lowest = 0xffffffff, highest = 0;
+        for (const auto& mesh : model->submeshes) for (const auto& v : mesh.cpuVerts)
+        { lowest = (std::min)(lowest, v.diffuse & 0xffffff); highest = (std::max)(highest, v.diffuse & 0xffffff); }
+        std::cout << "Actor shading: vertex diffuse RGB " << std::hex << lowest << ".." << highest << std::dec << '\n';
+    }
+    {
+        // Split normals: vertices at one position with different normals shade as a crease.
+        std::map<std::array<long,3>, std::vector<std::array<float,3>>> byPosition;
+        float lengthMin = 10, lengthMax = 0;
+        for (const auto& mesh : model->submeshes) for (const auto& v : mesh.cpuVerts)
+        {
+            const float length = sqrtf(v.nrm[0]*v.nrm[0]+v.nrm[1]*v.nrm[1]+v.nrm[2]*v.nrm[2]);
+            lengthMin = (std::min)(lengthMin, length); lengthMax = (std::max)(lengthMax, length);
+            if (length > 0) byPosition[{lroundf(v.pos[0]*1000), lroundf(v.pos[1]*1000), lroundf(v.pos[2]*1000)}]
+                .push_back({v.nrm[0]/length, v.nrm[1]/length, v.nrm[2]/length});
+        }
+        size_t shared = 0, creased = 0;
+        for (const auto& [position, normals] : byPosition)
+        {
+            if (normals.size() < 2) continue;
+            ++shared;
+            float worst = 1;
+            for (const auto& a : normals) for (const auto& b : normals)
+                worst = (std::min)(worst, a[0]*b[0]+a[1]*b[1]+a[2]*b[2]);
+            if (worst < cosf(20 * 3.14159265f / 180)) ++creased;
+        }
+        std::cout << "Actor shading: " << byPosition.size() << " positions, " << shared << " shared by several vertices, "
+            << creased << " with normals >20 degrees apart; normal length " << lengthMin << ".." << lengthMax << '\n';
+    }
+
+    noesisModel_t::Submesh plate;
+    plate.objectName = plate.materialName = "actor-shading-ground";
+    for (const auto& corner : {std::array<float,2>{-20,-20}, std::array<float,2>{20,-20},
+        std::array<float,2>{20,20}, std::array<float,2>{-20,20}})
+    {
+        FFXIVertex vertex = {};
+        vertex.pos[0] = corner[0]; vertex.pos[2] = corner[1]; vertex.nrm[1] = -1; vertex.diffuse = 0xff808080;
+        plate.cpuVerts.push_back(vertex);
+    }
+    plate.cpuIndices = {0,1,2,0,2,3}; plate.vertCount = 4; plate.triCount = 2;
+    noesisMaterial_t groundMaterial; groundMaterial.name = const_cast<char*>("actor-shading-ground");
+    groundMaterial.flags = NMATFLAG_TWOSIDED; groundMaterial.noDefaultBlend = true;
+    noesisMaterial_t* groundMaterials[] = {&groundMaterial};
+    noesisMatData_t groundData = {}; groundData.mats = groundMaterials; groundData.matCount = 1;
+    noesisModel_t ground; ground.submeshes.push_back(plate); ground.pMatData = &groundData;
+    ground.BuildD3DBuffers(device); ZoneModelRenderMetadata::Prepare(&ground, device);
+
+    const auto world = D3DMath::BuildIdentity();
+    // Bastok Markets' authored model lighting at 10:00 (ROM/1/35.DAT environment
+    // records): ambient plus sun reaches ~1.9, past D3D's per-vertex clamp.
+    bool bastokLight = false, actorClampDisabled = false;
+    const auto render = [&](float minute, bool shadows, const float eye[3], const float target[3], const std::string& name)
+    {
+        device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0xff203040, 1, 0);
+        device->BeginScene();
+        const auto view = D3DMath::BuildLookAtLH(eye[0], eye[1], eye[2], target[0], target[1], target[2]);
+        const auto projection = D3DMath::BuildPerspectiveFovLH(0.5f, 640.0f / 480.0f, 0.05f, 200);
+        device->SetTransform(D3DTS_VIEW, &view); device->SetTransform(D3DTS_PROJECTION, &projection);
+        ModelRenderer::Context context; context.device = device;
+        context.lightingQuality = 2; context.automaticLightDirection = true; context.minuteOfDay = minute;
+        if (bastokLight)
+        {
+            context.useAuthoredLightColor = true; context.authoredMainLightColor = 0xffc4c2ad;
+            context.authoredSecondaryLightColor = 0xff3f3f38; context.authoredAmbientLightColor = 0xffa7a8a6;
+            context.authoredLightPower = 1.63333f;
+        }
+        context.dynamicActorShadows = context.dynamicObjectShadows = true;
+        context.shadowOpacity = .32f; context.shadowMaxDistance = 80;
+        std::copy(eye, eye + 3, context.cameraPosition);
+        context.shadowCenterValid = true; std::copy(target, target + 3, context.shadowCenter);
+        if (shadows) ModelRenderer::BeginDirectionalShadowFrame();
+        auto zone = context; zone.rendersZoneObjects = true; zone.geometryPass = ModelRenderer::GeometryPass::Opaque;
+        ModelRenderer::PrepareFixedFunctionPass(zone, world);
+        ModelRenderer::DrawGeometry(zone, &ground, world);
+        ModelRenderer::PrepareFixedFunctionPass(context, world);
+        if (actorClampDisabled)
+        {
+            // Same lighting, but the zone material path (vertex colour, per-vertex clamp).
+            auto zoneLit = context; zoneLit.rendersZoneObjects = true; zoneLit.geometryPass = ModelRenderer::GeometryPass::Opaque;
+            ModelRenderer::DrawGeometry(zoneLit, model, world);
+            auto transparent = zoneLit; transparent.geometryPass = ModelRenderer::GeometryPass::Transparent;
+            ModelRenderer::DrawGeometry(transparent, model, world);
+        }
+        else ModelRenderer::DrawGeometry(context, model, world);
+        if (shadows) Check(ModelRenderer::DrawDirectionalShadowFrame(), "render actor shading shadow frame");
+        device->EndScene();
+        return CaptureTarget(device, (output / (name + ".bmp")).string());
+    };
+    float top = 0;
+    for (const auto& mesh : model->submeshes) for (const auto& v : mesh.cpuVerts) top = (std::min)(top, v.pos[1]);
+    const float head[3] = {0, top * .93f, 0};
+    {
+        // Outward normals on the crown point up, which is -Y in DATura scene space.
+        double crown = 0; int samples = 0;
+        for (const auto& mesh : model->submeshes) for (const auto& v : mesh.cpuVerts)
+            if (v.pos[1] < top * .985f) { crown += v.nrm[1]; ++samples; }
+        std::cout << "Actor shading: crown normal mean Y=" << (samples ? crown / samples : 0) << " over " << samples << " vertices\n";
+    }
+    {
+        // Close-ups of the arm and shoulder with authored normals, then with
+        // normals welded across vertices that share a position.
+        const float armEye[3] = {1.3f, top * .55f, 1.1f}, arm[3] = {0, top * .55f, .25f};
+        const float shoulderEye[3] = {1.2f, top * .78f, .9f}, shoulder[3] = {0, top * .78f, .2f};
+        bastokLight = true;
+        const float faceEye[3] = {1.6f, top * .9f, .4f};
+        for (bool perPixel : {false, true})
+        {
+            // Emulate the old per-vertex clamp by drawing the actor as zone geometry would be lit.
+            actorClampDisabled = !perPixel;
+            const std::string mode = perPixel ? "per-pixel-clamp" : "per-vertex-clamp";
+            render(600, false, armEye, arm, "arm-600-bastok-light-" + mode);
+            render(600, false, shoulderEye, shoulder, "shoulder-600-bastok-light-" + mode);
+            render(600, false, faceEye, head, "face-600-bastok-light-" + mode);
+        }
+        actorClampDisabled = false;
+        bastokLight = false;
+        render(900, false, armEye, arm, "arm-900-authored-normals");
+        render(900, false, shoulderEye, shoulder, "shoulder-900-authored-normals");
+        std::map<std::array<long,3>, std::vector<std::pair<size_t,size_t>>> groups;
+        for (size_t m = 0; m < model->submeshes.size(); ++m)
+            for (size_t v = 0; v < model->submeshes[m].cpuVerts.size(); ++v)
+            {
+                const auto& p = model->submeshes[m].cpuVerts[v].pos;
+                groups[{lroundf(p[0]*1000), lroundf(p[1]*1000), lroundf(p[2]*1000)}].push_back({m, v});
+            }
+        auto saved = model->submeshes;
+        for (const auto& [position, members] : groups)
+        {
+            float sum[3] = {};
+            for (const auto& [m, v] : members) for (int a = 0; a < 3; ++a) sum[a] += saved[m].cpuVerts[v].nrm[a];
+            const float length = sqrtf(sum[0]*sum[0]+sum[1]*sum[1]+sum[2]*sum[2]);
+            if (length <= 0) continue;
+            for (const auto& [m, v] : members) for (int a = 0; a < 3; ++a)
+                model->submeshes[m].cpuVerts[v].nrm[a] = sum[a] / length;
+        }
+        for (auto& mesh : model->submeshes) D3DModelBuffers::UploadVertices(mesh);
+        render(900, false, armEye, arm, "arm-900-welded-normals");
+        render(900, false, shoulderEye, shoulder, "shoulder-900-welded-normals");
+        for (size_t m = 0; m < model->submeshes.size(); ++m)
+        { model->submeshes[m].cpuVerts = saved[m].cpuVerts; D3DModelBuffers::UploadVertices(model->submeshes[m]); }
+    }
+    for (float minute : {600.0f, 900.0f})
+    {
+        // Arms and torso from the front: lighting only, without any shadow map.
+        const float bodyEye[3] = {2.4f, top * .62f, .9f}, body[3] = {0, top * .62f, 0};
+        render(minute, false, bodyEye, body, "body-" + std::to_string(int(minute)) + "-lighting-only");
+    }
+    for (float minute : {600.0f, 900.0f})
+    {
+        const float eye[3] = {1.6f, top * .9f, .4f};
+        const std::string tag = std::to_string(int(minute));
+        const auto lit = render(minute, false, eye, head, "face-" + tag + "-lighting-only");
+        const auto shadowed = render(minute, true, eye, head, "face-" + tag + "-with-shadow-map");
+        int darkened = 0;
+        std::vector<DWORD> diff(lit.size());
+        for (size_t i = 0; i < lit.size() && i < shadowed.size(); ++i)
+        {
+            const int change = int((lit[i] >> 8) & 255) - int((shadowed[i] >> 8) & 255);
+            if (change > 6) ++darkened;
+            const int scaled = (std::min)(255, (std::max)(0, change * 4));
+            diff[i] = 0xff000000 | (scaled << 16) | (scaled << 8) | scaled;
+        }
+        std::cout << "Actor shading " << tag << ": pixels darkened by the shadow map on the face view=" << darkened << '\n';
+        // Nothing but the actor itself can occlude this view. Before normal offset
+        // and terminator fading, self-shadowing faceted 2,855 (10:00) and 15,126
+        // (15:00) pixels; the chin legitimately shades the neck.
+        Check(darkened < 1000, "directional shadows do not facet an unoccluded actor with self-shadowing");
+        BITMAPFILEHEADER header = {}; BITMAPINFOHEADER info = {};
+        info.biSize = sizeof(info); info.biWidth = 640; info.biHeight = -480; info.biPlanes = 1; info.biBitCount = 32;
+        header.bfType = 0x4D42; header.bfOffBits = sizeof(header) + sizeof(info);
+        header.bfSize = header.bfOffBits + static_cast<DWORD>(diff.size() * 4);
+        std::ofstream file((output / ("face-" + tag + "-shadow-difference-x4.bmp")).string(), std::ios::binary);
+        file.write(reinterpret_cast<char*>(&header), sizeof(header));
+        file.write(reinterpret_cast<char*>(&info), sizeof(info));
+        file.write(reinterpret_cast<const char*>(diff.data()), diff.size() * 4);
+    }
+    ModelRenderer::ReleaseDirectionalShadowResources();
+    ground.ReleaseD3DBuffers();
+}
+
 int main(int argc, char **argv)
 {
+    if (argc == 4 && std::string(argv[1]) == "--actor-shading")
+    {
+        HWND window = CreateWindowExA(0, "STATIC", "Actor shading", WS_POPUP, 0, 0, 640, 480,
+            nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
+        IDirect3D9* d3d = Direct3DCreate9(D3D_SDK_VERSION);
+        IDirect3DDevice9* device = nullptr;
+        D3DPRESENT_PARAMETERS pp = {};
+        pp.Windowed = TRUE; pp.SwapEffect = D3DSWAPEFFECT_DISCARD; pp.hDeviceWindow = window;
+        pp.BackBufferWidth = 640; pp.BackBufferHeight = 480; pp.BackBufferFormat = D3DFMT_X8R8G8B8;
+        pp.EnableAutoDepthStencil = TRUE; pp.AutoDepthStencilFormat = D3DFMT_D24S8;
+        if (d3d && window)
+            d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, window, D3DCREATE_HARDWARE_VERTEXPROCESSING, &pp, &device);
+        Check(device != nullptr, "create actor shading device");
+        if (device) TestActorShading(argv[2], device, argv[3]);
+        if (device) device->Release();
+        if (d3d) d3d->Release();
+        if (window) DestroyWindow(window);
+        std::cout << (failures ? "FAIL" : "PASS") << ": actor shading (" << failures << " failures)\n";
+        return failures ? 1 : 0;
+    }
     TestNpcDefaults();
     TestNpcRoles();
     if (argc != 2 && argc != 3) { std::cerr << "Pass the FFXI installation root and optional nameplate BMP output path.\n"; return 2; }

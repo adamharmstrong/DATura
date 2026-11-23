@@ -50,7 +50,22 @@ struct Surface
     unsigned short blendMode = 0x48;
     bool twoSided = false; // a collapsed axis has no reliable determinant winding
     float cullDistance = 0.0f;
+    float placement[3] = {}; // generator spawn position in the raw FFXI frame (+Y is down)
 };
+
+// Stacked layers (base color, darkening sheet, additive ripples) share one
+// placement and differ only by a few hundredths in height. Their bounds
+// centers do not give a stable back-to-front order, so draw the deeper sheet
+// first. Returns false when the pair is not a stack and distance should decide.
+inline bool OrderStackedLayers(const Surface& a, const Surface& b, bool& aFirst)
+{
+    if (&a == &b || a.directory != b.directory ||
+        a.placement[0] != b.placement[0] || a.placement[2] != b.placement[2] ||
+        a.placement[1] == b.placement[1])
+        return false;
+    aFirst = a.placement[1] > b.placement[1];
+    return true;
+}
 
 struct State
 {

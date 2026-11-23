@@ -400,6 +400,42 @@ bool FindFloorAt(const std::vector<Triangle>& triangles, const SpatialIndex& ind
     return FindFloorAt(triangles, candidates, x, z, minY, maxY, outY, outNormal);
 }
 
+// Floor support for a standing player. The centre sample is preferred; when it
+// misses (e.g. over a stair riser too steep to be floor, typically ~0.1 wide),
+// floors under the rest of the footprint still support the player. Without
+// this, gravity carries the player below the next tread within a few frames
+// and through the open underside of the stairs.
+static bool FindSupportFloor(const std::vector<Triangle>& triangles, const SpatialIndex& index,
+                             const float playerRadius, const float x, const float z,
+                             const float minY, const float maxY, float* outY, float outNormal[3])
+{
+    if (FindFloorAt(triangles, index, playerRadius, x, z, minY, maxY, outY, outNormal))
+        return true;
+    const float footprint = playerRadius * 0.5f;
+    bool found = false;
+    float bestY = maxY;
+    float bestNormal[3] = {};
+    for (int sample = 0; sample < 8; ++sample)
+    {
+        const float angle = 0.785398163f * static_cast<float>(sample);
+        float y = 0.0f, normal[3] = {};
+        if (FindFloorAt(triangles, index, playerRadius, x + std::cos(angle) * footprint,
+                        z + std::sin(angle) * footprint, minY, maxY, &y, normal) &&
+            (!found || y < bestY))
+        {
+            found = true;
+            bestY = y; // highest supporting floor (world Y increases downward)
+            bestNormal[0] = normal[0]; bestNormal[1] = normal[1]; bestNormal[2] = normal[2];
+        }
+    }
+    if (found)
+    {
+        if (outY) *outY = bestY;
+        if (outNormal) { outNormal[0] = bestNormal[0]; outNormal[1] = bestNormal[1]; outNormal[2] = bestNormal[2]; }
+    }
+    return found;
+}
+
 bool OverlapsWallAt(const std::vector<Triangle>& triangles, const SpatialIndex& index,
                     const float x, const float y, const float z, const float playerRadius,
                     const float playerHeight, const float stepHeight)
@@ -468,8 +504,23 @@ void ResolveHorizontalCollision(const std::vector<Triangle>& triangles, const Sp
             normalX /= normalLength;
             normalZ /= normalLength;
 
-            float oldDistance = (oldX - triangle.p[0][0]) * normalX + (oldZ - triangle.p[0][2]) * normalZ;
-            float newDistance = (newX - triangle.p[0][0]) * normalX + (newZ - triangle.p[0][2]) * normalZ;
+            // A sloped blocking face (|normal.y| >= 0.25, under ~75 degrees) is
+            // measured where it crosses the blocking height (one step above the
+            // feet), not as a vertical plane through a vertex. Those differ by
+            // the slope's run, and the vertex plane could push the player
+            // sideways into a hill or ridge, below its surface, from where they
+            // fell through the terrain. Near-vertical faces keep the vertex
+            // plane: the difference there is negligible, and applying it
+            // changed the established sliding around small posts.
+            float heightOffset = 0.0f;
+            if (std::fabs(triangle.normal[1]) >= 0.25f)
+            {
+                float blockingY = playerY - (playerOnGround ? stepHeight : 0.0f);
+                blockingY = std::max(triangle.minY, std::min(triangle.maxY, blockingY));
+                heightOffset = triangle.normal[1] * (blockingY - triangle.p[0][1]) / normalLength;
+            }
+            float oldDistance = (oldX - triangle.p[0][0]) * normalX + (oldZ - triangle.p[0][2]) * normalZ + heightOffset;
+            float newDistance = (newX - triangle.p[0][0]) * normalX + (newZ - triangle.p[0][2]) * normalZ + heightOffset;
             // Keep the player on the side they started on, independently of
             // triangle winding or whether this move crosses the plane.
             if (oldDistance < 0.0f || (oldDistance == 0.0f && newDistance > 0.0f))
@@ -580,9 +631,9 @@ bool TryMoveHorizontal(const Mesh& mesh, const float playerRadius, const float p
     {
         float floorY = 0.0f;
         float floorNormal[3] = {};
-        const bool hasFloor = FindFloorAt(mesh.Triangles(), mesh.Index(), playerRadius,
-                                          newX, newZ, position[1] - stepHeight,
-                                          position[1] + maxStepDown, &floorY, floorNormal);
+        const bool hasFloor = FindSupportFloor(mesh.Triangles(), mesh.Index(), playerRadius,
+                                               newX, newZ, position[1] - stepHeight,
+                                               position[1] + maxStepDown, &floorY, floorNormal);
         if (hasFloor)
         {
             position[1] = floorY;
@@ -633,9 +684,11 @@ bool UpdateVerticalMotion(const Mesh& mesh, const float playerRadius, const floa
     float floorNormal[3] = {};
     const float searchMinY = position[1] - (onGround ? stepHeight : initialGroundStep);
     const float searchMaxY = position[1] + floorSearchDistance;
-    const bool hasFloor = FindFloorAt(mesh.Triangles(), mesh.Index(), playerRadius,
-                                      position[0], position[2], searchMinY, searchMaxY,
-                                      &floorY, floorNormal);
+    const bool hasFloor = onGround ?
+        FindSupportFloor(mesh.Triangles(), mesh.Index(), playerRadius,
+                         position[0], position[2], searchMinY, searchMaxY, &floorY, floorNormal) :
+        FindFloorAt(mesh.Triangles(), mesh.Index(), playerRadius,
+                    position[0], position[2], searchMinY, searchMaxY, &floorY, floorNormal);
 
     verticalVelocity += gravity * dt;
     if (verticalVelocity > maximumFallSpeed)

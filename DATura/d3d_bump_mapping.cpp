@@ -22,6 +22,7 @@ bool EnsureTexturePixelShader(IDirect3DDevice9* device)
         "float4 AlphaParams : register(c0);\n"
         "float4 ColorScale : register(c1);\n"
         "float4 BumpParams : register(c2);\n"
+        "float4 LightParams : register(c3);\n"
         "float4 main(float4 diffuse : COLOR0, float2 uv : TEXCOORD0) : COLOR0\n"
         "{\n"
         "    float4 texel = lerp(tex2D(BaseTexture, uv), float4(1,1,1,1), AlphaParams.w);\n"
@@ -31,7 +32,8 @@ bool EnsureTexturePixelShader(IDirect3DDevice9* device)
         "    float textureAlpha = (AlphaParams.y > 0.5) ? saturate(texel.a * 1.875) : texel.a;\n"
         "    float vertexAlpha = saturate(diffuse.a * 2.0);\n"
         "    float alpha = ((AlphaParams.x > 0.5) ? textureAlpha * vertexAlpha : 1.0) * AlphaParams.z;\n"
-        "    return float4(saturate(2.0 * texel.rgb * diffuse.rgb * ColorScale.rgb * bumpScale), saturate(alpha));\n"
+        "    float3 light = min(diffuse.rgb * LightParams.x, 1.0);\n"
+        "    return float4(saturate(2.0 * texel.rgb * light * ColorScale.rgb * bumpScale), saturate(alpha));\n"
         "}\n";
 
     D3D9Graphics::Context graphics(device);
@@ -85,6 +87,8 @@ bool ApplyTextureShader(IDirect3DDevice9* device, const bool useAuthoredAlpha,
     graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 1,
         colorScale ? authoredColorScale : defaultColorScale, 1);
     graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 2, bumpParams, 1);
+    const float lightParams[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+    graphics.SetShaderConstants(RendererBackend::ShaderStage::Pixel, 3, lightParams, 1);
     return true;
 }
 

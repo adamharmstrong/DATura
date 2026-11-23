@@ -24,6 +24,8 @@ void SetTextureStageForOptionalTexture(IDirect3DDevice9 *device, IDirect3DTextur
 void SetTextureScroll(IDirect3DDevice9 *device, bool enabled, float speedU = 0.0f,
                       float speedV = 0.0f);
 DWORD FloatBits(float value);
+// Actors: clamp vertex lighting per pixel instead of per vertex (see .cpp).
+void SetActorPixelLightClamp(bool enabled);
 
 bool SetFfxiTexturePixelShader(IDirect3DDevice9 *device, bool useAuthoredAlpha,
                                bool expandDxt3Alpha, float opacityScale = 1.0f,

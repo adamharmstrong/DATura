@@ -270,7 +270,7 @@ int ClampBumpMappingIntensity(const int percent)
 
 int ClampSceneClockMode(const int mode)
 {
-    return mode == SceneClockLocalSystem ? SceneClockLocalSystem : SceneClockVanadiel;
+    return mode >= SceneClockVanadiel && mode <= SceneClockManual ? mode : SceneClockVanadiel;
 }
 
 int RenderingBackendOptionCount()

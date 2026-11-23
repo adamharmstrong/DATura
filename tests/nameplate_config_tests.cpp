@@ -131,62 +131,79 @@ bool TestNameplateConfig()
     if (GameUiConfig_SaveChatLog(f.config)) return false;
 
     ShowWindow(f.owner, SW_SHOWNOACTIVATE);
+    NpcChatWindow::Reset();
     NpcChatWindow::SetTimeout(15);
-    const ULONGLONG before = GetTickCount64();
-    NpcChatWindow::Show(f.owner, "Test NPC", "Time to read this dialogue.");
-    if (!IsWindowVisible(NpcChatWindow::window) || NpcChatWindow::hideAt < before + 15000) return false;
+    NpcChatWindow::Show(f.owner, "Test NPC", "Hello.");
+    // Retail grows the log one row per new line instead of opening at full height.
+    if (!IsWindowVisible(NpcChatWindow::window) || NpcChatWindow::VisibleLines() != 1 ||
+        NpcChatWindow::history != L"Test NPC : Hello.") return false;
     RECT logBounds{}, ownerBounds{};
     GetClientRect(NpcChatWindow::window, &logBounds);
     GetClientRect(f.owner, &ownerBounds);
     if (logBounds.right != (ownerBounds.right - 16) / 2) return false;
-    HDC screen = GetDC(NpcChatWindow::transcript);
-    HDC rendered = CreateCompatibleDC(screen);
-    HBITMAP bitmap = CreateCompatibleBitmap(screen, logBounds.right, logBounds.bottom);
-    HGDIOBJ oldBitmap = SelectObject(rendered, bitmap);
-    SendMessageW(NpcChatWindow::transcript, WM_PRINT, (WPARAM)rendered, PRF_CLIENT);
-    const COLORREF stripeA = GetPixel(rendered, 4, 60);
-    const COLORREF stripeB = GetPixel(rendered, 4, 62);
-    SelectObject(rendered, oldBitmap);
-    DeleteObject(bitmap); DeleteDC(rendered); ReleaseDC(NpcChatWindow::transcript, screen);
-    if (stripeA != RGB(17, 27, 70) || stripeB != NpcChatWindow::background) return false;
-    SendMessageW(NpcChatWindow::window, WM_TIMER, NpcChatWindow::closeTimer, 0);
-    if (!IsWindowVisible(NpcChatWindow::window)) return false;
-    NpcChatWindow::hideAt = GetTickCount64() - 1;
-    NpcChatWindow::Show(f.owner, "Test NPC", "A new message restarts the countdown.");
-    SendMessageW(NpcChatWindow::window, WM_TIMER, NpcChatWindow::closeTimer, 0);
-    if (!IsWindowVisible(NpcChatWindow::window)) return false;
-    SendMessageW(NpcChatWindow::transcript, WM_KEYDOWN, VK_ESCAPE, 0);
-    if (!IsWindowVisible(NpcChatWindow::window) || NpcChatWindow::compactedLines != 1) return false;
-    SendMessageW(NpcChatWindow::transcript, WM_KEYDOWN, VK_ESCAPE, (1LL << 30));
-    if (NpcChatWindow::compactedLines != 1) return false;
-    SendMessageW(NpcChatWindow::window, WM_TIMER, NpcChatWindow::closeTimer, 0);
-    if (NpcChatWindow::compactedLines != 1) return false;
-    NpcChatWindow::Show(f.owner, "Test NPC", "Restore before checking automatic compaction.");
-    NpcChatWindow::hideAt = GetTickCount64() - 1;
-    SendMessageW(NpcChatWindow::window, WM_TIMER, NpcChatWindow::closeTimer, 0);
-    if (!IsWindowVisible(NpcChatWindow::window) || NpcChatWindow::compactedLines != 1) return false;
-    RECT compacted{}; GetWindowRect(NpcChatWindow::window, &compacted);
-    SendMessageW(NpcChatWindow::window, WM_TIMER, NpcChatWindow::closeTimer, 0);
-    if (NpcChatWindow::compactedLines != 1) return false;
-    NpcChatWindow::Show(f.owner, "Test NPC", "Restore the configured height.");
-    RECT expanded{}; GetWindowRect(NpcChatWindow::window, &expanded);
-    if (expanded.bottom != compacted.bottom ||
-        compacted.top - expanded.top != NpcChatWindow::lineHeight) return false;
-    for (int i = 0; i < 100 && IsWindowVisible(NpcChatWindow::window); ++i)
     {
-        NpcChatWindow::hideAt = GetTickCount64() - 1;
-        SendMessageW(NpcChatWindow::window, WM_TIMER, NpcChatWindow::closeTimer, 0);
+        HDC screen = GetDC(f.owner);
+        HDC rendered = CreateCompatibleDC(screen);
+        HBITMAP bitmap = CreateCompatibleBitmap(screen, 64, 64);
+        HGDIOBJ oldBitmap = SelectObject(rendered, bitmap);
+        NpcChatWindow::PaintStripes(rendered, RECT{0, 0, 64, 64});
+        const COLORREF stripeA = GetPixel(rendered, 4, 60);
+        const COLORREF stripeB = GetPixel(rendered, 4, 62);
+        SelectObject(rendered, oldBitmap);
+        DeleteObject(bitmap); DeleteDC(rendered); ReleaseDC(f.owner, screen);
+        if (stripeA != RGB(17, 27, 70) || stripeB != NpcChatWindow::background) return false;
     }
+    // Each new line adds one timeout period; the log then shrinks one row per period.
+    NpcChatWindow::Show(f.owner, "Test NPC", "A second line.");
+    NpcChatWindow::Show(f.owner, "Test NPC", "A third line.");
+    if (NpcChatWindow::VisibleLines() != 3) return false;
+    NpcChatWindow::Advance(14999.0);
+    if (NpcChatWindow::VisibleLines() != 3) return false;
+    NpcChatWindow::Advance(1.0);
+    if (NpcChatWindow::VisibleLines() != 2) return false;
+    // Escape removes one row per physical press only.
+    SendMessageW(NpcChatWindow::transcript, WM_KEYDOWN, VK_ESCAPE, 0);
+    if (NpcChatWindow::VisibleLines() != 1) return false;
+    SendMessageW(NpcChatWindow::transcript, WM_KEYDOWN, VK_ESCAPE, (1LL << 30));
+    if (NpcChatWindow::VisibleLines() != 1 || !IsWindowVisible(NpcChatWindow::window)) return false;
+    // The row budget is capped at the configured window size.
+    for (int i = 0; i < 20; ++i) NpcChatWindow::Show(f.owner, "Test NPC", "Filler.");
+    if (NpcChatWindow::VisibleLines() != NpcChatWindow::maxVisibleLines) return false;
+    // While reading back, the log holds and new lines keep the view still.
+    NpcChatWindow::ScrollBy(2);
+    const int anchored = NpcChatWindow::scrollLines;
+    NpcChatWindow::Show(f.owner, "Test NPC", "Later.");
+    if (anchored != 2 || NpcChatWindow::scrollLines != anchored + 1) return false;
+    NpcChatWindow::Advance(60000.0);
+    if (NpcChatWindow::VisibleLines() != NpcChatWindow::maxVisibleLines) return false;
+    NpcChatWindow::HandleEscape(0);
+    if (NpcChatWindow::scrollLines != 0) return false;
+    // The buffer keeps 100 display lines, like the retail ring buffer.
+    for (int i = 0; i < 150; ++i) NpcChatWindow::Show(f.owner, "System", "Line.");
+    if (NpcChatWindow::WrapHistory(NpcChatWindow::WrapWidth()).size() !=
+        static_cast<size_t>(NpcChatWindow::retailMaxStoredLines)) return false;
+    // Draining every row hides the log but keeps its history.
+    for (int i = 0; i < 100 && IsWindowVisible(NpcChatWindow::window); ++i)
+        NpcChatWindow::Advance(15000.0);
     if (IsWindowVisible(NpcChatWindow::window) || NpcChatWindow::history.empty()) return false;
     NpcChatWindow::Show(f.owner, "Test NPC", "Escape can close every remaining row.");
     for (int i = 0; i < 100 && IsWindowVisible(NpcChatWindow::window); ++i)
         if (!NpcChatWindow::HandleEscape(0)) return false;
-    if (IsWindowVisible(NpcChatWindow::window) || NpcChatWindow::hideAt ||
-        NpcChatWindow::HandleEscape(0)) return false;
-    NpcChatWindow::Show(f.owner, "Test NPC", "Reset cancels the pending close.");
+    if (IsWindowVisible(NpcChatWindow::window) || NpcChatWindow::HandleEscape(0)) return false;
+    // Chat continuation lines are indented; NPC text is not.
+    {
+        const NpcChatWindow::LogEntry chat{L"Adventurer : one two three four five six seven", true};
+        const auto rows = NpcChatWindow::WrapEntry(chat, 120);
+        if (rows.size() < 2 || rows[1].rfind(NpcChatWindow::chatContinuationIndent, 0) != 0) return false;
+        const NpcChatWindow::LogEntry npc{L"Cid : one two three four five six seven", false};
+        const auto npcRows = NpcChatWindow::WrapEntry(npc, 120);
+        if (npcRows.size() < 2 || npcRows[1][0] == L' ') return false;
+    }
+    NpcChatWindow::Show(f.owner, "Test NPC", "Reset clears the log.");
     NpcChatWindow::Reset();
-    if (IsWindowVisible(NpcChatWindow::window) || NpcChatWindow::hideAt || !NpcChatWindow::history.empty()) return false;
-    puts("PASS: Chat dimensions/save, striped rendering, timed line compaction, expansion, expiry and reset.");
+    if (IsWindowVisible(NpcChatWindow::window) || !NpcChatWindow::history.empty() ||
+        NpcChatWindow::lineBudgetMs != 0.0) return false;
+    puts("PASS: Chat dimensions/save, striped rendering, retail row budget, scroll anchoring, capacity, indent and reset.");
     puts("PASS: Config dropdown selection, legacy alias, Job Master, reopen, persistence and save failure.");
     return true;
 }
